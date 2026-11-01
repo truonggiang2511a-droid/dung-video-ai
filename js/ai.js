@@ -544,7 +544,8 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
     stks.push(it);
     ops.push({op: 'add', list: 'stickers', item: it});
   }
-  for (const ph of phrases) {
+  // bảng từ khoá chỉ dùng khi AI không chọn hình (bảng từ khoá hay bắt nhầm nghĩa, vd “môi” trong “môi giới”)
+  for (const ph of pics?.length ? [] : phrases) {
     if (ph.s < Math.max(0.6, hookEnd) || ph.s > D - ctaLen - 0.8 || ph.s - lastT < 4.5 || stks.some((s) => Math.abs(s.start - ph.s) < 4.5)) continue;
     const m = stickerForPhrase(ph.text);
     if (!m || m.key === lastKey) continue;
@@ -553,6 +554,9 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
     const at = w ? w.s : ph.s;
     const busyText = lks.some((t) => at < t.start + t.dur && at + 2.4 > t.start);
     const label = w ? words.slice(words.indexOf(w), words.indexOf(w) + m.w.split(' ').length).map((x) => x.w.replace(/[.,!?…:;]$/, '')).join(' ').toLowerCase() : m.w;
+    // từ 1 âm tiết dễ trùng khi bỏ dấu (“mới” / “môi” giới, “nóng” / “nông”) → phải đúng dấu
+    const AMBIG = {moi: 'mới', nong: 'nóng', dep: 'đẹp', yeu: 'yêu', buon: 'buồn', nha: 'nhà', tien: 'tiền', gia: 'giá'};
+    if (AMBIG[m.w] && label.replace(/[^\p{L}]/gu, '') !== AMBIG[m.w]) continue;
     const it = {id: uid('s'), kind: 'emoji', key: m.key, label, start: +at.toFixed(2), dur: +clamp(ph.e - at + 0.9, 1.8, 3).toFixed(2), x: side++ % 2 ? 0.2 : 0.8, y: busyText ? 0.52 : 0.42, size: 0.9, motion: ['bounce', 'pop', 'wiggle', 'float'][stks.length % 4], locked: false};
     stks.push(it);
     ops.push({op: 'add', list: 'stickers', item: it});
