@@ -1,0 +1,9 @@
+# Bản thử giao diện (không có /api). Bản chính chạy Cloudflare Worker (worker.js).
+[build]
+  command = "npm ci && bash build.sh"
+  publish = "site"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"

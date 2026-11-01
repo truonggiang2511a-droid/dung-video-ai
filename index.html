@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Dựng Video AI">
+<meta name="description" content="Tải video lên timeline, AI dựng video bất động sản từ A–Z: cắt khoảng lặng, ghép cảnh, thêm chữ, phụ đề. Xem bản nháp, ưng rồi mới xuất.">
+<title>Dựng Video AI — dựng video bất động sản từ A–Z</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<main id="home" class="screen">
+  <header class="h-top">
+    <div class="brand"><span class="logo" aria-hidden="true"></span><div><b>Dựng Video AI</b><small>cho môi giới bất động sản</small></div></div>
+  </header>
+  <section class="h-hero">
+    <h1>Tải video lên — AI dựng từ A đến Z</h1>
+    <p>Cắt khoảng lặng, ghép cảnh nhà, thêm chữ, phụ đề và hiệu ứng. Bạn xem bản nháp, ưng rồi mới xuất.</p>
+    <button id="btnNew" class="btn primary big"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Dự án mới</button>
+  </section>
+  <h2 class="h-sub">Dự án gần đây</h2>
+  <div id="plist" class="plist"></div>
+  <p id="aiState" class="ai-state"></p>
+</main>
+
+<main id="editor" class="screen" hidden>
+  <header class="e-top">
+    <button id="btnBack" class="icon-btn" aria-label="Về danh sách dự án"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+    <label class="pname"><span class="sr">Tên dự án</span><input id="pname" maxlength="60"></label>
+    <button id="btnUndo" class="icon-btn" aria-label="Hoàn tác"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+    <button id="btnRedo" class="icon-btn" aria-label="Làm lại"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
+    <button id="btnExport" class="btn primary sm">Xuất video</button>
+  </header>
+
+  <div class="e-body">
+    <section class="e-stage">
+      <div class="stage-wrap">
+        <canvas id="cv" aria-label="Khung xem nhanh video"></canvas>
+        <div id="stageMsg" class="stage-msg" hidden></div>
+        <div id="aiPanel" class="ai-panel" hidden></div>
+        <div id="review" class="review" hidden>
+          <b>Bản nháp đã sẵn sàng</b>
+          <span>Xem thử, sửa nếu cần — ưng rồi duyệt để xuất.</span>
+          <div class="review-act"><button class="btn ghost sm" data-act="preview">Xem</button><button class="btn primary sm" data-act="approve">Duyệt &amp; xuất</button></div>
+        </div>
+      </div>
+      <div class="e-transport">
+        <button id="btnPlay" class="play" aria-label="Phát"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg></button>
+        <span class="time"><b id="tNow">0:00</b> / <span id="tDur">0:00</span></span>
+        <span class="sp"></span>
+        <button class="icon-btn" data-act="tlOut" aria-label="Thu nhỏ timeline"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM21 21l-4.3-4.3M8 11h6"/></svg></button>
+        <button class="icon-btn" data-act="tlIn" aria-label="Phóng to timeline"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM21 21l-4.3-4.3M11 8v6M8 11h6"/></svg></button>
+      </div>
+    </section>
+
+    <aside id="side" class="e-side" aria-label="Bảng chỉnh sửa">
+      <div class="side-grab"><button data-act="closeSheet" aria-label="Đóng bảng sửa"><i></i></button></div>
+      <div class="side-tabs" role="tablist"><button data-tab="edit" class="on" role="tab">Chỉnh sửa</button><button data-tab="chat" role="tab">Trợ lý AI</button></div>
+      <div class="side-pane" data-pane="edit"><div id="insp" class="insp"></div></div>
+      <div class="side-pane" data-pane="chat" hidden><div id="chatlog" class="chatlog"><p class="chat-empty">Nhắn AI sửa bất cứ gì: “đổi chữ giá sang vàng”, “cảnh bếp dài thêm 1 giây”, “phụ đề to hơn”. Hoặc chạm vào một clip rồi bấm <b>Nhờ AI sửa</b>.</p></div></div>
+    </aside>
+  </div>
+
+  <div id="bin" class="bin" hidden></div>
+  <div id="selbar" class="selbar" hidden></div>
+  <div id="tl" class="tl"></div>
+  <form id="chat" class="e-chat" autocomplete="off">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="#ff7a1a" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>
+    <label class="sr" for="chatIn">Nhắn AI sửa video</label>
+    <input id="chatIn" placeholder="Nhắn AI sửa: “đổi chữ giá sang vàng”" enterkeyhint="send">
+    <button aria-label="Gửi cho AI"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg></button>
+  </form>
+</main>
+
+<div id="install" class="install" hidden></div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="dlg" class="modal" hidden></div>
+<div id="clipAi" class="modal" hidden></div>
+<div id="exp" class="modal" hidden></div>
+<div id="vids" class="vids" aria-hidden="true"></div>
+<input type="file" id="file" hidden>
+<script type="module" src="app.js"></script>
+</body>
+</html>

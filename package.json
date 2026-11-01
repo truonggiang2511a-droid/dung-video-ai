@@ -1,0 +1,24 @@
+{
+  "name": "dung-video-ai",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@mediabunny/aac-encoder": "^1.65.0",
+    "mediabunny": "^1.65.0"
+  },
+  "devDependencies": {
+    "@fontsource/anton": "^5.3.0",
+    "@fontsource/be-vietnam-pro": "^5.3.0",
+    "@fontsource/montserrat": "^5.3.0",
+    "@fontsource/oswald": "^5.3.0",
+    "esbuild": "^0.28.2"
+  }
+}
