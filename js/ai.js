@@ -179,9 +179,8 @@ export function numberLockups(p) {
 }
 
 // ---------- Chữ ý chính (không phải số): AI chọn từ lời nói, máy kiểm lại ----------
-// Cụm lời trên timeline (đã cắt) để gửi AI: [[giây, câu], …]
-export function timelinePhrases(p) {
-  const ws = timelineWords(p);
+// Cụm lời để gửi AI: [[giây, câu], …] — mặc định giây trên timeline (đã cắt); truyền ws = lời gốc thì là giây nguồn
+export function timelinePhrases(p, ws = timelineWords(p)) {
   const out = [];
   let cur = null;
   ws.forEach((w, i) => {
@@ -650,13 +649,26 @@ function compact(p) {
 }
 
 // ---------- Con trỏ diễn từng op ----------
-export async function animateOps(ed, ops, {fastAfter = 99} = {}) {
+// budget = số giây tối đa cho cả màn diễn: nhiều thao tác thì con trỏ tự nhanh dần (tới ×5), quá giờ thì áp nốt phần còn lại ngay
+export async function animateOps(ed, ops, {fastAfter = 99, budget = 0} = {}) {
   const {p, tl, cur} = ed;
   cur.show();
   let n = 0;
+  const t0 = performance.now();
   for (const o of ops) {
     n++;
+    const el = (performance.now() - t0) / 1000;
+    if (budget && el > budget && !cur.skip) {
+      for (const rest of ops.slice(n - 1)) applyOp(p, rest);
+      ed.changed(false);
+      break;
+    }
     cur.speed = n > fastAfter ? 2 : 1;
+    if (budget && n > 2) {
+      const need = (el / (n - 1)) * (ops.length - n + 1); // giữ tốc độ hiện tại thì còn mất bao lâu
+      const room = Math.max(1, budget - el);
+      if (need > room) cur.speed = Math.min(5, Math.max(cur.speed, (cur.speed * need) / room));
+    }
     const text = describeOp(p, o) + (ops.length > 1 ? ` · ${n}/${ops.length}` : '');
     try {
       await animateOne(ed, o, text);
@@ -853,6 +865,16 @@ export async function transcribeAll(p, an, onProgress) {
   });
 }
 
+// Giây nguồn → giây timeline (rơi vào chỗ đã cắt thì lấy đầu đoạn kế tiếp)
+function srcToTl(p, t) {
+  let acc = 0;
+  for (const s of p.main?.segs || []) {
+    if (t < s.in) return acc;
+    if (t <= s.out) return acc + (t - s.in);
+    acc += s.out - s.in;
+  }
+  return acc;
+}
 // Gộp các đoạn cắt chồng / sát nhau (giây nguồn)
 export function mergeRanges(list) {
   const out = [];
@@ -1036,6 +1058,7 @@ export async function autoEdit(ed, log) {
   } else log('nghe2', 'skip', 'Phụ đề: máy chủ chép lời đang tắt');
 
   scan(null);
+  let hlReq = null;
   if (an) {
     src.peaks = an.peaks;
     // khoảng lặng theo nhịp khách chọn (VAD theo cao độ giọng + lời chép Whisper) + câu nói lại + “ờ/à” đứng riêng
@@ -1043,6 +1066,12 @@ export async function autoEdit(ed, log) {
     let sil = findSilences(an, {...pace, words: words?.length > 3 ? words : null});
     const extra = words?.length > 3 ? [...retakeCuts(words, pace), ...fillerCuts(words, pace)] : [];
     sil = mergeRanges([...sil, ...extra]);
+    // Gửi AI chọn chữ điểm nhấn NGAY (theo giây nguồn), chạy song song với lúc con trỏ diễn cắt — không bắt khách chờ thêm
+    const den0 = densityOf(p);
+    if (h.ai && den0.every && words?.length > 8) {
+      const left = src.duration - sil.reduce((a, s) => a + Math.max(0, Math.min(s.b, src.duration) - s.a), 0);
+      hlReq = api('ai', {mode: 'highlight', phrases: timelinePhrases(p, words), count: Math.max(1, Math.round(left / den0.every)) + 2, gap: den0.gap, genre: genreOf(p).ai || genreOf(p).name}).catch(() => null);
+    }
     const nRetake = extra.filter((x) => x.why === 'retake').length;
     if (nRetake) log('nghe', 'run', `Phát hiện ${nRetake} câu nói lại — giữ lần nói sau`);
     const total = sil.reduce((a, s) => a + Math.min(s.b, src.duration) - s.a, 0);
@@ -1051,7 +1080,7 @@ export async function autoEdit(ed, log) {
     log('cat', 'run', 'Cắt khoảng lặng');
     const cuts = sil.map((s) => ({op: 'cut', a: s.a, b: Math.min(s.b, src.duration + 0.5)})).reverse();
     ed.cur.step = 'Bước 3/5';
-    await animateOps(ed, cuts, {fastAfter: 12});
+    await animateOps(ed, cuts, {fastAfter: 12, budget: 9});
     log('cat', 'ok', `Đã cắt ${sil.length} chỗ · còn ${duration(p).toFixed(1).replace('.', ',')} giây`);
   } else log('cat', 'skip', 'Bỏ qua bước cắt');
   if (words?.length && words !== p.transcript?.words) {
@@ -1087,8 +1116,12 @@ export async function autoEdit(ed, log) {
       const lane = document.querySelector('.tl-label[data-row="texts"]')?.getBoundingClientRect();
       if (lane) ed.cur.jump(lane.right + 60, lane.top + lane.height / 2);
       ed.cur.say('AI đọc lời nói, chọn chữ điểm nhấn…');
-      const count = Math.max(1, Math.round(duration(p) / den.every)) + 2;
-      const r = await api('ai', {mode: 'highlight', phrases: timelinePhrases(p), count, gap: den.gap, genre: genreOf(p).ai || genreOf(p).name});
+      let r = hlReq ? await hlReq : null;
+      if (r) r = {items: (r.items || []).map((it) => ({...it, start: srcToTl(p, +it.start || 0)}))};
+      else {
+        const count = Math.max(1, Math.round(duration(p) / den.every)) + 2;
+        r = await api('ai', {mode: 'highlight', phrases: timelinePhrases(p), count, gap: den.gap, genre: genreOf(p).ai || genreOf(p).name});
+      }
       keys = keyLockups(p, r.items);
       const loc = localKeys(p).filter((k) => !keys.some((x) => Math.abs(x.start - k.start) < den.gap));
       keys = [...keys, ...loc];
@@ -1106,7 +1139,7 @@ export async function autoEdit(ed, log) {
   const order = {broll: 0, texts: 1, stickers: 2, zooms: 3, sfx: 4};
   ops.sort((a, b) => (order[a.list] ?? 3) - (order[b.list] ?? 3) || (a.item?.start || 0) - (b.item?.start || 0));
   ed.cur.step = 'Bước 5/5';
-  await animateOps(ed, ops, {fastAfter: 14});
+  await animateOps(ed, ops, {fastAfter: 14, budget: 18});
   ed.cur.step = '';
   log('dung', 'ok', 'Xong phần dựng');
   p.aiDone = true;
