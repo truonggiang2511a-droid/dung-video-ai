@@ -611,20 +611,6 @@ function drawLockup(ctx, it, t, boxes) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  // tầng 1: chữ dẫn
-  if (it.lead) {
-    ctx.save();
-    ctx.font = `800 ${Math.round(52 * (it.size || 1))}px BVP, sans-serif`;
-    ctx.globalAlpha = out * clamp(leadP);
-    ctx.translate((1 - leadP) * -260, 0);
-    ctx.shadowColor = 'rgba(0,0,0,0.6)';
-    ctx.shadowBlur = 14;
-    ctx.shadowOffsetY = 3;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(it.lead.toUpperCase(), cx, cy - size * (['box', 'tape', 'bubble'].includes(it.style) ? 0.82 : 0.62));
-    ctx.restore();
-  }
-
   // tầng 2: từ khoá chính — kiểu chữ (TEXT_STYLES) × chuyển động (TEXT_MOTIONS)
   ctx.font = fontStr(it.font, size);
   let mw = ctx.measureText(it.main || '').width;
@@ -632,6 +618,22 @@ function drawLockup(ctx, it, t, boxes) {
     size *= (W * 0.9) / mw;
     ctx.font = fontStr(it.font, size);
     mw = ctx.measureText(it.main || '').width;
+  }
+  // tầng 1: chữ dẫn — đặt TRÊN đỉnh thật của chữ chính (đo cả dấu tiếng Việt chồng như “Ổ”, “Ồ”; font có chân cao hơn Anton)
+  if (it.lead) {
+    const asc = ctx.measureText(it.main || 'A').actualBoundingBoxAscent || size * 0.5;
+    const ls = 52 * (it.size || 1);
+    const pad = ['box', 'tape', 'bubble', 'highlight'].includes(it.style) ? size * 0.2 : size * 0.08;
+    ctx.save();
+    ctx.font = `800 ${Math.round(ls)}px BVP, sans-serif`;
+    ctx.globalAlpha = out * clamp(leadP);
+    ctx.translate((1 - leadP) * -260, 0);
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur = 14;
+    ctx.shadowOffsetY = 3;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(it.lead.toUpperCase(), cx, cy - Math.max(size * 0.62, asc + pad + ls * 0.5));
+    ctx.restore();
   }
   const style = it.style || '3d';
   const motion = it.motion || 'pop';
@@ -794,7 +796,332 @@ function drawLockup(ctx, it, t, boxes) {
 
 // ---------- Hình minh hoạ / icon động ----------
 // kind 'emoji' = hình Fluent Emoji màu; 'icon' = icon Lucide trắng trên huy hiệu tròn màu (it.color)
+// ---------- ĐỒ HOẠ ĐỘNG TỰ VẼ (không file ngoài, không bản quyền) — nằm chung làn Hình: p.stickers[] kind 'gfx', key = loại ----------
+// label = chữ (tiêu đề / tên / nút), sub = dòng phụ (thanh tên), color = màu nhấn, font = font kho, variant = kiểu tiêu đề
+export const GFX = [
+  ['hook', 'Tiêu đề mở đầu', {label: 'BẠN CÓ BIẾT?', x: 0.5, y: 0.17, dur: 2.8, color: '#ffc61a', font: 'anton', variant: 'band'}],
+  ['lower', 'Thanh tên', {label: 'TÊN CỦA BẠN', sub: 'Chức danh · lĩnh vực', x: 0.07, y: 0.8, dur: 4, color: '#ffc61a', font: 'bevietnampro900'}],
+  ['progress', 'Thanh tiến độ', {x: 0, y: 0, dur: 10, color: '#ffc61a'}],
+  ['arrow', 'Mũi tên chỉ', {x: 0.5, y: 0.5, dur: 2.5, color: '#ffc61a'}],
+  ['circle', 'Vòng khoanh', {x: 0.5, y: 0.5, dur: 2.5, color: '#ff2a2a', size: 1}],
+  ['sparkle', 'Lấp lánh', {x: 0.5, y: 0.22, dur: 1.2, color: '#ffe680'}],
+  ['confetti', 'Pháo giấy', {x: 0.5, y: 0, dur: 3, color: '#ffc61a'}],
+  ['leak', 'Vệt sáng', {x: 0.5, y: 0.5, dur: 0.9, color: '#ffb36b'}],
+  ['follow', 'Nút theo dõi', {label: 'THEO DÕI', x: 0.5, y: 0.6, dur: 3, color: '#ff2a2a', font: 'bevietnampro900'}],
+];
+export const GFX_MAP = Object.fromEntries(GFX.map(([k, l, d]) => [k, {label: l, def: d}]));
+const HOOK_VARIANTS = [['band', 'Dải màu'], ['box', 'Hộp'], ['line', 'Gạch chân'], ['burst', 'Nổ'], ['bubble', 'Bong bóng']];
+export {HOOK_VARIANTS};
+const rnd = (i) => {
+  const x = Math.sin(i * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+};
+function fitFont(ctx, font, text, size, maxW) {
+  ctx.font = fontStr(font, size);
+  const w = ctx.measureText(text).width;
+  if (w > maxW) {
+    size *= maxW / w;
+    ctx.font = fontStr(font, size);
+  }
+  return size;
+}
+function star(ctx, r) {
+  ctx.beginPath();
+  for (let k = 0; k < 8; k++) {
+    const a = (k * Math.PI) / 4;
+    const rr = k % 2 ? r * 0.28 : r;
+    ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+  }
+  ctx.closePath();
+}
+function drawGfx(ctx, it, t, boxes) {
+  const u = Math.min(W, H) / 1080;
+  const c = it.color || '#ffc61a';
+  const out = clamp((it.dur - t) / 0.25);
+  const sz = it.size || 1;
+  const cx = (it.x ?? 0.5) * W;
+  const cy = (it.y ?? 0.5) * H;
+  const ink = lightColor(c) ? '#121212' : '#ffffff';
+  ctx.save();
+  switch (it.key) {
+    case 'hook': {
+      const text = String(it.label || '').toUpperCase();
+      const v = it.variant || 'band';
+      const inP = spring(t, 12, 150);
+      ctx.globalAlpha = out;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const size = fitFont(ctx, it.font || 'anton', text, 112 * u * sz, W * 0.8);
+      const tw = ctx.measureText(text).width;
+      const bw = tw + size * 0.9;
+      const bh = size * 1.45;
+      ctx.translate(cx, cy);
+      if (v === 'band') {
+        const k = easeOut(t / 0.35);
+        ctx.rotate(-0.035);
+        ctx.fillStyle = c;
+        ctx.shadowColor = 'rgba(0,0,0,0.35)';
+        ctx.shadowBlur = 20 * u;
+        ctx.fillRect(-W * 0.6, -bh / 2, W * 1.2 * k, bh);
+        ctx.shadowColor = 'transparent';
+        ctx.fillStyle = ink;
+        ctx.globalAlpha = out * clamp((t - 0.15) / 0.2);
+        ctx.fillText(text, 0, size * 0.05);
+      } else if (v === 'box' || v === 'bubble') {
+        ctx.scale(inP, inP);
+        ctx.fillStyle = v === 'bubble' ? '#ffffff' : c;
+        ctx.shadowColor = 'rgba(0,0,0,0.4)';
+        ctx.shadowBlur = 24 * u;
+        roundRect(ctx, -bw / 2, -bh / 2, bw, bh, v === 'bubble' ? bh / 2 : bh * 0.18);
+        ctx.fill();
+        if (v === 'bubble') {
+          ctx.beginPath();
+          ctx.moveTo(-bw * 0.2, bh / 2 - 2);
+          ctx.lineTo(-bw * 0.28, bh / 2 + bh * 0.35);
+          ctx.lineTo(-bw * 0.06, bh / 2 - 2);
+          ctx.fill();
+        }
+        ctx.shadowColor = 'transparent';
+        ctx.fillStyle = v === 'bubble' ? '#141414' : ink;
+        ctx.fillText(text, 0, size * 0.05);
+      } else if (v === 'burst') {
+        ctx.save();
+        ctx.rotate(t * 0.4);
+        ctx.scale(inP, inP);
+        ctx.fillStyle = c;
+        ctx.beginPath();
+        const R = bw * 0.62;
+        for (let k = 0; k < 28; k++) {
+          const a = (k * Math.PI * 2) / 28;
+          const rr = k % 2 ? R * 0.82 : R;
+          ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr * 0.42);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+        ctx.scale(inP, inP);
+        ctx.lineWidth = size * 0.16;
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = '#141414';
+        ctx.strokeText(text, 0, size * 0.05);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(text, 0, size * 0.05);
+      } else {
+        // line: chữ trắng bóng đổ + gạch chân màu chạy từ giữa ra
+        ctx.globalAlpha = out * clamp(t / 0.25);
+        ctx.translate(0, (1 - easeOut(t / 0.4)) * size * 0.4);
+        ctx.shadowColor = 'rgba(0,0,0,0.55)';
+        ctx.shadowBlur = 18 * u;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(text, 0, 0);
+        ctx.shadowColor = 'transparent';
+        const k = easeOut((t - 0.2) / 0.45);
+        ctx.fillStyle = c;
+        ctx.fillRect((-tw / 2) * k, size * 0.62, tw * k, size * 0.12);
+      }
+      boxes.push({id: it.id, type: 'sticker', x: cx - bw / 2, y: cy - bh / 2, w: bw, h: bh});
+      break;
+    }
+    case 'lower': {
+      const name = String(it.label || '');
+      const sub = String(it.sub || '');
+      ctx.globalAlpha = out;
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'left';
+      const size = fitFont(ctx, it.font || 'bevietnampro900', name, 64 * u * sz, W * 0.7);
+      const nw = ctx.measureText(name).width;
+      ctx.font = `600 ${Math.round(size * 0.55)}px BVP, sans-serif`;
+      const sw = ctx.measureText(sub).width;
+      const pw = Math.max(nw, sw) + size * 1.1;
+      const ph = size * (sub ? 2.15 : 1.45);
+      const k = easeOut((t - 0.12) / 0.4);
+      ctx.fillStyle = c;
+      ctx.fillRect(cx, cy - ph / 2, size * 0.2, ph * easeOut(t / 0.2));
+      ctx.fillStyle = 'rgba(12,14,18,0.82)';
+      ctx.fillRect(cx + size * 0.2, cy - ph / 2, pw * k, ph);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(cx + size * 0.2, cy - ph / 2, pw * k, ph);
+      ctx.clip();
+      ctx.font = fontStr(it.font || 'bevietnampro900', size);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(name, cx + size * 0.6, sub ? cy - size * 0.36 : cy);
+      if (sub) {
+        ctx.font = `600 ${Math.round(size * 0.55)}px BVP, sans-serif`;
+        ctx.fillStyle = c;
+        ctx.fillText(sub, cx + size * 0.6, cy + size * 0.5);
+      }
+      ctx.restore();
+      boxes.push({id: it.id, type: 'sticker', x: cx, y: cy - ph / 2, w: pw, h: ph});
+      break;
+    }
+    case 'progress': {
+      const h = 12 * u * sz;
+      ctx.fillStyle = 'rgba(255,255,255,0.22)';
+      ctx.fillRect(0, 0, W, h);
+      ctx.fillStyle = c;
+      ctx.fillRect(0, 0, W * clamp(t / it.dur), h);
+      break;
+    }
+    case 'arrow': {
+      // mũi tên cong từ trên phải chỉ xuống điểm (x, y), nhún về phía điểm
+      const s = spring(t, 10, 150) * sz;
+      const bob = Math.sin(t * 7) * 14 * u * clamp(t / 0.4);
+      ctx.globalAlpha = out;
+      ctx.translate(cx + bob, cy - bob);
+      ctx.scale(s, s);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      const L = 230 * u;
+      ctx.beginPath();
+      ctx.moveTo(L, -L);
+      ctx.quadraticCurveTo(L * 0.9, -L * 0.15, 40 * u, -40 * u);
+      for (const [w, col] of [[34 * u, '#141414'], [20 * u, c]]) {
+        ctx.lineWidth = w;
+        ctx.strokeStyle = col;
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(78 * u, -14 * u);
+      ctx.lineTo(14 * u, -78 * u);
+      ctx.closePath();
+      ctx.lineWidth = 14 * u;
+      ctx.strokeStyle = '#141414';
+      ctx.stroke();
+      ctx.fillStyle = c;
+      ctx.fill();
+      boxes.push({id: it.id, type: 'sticker', x: cx - 20 * u, y: cy - L * sz, w: L * sz, h: L * sz});
+      break;
+    }
+    case 'circle': {
+      const r = W * 0.17 * sz;
+      const k = easeOut(t / 0.55);
+      ctx.globalAlpha = out;
+      ctx.translate(cx, cy);
+      ctx.rotate(-0.25);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      const end = Math.PI * 2 * 1.08 * k;
+      for (let a = 0; a <= end; a += 0.05) {
+        const wob = 1 + Math.sin(a * 3) * 0.035;
+        ctx.lineTo(Math.cos(a) * r * 1.25 * wob, Math.sin(a) * r * 0.8 * wob);
+      }
+      ctx.lineWidth = 22 * u;
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+      ctx.stroke();
+      ctx.lineWidth = 13 * u;
+      ctx.strokeStyle = c;
+      ctx.stroke();
+      boxes.push({id: it.id, type: 'sticker', x: cx - r * 1.25, y: cy - r * 0.8, w: r * 2.5, h: r * 1.6});
+      break;
+    }
+    case 'sparkle': {
+      ctx.translate(cx, cy);
+      for (let i = 0; i < 12; i++) {
+        const d = clamp((t - rnd(i) * 0.25) / 0.85);
+        if (d <= 0 || d >= 1) continue;
+        const a = rnd(i + 40) * Math.PI * 2;
+        const dist = (160 + rnd(i + 80) * 260) * u * sz * easeOut(d);
+        ctx.save();
+        ctx.globalAlpha = Math.sin(d * Math.PI) * out;
+        ctx.translate(Math.cos(a) * dist, Math.sin(a) * dist * 0.6);
+        ctx.rotate(d * 2);
+        ctx.fillStyle = i % 3 ? c : '#ffffff';
+        star(ctx, (18 + rnd(i + 9) * 22) * u * sz);
+        ctx.fill();
+        ctx.restore();
+      }
+      boxes.push({id: it.id, type: 'sticker', x: cx - 120 * u, y: cy - 80 * u, w: 240 * u, h: 160 * u});
+      break;
+    }
+    case 'confetti': {
+      const cols = [c, '#ff5fb8', '#2fd2ff', '#2ad46a', '#ffffff', '#ff8a1f'];
+      for (let i = 0; i < 80; i++) {
+        const t0 = rnd(i) * 0.8;
+        const d = (t - t0) / 1.9;
+        if (d <= 0 || d > 1.2) continue;
+        const x = rnd(i + 200) * W + Math.sin(t * 3 + i) * 30 * u;
+        const y = -40 * u + d * H * 1.05;
+        ctx.save();
+        ctx.globalAlpha = out;
+        ctx.translate(x, y);
+        ctx.rotate(t * (2 + rnd(i + 7) * 5));
+        ctx.scale(1, Math.cos(t * 6 + i));
+        ctx.fillStyle = cols[i % cols.length];
+        ctx.fillRect(-9 * u, -14 * u, 18 * u, 28 * u);
+        ctx.restore();
+      }
+      break;
+    }
+    case 'leak': {
+      const k = clamp(t / it.dur);
+      const x = -W * 0.3 + k * W * 1.6;
+      const g = ctx.createRadialGradient(x, H * 0.35, 0, x, H * 0.35, W * 0.75);
+      g.addColorStop(0, c);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalCompositeOperation = 'screen';
+      ctx.globalAlpha = Math.sin(k * Math.PI) * 0.85;
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+      break;
+    }
+    case 'follow': {
+      const done = t > 1.05;
+      const text = done ? 'ĐÃ THEO DÕI' : String(it.label || 'THEO DÕI');
+      const s = spring(t, 11, 160) * (t > 0.9 && t < 1.05 ? 0.92 : 1) * sz;
+      ctx.globalAlpha = out;
+      ctx.translate(cx, cy);
+      ctx.scale(s, s);
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const size = 62 * u;
+      ctx.font = fontStr(it.font || 'bevietnampro900', size);
+      const tw = ctx.measureText(text).width;
+      const bw = tw + size * 2.1;
+      const bh = size * 1.7;
+      ctx.fillStyle = done ? '#3a3d42' : c;
+      ctx.shadowColor = 'rgba(0,0,0,0.4)';
+      ctx.shadowBlur = 24 * u;
+      roundRect(ctx, -bw / 2, -bh / 2, bw, bh, bh / 2);
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+      ctx.strokeStyle = ctx.fillStyle = done ? '#ffffff' : ink;
+      ctx.lineWidth = size * 0.14;
+      ctx.lineCap = 'round';
+      const ix = -bw / 2 + size * 0.85;
+      ctx.beginPath();
+      if (done) {
+        ctx.moveTo(ix - size * 0.3, 0);
+        ctx.lineTo(ix - size * 0.05, size * 0.25);
+        ctx.lineTo(ix + size * 0.32, -size * 0.25);
+      } else {
+        ctx.moveTo(ix - size * 0.3, 0);
+        ctx.lineTo(ix + size * 0.3, 0);
+        ctx.moveTo(ix, -size * 0.3);
+        ctx.lineTo(ix, size * 0.3);
+      }
+      ctx.stroke();
+      ctx.fillText(text, ix + size * 0.55, size * 0.04);
+      // vòng chạm như ngón tay bấm
+      const tap = (t - 0.85) / 0.45;
+      if (tap > 0 && tap < 1) {
+        ctx.globalAlpha = (1 - tap) * out;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 6 * u;
+        ctx.beginPath();
+        ctx.arc(bw * 0.18, bh * 0.1, 20 * u + tap * 70 * u, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      boxes.push({id: it.id, type: 'sticker', x: cx - bw / 2, y: cy - bh / 2, w: bw, h: bh});
+      break;
+    }
+  }
+  ctx.restore();
+}
+
 function drawSticker(ctx, it, t, boxes) {
+  if (it.kind === 'gfx') return drawGfx(ctx, it, t, boxes);
   const out = clamp((it.dur - t) / 0.25);
   if (out <= 0) return;
   const img = stickerImage(it);
@@ -905,7 +1232,7 @@ function drawSubs(ctx, p, T, low) {
 
   if (style === 'clean') {
     const text = line.ws.map((w) => w.w).join(' ');
-    ctx.font = `700 ${Math.round(size)}px BVP, sans-serif`;
+    ctx.font = st.font && FONTS[st.font] ? fontStr(st.font, size) : `700 ${Math.round(size)}px BVP, sans-serif`;
     let tw = ctx.measureText(text).width;
     const k = Math.min(1, (W * 0.86) / tw);
     tw *= k;
@@ -922,7 +1249,7 @@ function drawSubs(ctx, p, T, low) {
     return;
   }
 
-  ctx.font = `800 ${Math.round(size)}px BVP, sans-serif`;
+  ctx.font = st.font && FONTS[st.font] ? fontStr(st.font, size) : `800 ${Math.round(size)}px BVP, sans-serif`;
   ctx.textAlign = 'center';
   const gap = size * (style === 'box' ? 0.46 : 0.28);
   const words = line.ws.map((w) => ({...w, t: txt(w.w)}));

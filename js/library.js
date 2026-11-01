@@ -72,7 +72,7 @@ export function stickerImage(it) {
   return load(it).img;
 }
 export async function preloadStickers(p) {
-  await Promise.all((p.stickers || []).map((s) => load(s).p));
+  await Promise.all((p.stickers || []).filter((s) => s.kind !== 'gfx').map((s) => load(s).p));
 }
 
 // ---------- AI chọn hình theo lời nói ----------

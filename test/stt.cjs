@@ -37,7 +37,7 @@ const M = '/home/claude/testmedia/';
   await p.waitForFunction(() => window.__dv.p.aiDone && !window.__dv.busy, null, {timeout: 240000});
   const st = await p.evaluate(() => {
     const q = window.__dv.p;
-    return {words: q.transcript?.words?.length || 0, segs: q.main.segs.length, texts: q.texts.map((t) => (t.lead ? t.lead + ': ' : '') + t.main), subsOn: q.subs.on, style: q.subs.style, sample: (q.transcript?.words || []).slice(0, 12).map((w) => w.w).join(' ')};
+    return {pack: q.pack + ' (' + q.packBy + ')', gfx: q.stickers.filter((x) => x.kind === 'gfx').map((x) => x.key + (x.label ? ':' + x.label : '')), pics: q.stickers.filter((x) => x.kind !== 'gfx').map((x) => x.start + ' ' + x.label), sfxs: q.sfx.map((x) => x.sfx), words: q.transcript?.words?.length || 0, segs: q.main.segs.length, texts: q.texts.map((t) => (t.lead ? t.lead + ': ' : '') + t.main), subsOn: q.subs.on, style: q.subs.style, sample: (q.transcript?.words || []).slice(0, 12).map((w) => w.w).join(' ')};
   });
   fs.writeFileSync('/tmp/stt-proj.json', JSON.stringify(await p.evaluate(() => ({genre: window.__dv.p.genre, main: window.__dv.p.main, transcript: window.__dv.p.transcript, sources: {[window.__dv.p.main.src]: {duration: window.__dv.p.sources[window.__dv.p.main.src].duration}}}))));
   console.log('STEPS', JSON.stringify(await p.evaluate(() => window.__steps)));

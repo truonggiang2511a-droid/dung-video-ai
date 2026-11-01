@@ -1,7 +1,8 @@
 // Mô hình dự án + các "thao tác" (op). Cả AI lẫn khách sửa tay đều đi qua applyOp,
 // nhờ vậy con trỏ diễn lại được, hoàn tác được, và AI không ghi đè chỗ khách đã khoá.
-import {duration, srcAt} from './render.js';
+import {duration, srcAt, GFX_MAP} from './render.js';
 import {GENRES, lastChoice} from './templates.js';
+import {PACKS, restyle} from './styles.js';
 
 export const uid = (p = 'i') => p + Math.random().toString(36).slice(2, 9);
 export const LISTS = ['broll', 'texts', 'zooms', 'stickers', 'sfx'];
@@ -118,6 +119,9 @@ export function applyOp(p, o) {
     case 'subs':
       Object.assign(p.subs, o.set);
       break;
+    case 'pack':
+      restyle(p, o.key, 'user');
+      break;
     case 'cta':
       Object.assign(p.cta, o.set);
       break;
@@ -171,7 +175,7 @@ export function describeOp(p, o) {
     case 'add':
       if (o.list === 'broll') return `Ghép cảnh “${p.sources[o.item.src]?.name || 'cảnh phụ'}”`;
       if (o.list === 'texts') return `Thêm chữ “${o.item.main}”`;
-      if (o.list === 'stickers') return o.item.kind === 'icon' ? `Thêm icon động ${tt(o.item.start)}` : `Thêm hình minh hoạ ${tt(o.item.start)}`;
+      if (o.list === 'stickers') return o.item.kind === 'gfx' ? `Thêm đồ hoạ “${GFX_MAP[o.item.key]?.label || ''}” ${tt(o.item.start)}` : o.item.kind === 'icon' ? `Thêm icon động ${tt(o.item.start)}` : `Thêm hình minh hoạ ${tt(o.item.start)}`;
       if (o.list === 'sfx') return `Thêm âm thanh “${o.item.name || o.item.sfx}” ${tt(o.item.start)}`;
       if (o.list === 'zooms') return o.item.kind === 'punch' ? `Zoom giật che chỗ cắt ${tt(o.item.start)}` : o.item.kind === 'push' ? `Đẩy máy chậm ${tt(o.item.start)}` : `Đẩy máy zoom ${tt(o.item.start)}`;
       return 'Thêm';
@@ -188,6 +192,8 @@ export function describeOp(p, o) {
     }
     case 'remove':
       return 'Xoá';
+    case 'pack':
+      return `Đổi phong cách: ${PACKS[o.key]?.name || o.key}`;
     case 'subs':
       return o.set.on === false ? 'Tắt phụ đề' : o.set.style ? 'Đổi kiểu phụ đề' : 'Bật phụ đề';
     case 'music':

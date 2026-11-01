@@ -1,10 +1,11 @@
 // AI dựng từ A–Z + sửa theo lời nói. Mọi thay đổi là "op" → con trỏ diễn lại trên timeline rồi mới áp vào dự án.
 import {analyzeAudio, findSilences, levels, wav16, thumbs, CUT_PACE} from './media.js';
-import {duration, tlOfSrc, timelineWords, segStarts, clamp, ICONS} from './render.js';
+import {duration, tlOfSrc, timelineWords, segStarts, clamp, ICONS, GFX_MAP} from './render.js';
 import {applyOp, describeOp, find, newText, uid, TYPE_OF} from './model.js';
 import {genreOf, formatOf} from './templates.js';
 import {SFX_MAP} from './sfx.js';
-import {MOTIONS, stickerForPhrase} from './library.js';
+import {MOTIONS, stickerForPhrase, searchLib} from './library.js';
+import {PACKS, packsFor, packText, gfxStyle, rotatePack} from './styles.js';
 
 // ---------- Gọi máy chủ ----------
 let health = null;
@@ -38,7 +39,7 @@ export const plain = (s) =>
     .replace(/đ/g, 'd');
 
 // ---------- Kiểm tra op do AI trả về ----------
-const OPS = new Set(['cut', 'split', 'add', 'update', 'remove', 'subs', 'cta', 'music', 'look', 'segfx']);
+const OPS = new Set(['cut', 'split', 'add', 'update', 'remove', 'subs', 'cta', 'music', 'look', 'segfx', 'pack']);
 const TEXT_KEYS = ['start', 'dur', 'lead', 'main', 'sign', 'font', 'color', 'style', 'size', 'x', 'y', 'icon', 'kind', 'motion'];
 const BROLL_KEYS = ['start', 'dur', 'in', 'trans', 'src'];
 export function sanitizeOps(p, ops, target) {
@@ -58,6 +59,18 @@ export function sanitizeOps(p, ops, target) {
         out.push({op: 'add', list: 'broll', item: {id: uid('b'), src: src.id, start: +o.item.start || 0, dur, in: Math.max(0, Math.min(+o.item.in || 0, src.duration - dur)), trans: o.item.trans || 'fade', locked: false}});
       } else if (o.list === 'zooms') {
         out.push({op: 'add', list: 'zooms', item: {id: uid('z'), start: +o.item?.start || 0, dur: +o.item?.dur || 2.5, scale: Math.min(1.25, Math.max(1.02, +o.item?.scale || 1.08)), ...(['punch', 'push'].includes(o.item?.kind) ? {kind: o.item.kind} : {})}});
+      } else if (o.list === 'stickers' && o.item?.kind === 'gfx' && GFX_MAP[o.item.key]) {
+        const it = o.item;
+        const pack = PACKS[p.pack] || PACKS.mau1;
+        const def = GFX_MAP[it.key].def;
+        const g = {id: uid('g'), kind: 'gfx', key: it.key, ...def, ...gfxStyle(pack, it.key), start: Math.max(0, +it.start || 0), dur: clamp(+it.dur || def.dur, 0.3, 600), locked: false};
+        if (it.key !== 'hook') delete g.variant;
+        else if (['band', 'box', 'line', 'burst', 'bubble'].includes(it.variant)) g.variant = it.variant;
+        for (const k of ['x', 'y', 'size']) if (isFinite(it[k])) g[k] = clamp(+it[k], k === 'size' ? 0.4 : 0, k === 'size' ? 2.2 : 1);
+        if (/^#[0-9a-f]{6}$/i.test(it.color || '')) g.color = it.color;
+        if (it.label) g.label = String(it.label).slice(0, 40);
+        if (it.sub) g.sub = String(it.sub).slice(0, 50);
+        out.push({op: 'add', list: 'stickers', item: g});
       } else if (o.list === 'stickers' && /^[a-z0-9-]{2,60}$/.test(o.item?.key || '')) {
         const it = o.item;
         out.push({op: 'add', list: 'stickers', item: {id: uid('s'), kind: it.kind === 'icon' ? 'icon' : 'emoji', key: it.key, label: String(it.label || '').slice(0, 30), start: +it.start || 0, dur: Math.min(6, +it.dur || 2.5), x: clamp(+it.x || 0.78, 0.1, 0.9), y: clamp(+it.y || 0.4, 0.1, 0.9), size: clamp(+it.size || 1, 0.4, 2.2), motion: MOTIONS.some(([k]) => k === it.motion) ? it.motion : 'pop', ...(it.kind === 'icon' ? {color: /^#[0-9a-f]{6}$/i.test(it.color || '') ? it.color : '#2f8cff'} : {}), locked: false}});
@@ -73,7 +86,7 @@ export function sanitizeOps(p, ops, target) {
       // Chỗ khách đã sửa tay (khoá) thì AI không đụng, trừ khi khách đang nhờ sửa đúng chỗ đó
       if (f.item.locked && o.id !== target) continue;
       if (o.op === 'update') {
-        const keys = f.list === 'texts' ? TEXT_KEYS : f.list === 'broll' ? BROLL_KEYS : f.list === 'stickers' ? ['start', 'dur', 'x', 'y', 'size', 'motion', 'color'] : f.list === 'sfx' ? ['start', 'vol'] : ['start', 'dur', 'scale'];
+        const keys = f.list === 'texts' ? TEXT_KEYS : f.list === 'broll' ? BROLL_KEYS : f.list === 'stickers' ? ['start', 'dur', 'x', 'y', 'size', 'motion', 'color', 'label', 'sub', 'variant'] : f.list === 'sfx' ? ['start', 'vol'] : ['start', 'dur', 'scale'];
         const set = {};
         for (const k of keys) if (o.set?.[k] !== undefined) set[k] = o.set[k];
         if (Object.keys(set).length) out.push({op: 'update', id: o.id, set});
@@ -83,6 +96,7 @@ export function sanitizeOps(p, ops, target) {
     if (o.op === 'cut' && isFinite(o.a) && isFinite(o.b) && o.b > o.a) out.push({op: 'cut', a: +o.a, b: +o.b});
     else if (o.op === 'split' && isFinite(o.T)) out.push(o);
     else if (['subs', 'cta', 'music', 'look'].includes(o.op)) out.push(o);
+    else if (o.op === 'pack' && packsFor(p.genre).some((x) => x.key === o.key)) out.push({op: 'pack', key: o.key});
     else if (o.op === 'segfx' && Number.isInteger(o.i) && p.main?.segs[o.i] && ['none', 'zoomin', 'whip', 'flash', 'shake', 'glitch'].includes(o.tr)) out.push({op: 'segfx', i: o.i, tr: o.tr});
   }
   return out;
@@ -305,11 +319,13 @@ export function brollKeys(src) {
 }
 export const brollTokens = (src) => brollKeys(src).map((x) => x.k);
 
-export function localPlan(p, {keys = null} = {}) {
+export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks = null} = {}) {
   const D = duration(p);
   const ops = [];
   if (D < 1) return ops;
-  const st = genreOf(p).edit || {pace: 3.2, cover: 0.4, base: 'none', accent: 'fade', punch: 1.1};
+  // phong cách của video (bộ phong cách — styles.js): chuyển cảnh, chữ, phụ đề, màu, đồ hoạ theo MỘT công thức
+  const pack = PACKS[p.pack] || packsFor(p.genre)[0] || PACKS.mau1;
+  const st = {...(genreOf(p).edit || {pace: 3.2, cover: 0.4, punch: 1.1}), base: pack.trans.base, accent: pack.trans.accent, jump: pack.jump};
   const words = timelineWords(p);
   const cuts = segStarts(p).slice(1).filter((c) => c > 0.2 && c < D - 0.2);
   const ctaLen = p.cta?.len || 4;
@@ -452,15 +468,21 @@ export function localPlan(p, {keys = null} = {}) {
   });
 
   // chữ số liệu + chữ ý chính từ lời nói (mật độ theo khách chọn: Ít / Vừa / Nhiều)
-  const KEY_MOTIONS = ['spread', 'rise', 'pop', 'type'];
+  // tiêu đề mở đầu (hook) chiếm 2–3 giây đầu ở phía trên → chữ ý chính không chen vào lúc đó; chữ số liệu sớm thì tiêu đề nhường
+  let hookEnd = 0;
+  const nums = numberLockups(p);
+  if (hook && pack.gfx.hook) {
+    hookEnd = Math.min(2.9, Math.max(0, D - ctaLen - 1));
+    const firstNum = nums.find((t) => t.start < hookEnd + 0.2);
+    if (firstNum) hookEnd = firstNum.start - 0.2;
+    if (hookEnd < 1.5) hookEnd = 0;
+  }
   let nKey = 0;
-  mergeLockups(p, numberLockups(p), keys || localKeys(p)).forEach((t, i) => {
-    // chuyển động theo ý: giá → đóng dấu, diện tích/chiều dài → phóng ra, “3 bước/5 mẹo” → trượt vào, chữ ý chính → giãn/nhô/gõ, còn lại xen kẽ bật/nảy
-    if (t.kind === 'key') {
-      t.motion = KEY_MOTIONS[nKey % KEY_MOTIONS.length];
-      t.style = nKey % 3 === 2 ? 'box' : '3d';
-      nKey++;
-    } else t.motion = t.kind === 'price' ? 'stamp' : /M²|MÉT/.test(t.main) ? 'zoom' : /BƯỚC|MẸO|CÁCH|LÝ DO|ĐIỀU/.test(t.main) ? 'slide' : i % 2 ? 'bounce' : 'pop';
+  const keyList = (keys || localKeys(p)).filter((k) => !hookEnd || k.start > hookEnd + 0.3);
+  mergeLockups(p, nums, keyList).forEach((t, i) => {
+    // màu / font / kiểu theo phong cách; chuyển động theo ý: giá → đóng dấu, diện tích/chiều dài → phóng ra, “3 bước/5 mẹo” → trượt vào, chữ ý chính → theo phong cách
+    Object.assign(t, packText(pack, t, t.kind === 'key' ? nKey++ : 0));
+    if (t.kind !== 'key' && t.kind !== 'price') t.motion = /M²|MÉT/.test(t.main) ? 'zoom' : /BƯỚC|MẸO|CÁCH|LÝ DO|ĐIỀU/.test(t.main) ? 'slide' : i % 2 ? 'bounce' : 'pop';
     ops.push({op: 'add', list: 'texts', item: t});
   });
 
@@ -514,8 +536,16 @@ export function localPlan(p, {keys = null} = {}) {
   let lastKey = '';
   let lastT = -9;
   let side = 0;
+  // AI (Claude) đã chọn hình theo nghĩa câu nói → dùng trước; còn thiếu chỗ thì bảng từ khoá bổ sung
+  for (const pc of pics || []) {
+    if (pc.start < Math.max(0.6, hookEnd) || pc.start > D - ctaLen - 0.8 || stks.some((s) => Math.abs(s.start - pc.start) < 4.5)) continue;
+    const busyText = lks.some((t) => pc.start < t.start + t.dur && pc.start + 2.4 > t.start);
+    const it = {id: uid('s'), kind: 'emoji', key: pc.key, label: pc.label, start: +pc.start.toFixed(2), dur: 2.4, x: side++ % 2 ? 0.2 : 0.8, y: busyText ? 0.52 : 0.42, size: 0.9, motion: ['bounce', 'pop', 'wiggle', 'float'][stks.length % 4], locked: false};
+    stks.push(it);
+    ops.push({op: 'add', list: 'stickers', item: it});
+  }
   for (const ph of phrases) {
-    if (ph.s < 0.6 || ph.s > D - ctaLen - 0.8 || ph.s - lastT < 4.5) continue;
+    if (ph.s < Math.max(0.6, hookEnd) || ph.s > D - ctaLen - 0.8 || ph.s - lastT < 4.5 || stks.some((s) => Math.abs(s.start - ph.s) < 4.5)) continue;
     const m = stickerForPhrase(ph.text);
     if (!m || m.key === lastKey) continue;
     const first = m.w.split(' ')[0];
@@ -551,9 +581,33 @@ export function localPlan(p, {keys = null} = {}) {
   }
   sfx('notify', Math.max(0, D - ctaLen + 0.1), 0.45);
 
-  // màu video nhẹ theo thể loại (khách đã tự chỉnh màu thì giữ nguyên)
-  const look = genreOf(p).look;
+  // đồ hoạ động theo phong cách: tiêu đề mở đầu, thanh tiến độ, lấp lánh khi hiện giá, vệt sáng ở chỗ chuyển, nút theo dõi + pháo giấy ở đoạn kết
+  const gfx = (key, start, dur, over = {}) => {
+    if (dur < 0.3 || start < 0 || start > D - 0.2) return null;
+    const it = {id: uid('g'), kind: 'gfx', key, start: +start.toFixed(2), dur: +Math.min(dur, D - start).toFixed(2), ...GFX_MAP[key].def, ...gfxStyle(pack, key), ...over, locked: false};
+    delete it.variant;
+    if (key === 'hook') it.variant = pack.gfx.hook;
+    ops.push({op: 'add', list: 'stickers', item: it});
+    return it;
+  };
+  if (hookEnd) {
+    gfx('hook', 0.2, hookEnd - 0.2, {label: hook});
+    sfx(pack.gfx.hook === 'burst' ? 'impact' : 'whoosh', 0.05, 0.4);
+  }
+  if (pack.gfx.progress) gfx('progress', 0, D, {});
+  if (pack.gfx.sparkle) for (const t of lks.filter((x) => x.kind === 'price')) gfx('sparkle', t.start + 0.05, 1.2, {y: (t.y ?? 0.2) + 0.03}) && sfx('sparkle', t.start + 0.4, 0.3);
+  if (pack.gfx.leak) for (const j of jumpOps.slice(0, 4)) gfx('leak', Math.max(0, j.at - 0.15), 0.8);
+  if (p.cta?.on !== false && D > ctaLen + 3) {
+    if (pack.gfx.follow) gfx('follow', D - ctaLen + 0.5, ctaLen - 0.6, {y: 0.8}) && sfx('click', D - ctaLen + 1.35, 0.4);
+    if (pack.gfx.confetti) gfx('confetti', D - ctaLen, Math.min(3, ctaLen)) && sfx('success', D - ctaLen + 0.15, 0.35);
+  }
+  // âm thanh AI chọn theo nghĩa câu nói (ting = ý hay, tim đập = hồi hộp, sai rồi = lỗi sai…) — né các âm đã có
+  for (const s of sfxPicks || []) if (SFX_MAP[s.key]) sfx(s.key, s.start, 0.35);
+
+  // màu video theo phong cách (khách đã tự chỉnh màu thì giữ nguyên) + phụ đề theo phong cách (khách đã chỉnh thì giữ)
+  const look = pack.look || genreOf(p).look;
   if (look && p.look?.by !== 'user') ops.push({op: 'look', set: {filter: 'none', amt: 0.6, vignette: 0, grain: 0, leak: 0, bars: false, ...look, by: 'ai'}});
+  if (p.subs?.by !== 'user') ops.push({op: 'subs', set: {...pack.subs}});
   if (!p.cta?.on) ops.push({op: 'cta', set: {on: true}});
   return ops;
 }
@@ -642,6 +696,10 @@ function compact(p) {
     texts: p.texts.map((t) => ({id: t.id, start: r2(t.start), dur: r2(t.dur), lead: t.lead, main: t.main, sign: t.sign, color: t.color, font: t.font, style: t.style, size: t.size, y: r2(t.y), icon: t.icon, kind: t.kind, locked: !!t.locked})),
     broll: p.broll.map((b) => ({id: b.id, src: b.src, start: r2(b.start), dur: r2(b.dur), trans: b.trans, locked: !!b.locked})),
     zooms: p.zooms.map((z) => ({id: z.id, start: r2(z.start), dur: r2(z.dur), scale: z.scale, kind: z.kind})),
+    stickers: (p.stickers || []).map((s) => ({id: s.id, kind: s.kind, key: s.key, label: s.label, start: r2(s.start), dur: r2(s.dur), x: r2(s.x ?? 0.5), y: r2(s.y ?? 0.5), color: s.color, locked: !!s.locked})),
+    sfx: (p.sfx || []).map((s) => ({id: s.id, sfx: s.sfx, start: r2(s.start)})),
+    pack: p.pack || null,
+    packs: packsFor(p.genre).map((x) => ({key: x.key, name: x.name, desc: x.desc})),
     subs: p.subs,
     cta: p.cta,
     music: p.music ? {vol: p.music.vol} : null,
@@ -875,6 +933,33 @@ function srcToTl(p, t) {
   }
   return acc;
 }
+// Gói gửi AI: lời nói + mật độ chữ + danh sách phong cách hợp thể loại (AI chọn 1), độ dài video (số hình / âm thanh tối đa)
+function hlBody(p, phrases, dur) {
+  const den = densityOf(p);
+  return {mode: 'highlight', phrases, dur: Math.round(dur), count: den.every ? Math.max(1, Math.round(dur / den.every)) + 2 : 1, gap: den.gap, genre: genreOf(p).ai || genreOf(p).name, packs: packsFor(p.genre).map((x) => ({key: x.key, name: x.name, desc: x.desc}))};
+}
+// Kiểm lại phần AI chọn thêm: tiêu đề (không bịa số), phong cách (phải hợp thể loại), hình (tìm trong kho emoji theo nhãn tiếng Việt), âm thanh (đúng danh sách)
+const SFX_MEAN = new Set(['ding', 'success', 'wrong', 'heartbeat', 'tick', 'coin', 'riser', 'boing']);
+async function aiExtras(p, r) {
+  const out = {};
+  const said = timelineWords(p).map((w) => w.w).join(' ');
+  const saidNums = new Set((said.match(/\d+/g) || []).map(String));
+  let hook = String(r.hook || '').replace(/["“”]/g, '').trim().toUpperCase();
+  if (hook && hook.length <= 30 && (hook.match(/\d+/g) || []).every((n) => saidNums.has(n)) && !/\d{8,}/.test(hook)) out.hook = hook;
+  if (r.pack && packsFor(p.genre).some((x) => x.key === r.pack)) out.pack = r.pack;
+  const D = duration(p);
+  out.pics = [];
+  for (const pc of (r.pics || []).slice(0, 12)) {
+    const q = String(pc.tu || '').trim().toLowerCase();
+    if (!q || !(pc.start >= 0) || pc.start > D) continue;
+    try {
+      const hit = (await searchLib('emoji', q, -1, 3))[0];
+      if (hit) out.pics.push({start: pc.start, key: hit.key, label: q});
+    } catch (e) {}
+  }
+  out.sfx = (r.sfx || []).filter((s) => SFX_MEAN.has(s.key) && s.start >= 0.5 && s.start < D - 0.5).slice(0, 8);
+  return out;
+}
 // Gộp các đoạn cắt chồng / sát nhau (giây nguồn)
 export function mergeRanges(list) {
   const out = [];
@@ -1068,9 +1153,9 @@ export async function autoEdit(ed, log) {
     sil = mergeRanges([...sil, ...extra]);
     // Gửi AI chọn chữ điểm nhấn NGAY (theo giây nguồn), chạy song song với lúc con trỏ diễn cắt — không bắt khách chờ thêm
     const den0 = densityOf(p);
-    if (h.ai && den0.every && words?.length > 8) {
+    if (h.ai && words?.length > 8) {
       const left = src.duration - sil.reduce((a, s) => a + Math.max(0, Math.min(s.b, src.duration) - s.a), 0);
-      hlReq = api('ai', {mode: 'highlight', phrases: timelinePhrases(p, words), count: Math.max(1, Math.round(left / den0.every)) + 2, gap: den0.gap, genre: genreOf(p).ai || genreOf(p).name}).catch(() => null);
+      hlReq = api('ai', hlBody(p, timelinePhrases(p, words), left)).catch(() => null);
     }
     const nRetake = extra.filter((x) => x.why === 'retake').length;
     if (nRetake) log('nghe', 'run', `Phát hiện ${nRetake} câu nói lại — giữ lần nói sau`);
@@ -1108,8 +1193,9 @@ export async function autoEdit(ed, log) {
   // AI (Claude, hoặc AI miễn phí Cloudflare khi Claude tắt/hết hạn mức) đọc lời nói và chọn CHỮ Ý CHÍNH;
   // còn nhịp cắt, cảnh phụ, chuyển cảnh, zoom, âm thanh do bộ dựng chuyên nghiệp trên máy làm (đúng thời điểm, không tốn tiền)
   let keys = null;
+  let extraAi = {};
   const den = densityOf(p);
-  if (h.ai && den.every && timelineWords(p).length > 8) {
+  if (h.ai && timelineWords(p).length > 8) {
     try {
       ed.cur.show();
       ed.cur.step = 'Bước 4/5';
@@ -1117,12 +1203,12 @@ export async function autoEdit(ed, log) {
       if (lane) ed.cur.jump(lane.right + 60, lane.top + lane.height / 2);
       ed.cur.say('AI đọc lời nói, chọn chữ điểm nhấn…');
       let r = hlReq ? await hlReq : null;
-      if (r) r = {items: (r.items || []).map((it) => ({...it, start: srcToTl(p, +it.start || 0)}))};
-      else {
-        const count = Math.max(1, Math.round(duration(p) / den.every)) + 2;
-        r = await api('ai', {mode: 'highlight', phrases: timelinePhrases(p), count, gap: den.gap, genre: genreOf(p).ai || genreOf(p).name});
-      }
-      keys = keyLockups(p, r.items);
+      const toTl = (list) => (list || []).map((it) => ({...it, start: srcToTl(p, +it.start || 0)}));
+      if (r) r = {...r, items: toTl(r.items), pics: toTl(r.pics), sfx: toTl(r.sfx)};
+      else r = await api('ai', hlBody(p, timelinePhrases(p), duration(p)));
+      extraAi = await aiExtras(p, r);
+      if (extraAi.pack) log('ke', 'run', `AI chọn phong cách “${PACKS[extraAi.pack].name}”`);
+      keys = den.every ? keyLockups(p, r.items) : [];
       const loc = localKeys(p).filter((k) => !keys.some((x) => Math.abs(x.start - k.start) < den.gap));
       keys = [...keys, ...loc];
       log('ke', 'run', `AI chọn ${keys.length - loc.length} chữ điểm nhấn`);
@@ -1131,7 +1217,12 @@ export async function autoEdit(ed, log) {
     }
     ed.cur.say('');
   }
-  const ops = localPlan(p, {keys});
+  // phong cách: khách đã chọn thì giữ; không thì AI chọn theo nội dung, không có AI thì xoay vòng giữa các lần dựng
+  if (p.packBy !== 'user') {
+    p.pack = extraAi.pack || rotatePack(p.genre || 'chung');
+    p.packBy = 'ai';
+  }
+  const ops = localPlan(p, {keys, hook: extraAi.hook || '', pics: extraAi.pics, sfx: extraAi.sfx});
   log('ke', 'ok', `Kịch bản dựng: ${ops.length} thao tác`);
 
   // 5. diễn từng thao tác

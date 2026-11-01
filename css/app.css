@@ -254,6 +254,17 @@ button:disabled{opacity:.4;cursor:default}
 .c-sticker{background:#3b2f1f;color:#ffe2b0;padding-left:3px}
 .c-sticker img{position:relative;z-index:1;float:left;width:18px;height:18px;margin:2px 4px 0 0;border-radius:4px}
 .c-sticker[style*="--c"] img{background:var(--c);padding:2px}
+.c-gfx{background:#2a2540;color:#e6dcff}
+.c-gfx b{position:relative;z-index:1;float:left;width:18px;height:18px;margin:2px 4px 0 0;border-radius:4px;background:var(--c);color:#141414;font-size:11px;line-height:18px;text-align:center}
+.pk-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:4px 0 14px}
+.pk-it{display:flex;flex-direction:column;align-items:stretch;gap:4px;padding:4px;border-radius:12px;background:var(--card2);border:2px solid transparent;color:inherit;cursor:pointer;text-align:left}
+.pk-it.on{border-color:var(--acc)}
+.pk-it canvas{width:100%;height:auto;border-radius:9px;display:block;background:#2b3240}
+.pk-it small{font-size:11.5px;line-height:1.25;padding:0 3px 2px}
+.gfx-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.gfx-it{display:flex;flex-direction:column;gap:4px;padding:4px;border-radius:12px;background:var(--card2);border:0;color:inherit;cursor:pointer}
+.gfx-it canvas{width:100%;height:auto;border-radius:9px;display:block}
+.gfx-it small{font-size:11.5px}
 .c-sfx{background:#173b52;color:#9fd6ff}
 .c-broll{background:#1a6f68 center/cover;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.8)}
 .c-broll::before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(12,58,55,.9),rgba(12,58,55,.35))}

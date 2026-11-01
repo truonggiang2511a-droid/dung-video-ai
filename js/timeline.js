@@ -1,5 +1,5 @@
 // Timeline kiểu CapCut: đầu phát cố định ở giữa, kéo timeline để tua. Các làn: Chữ, Phụ đề, Hiệu ứng, Cảnh phụ, Video chính, Nhạc.
-import {duration, segStarts, subLines} from './render.js';
+import {duration, segStarts, subLines, GFX_MAP} from './render.js';
 import {genreOf} from './templates.js';
 
 const ROWS = [
@@ -156,7 +156,11 @@ export class Timeline {
       : p.main && p.transcript ? '' : p.main ? `<div class="tl-hint" style="left:${half}px">Phụ đề sẽ có sau khi AI nghe lời nói</div>` : '';
     // Hình minh hoạ / icon động
     this.rows.stickers.innerHTML = (p.stickers || [])
-      .map((s) => clip('sticker', s.id, s.start, s.dur, 'c-sticker', `<img src="lib/${s.kind === 'icon' ? 'i' : 'e'}/${esc(s.key)}.svg" alt="" loading="lazy"><span>${esc(s.label || '')}</span>`, s.kind === 'icon' ? `--c:${s.color || '#2f8cff'}` : ''))
+      .map((s) =>
+        s.kind === 'gfx'
+          ? clip('sticker', s.id, s.start, s.dur, 'c-sticker c-gfx', `<b>✦</b><span>${esc(GFX_MAP[s.key]?.label || 'Đồ hoạ')}${s.label && s.key !== 'progress' ? ' · ' + esc(s.label) : ''}</span>`, `--c:${s.color || '#ffc61a'}`)
+          : clip('sticker', s.id, s.start, s.dur, 'c-sticker', `<img src="lib/${s.kind === 'icon' ? 'i' : 'e'}/${esc(s.key)}.svg" alt="" loading="lazy"><span>${esc(s.label || '')}</span>`, s.kind === 'icon' ? `--c:${s.color || '#2f8cff'}` : ''),
+      )
       .join('');
     // Âm thanh (SFX)
     this.rows.sfx.innerHTML = (p.sfx || []).map((s) => clip('sfx', s.id, s.start, Math.max(s.dur, 0.5), 'c-sfx', `<span>♪ ${esc(s.name || s.sfx)}</span>`)).join('');

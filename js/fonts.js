@@ -28,5 +28,6 @@ export function ensureFont(key) {
 export function ensureProjectFonts(p) {
   const keys = new Set((p.texts || []).map((t) => t.font).filter(Boolean));
   if (p.subs?.font) keys.add(p.subs.font);
+  for (const g of p.stickers || []) if (g.kind === 'gfx' && g.font) keys.add(g.font);
   return Promise.all([...keys].map(ensureFont));
 }

@@ -26,11 +26,12 @@ const M = '/home/claude/testmedia/';
     const ts = (texts[i] || '').split(' ');
     ts.forEach((t, j) => words.push({w: t, s: +(a + ((bb - a) * j) / ts.length).toFixed(2), e: +(a + ((bb - a) * (j + 0.85)) / ts.length).toFixed(2)}));
   });
-  await p.evaluate(([ws, g, d]) => {
+  await p.evaluate(([ws, g, d, pk]) => {
     if (ws.length) window.__dv.p.transcript = {words: ws};
     window.__dv.p.genre = g;
     if (d) window.__dv.p.textDensity = d; // DENSITY=it|vua|nhieu
-  }, [process.env.NOWORDS ? [] : words, genre, process.env.DENSITY || '']);
+    if (pk) Object.assign(window.__dv.p, {pack: pk, packBy: 'user'}); // PACK=sangtrong|nangdong|…
+  }, [process.env.NOWORDS ? [] : words, genre, process.env.DENSITY || '', process.env.PACK || '']);
   await p.click('#btnAi');
   await p.waitForFunction(() => window.__dv.p.aiDone && !window.__dv.busy, null, {timeout: 180000});
   const r = await p.evaluate(() => {
@@ -45,6 +46,9 @@ const M = '/home/claude/testmedia/';
       zooms: pp.zooms.map((z) => `${z.kind || 'ramp'} ${z.start}–${+(z.start + z.dur).toFixed(2)} ×${z.scale}`),
       texts: pp.texts.map((t) => `${t.start} ${t.kind === 'key' ? '[ý chính] ' : ''}${t.lead ? t.lead + ' · ' : ''}${t.main} (${t.motion}, ${t.style})`),
       keysLocal: window.__ai.localKeys(pp).map((t) => `${t.start} ${t.main}`),
+      pack: pp.pack + ' (' + pp.packBy + ')',
+      gfx: pp.stickers.filter((s) => s.kind === 'gfx').map((s) => `${s.start} ${s.key}${s.label ? ' ' + s.label : ''}`),
+      subs: pp.subs.style + ' ' + (pp.subs.font || ''),
       phrases: window.__ai.timelinePhrases(pp),
       stickers: (pp.stickers || []).map((t) => `${t.start} ${t.key} (${t.label}) ${t.motion}`),
       sfx: (pp.sfx || []).map((t) => `${t.start} ${t.sfx}`),

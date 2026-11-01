@@ -164,7 +164,12 @@ LUẬT:
 - "lead": 1–3 từ nhỏ phía trên, lấy từ ngay trước cụm trong lời nói (có thể để trống "").
 - "start": số giây của câu chứa cụm (lấy đúng số trong ngoặc vuông của câu đó).
 - Các cụm cách nhau tối thiểu GAP giây; chọn tối đa COUNT cụm; không chọn ở 2 giây đầu và 4 giây cuối.
-Chỉ trả JSON: {"items":[{"start":0,"lead":"","main":""}]}`;
+NGOÀI RA:
+- "hook": tiêu đề mở đầu hiện 2–3 giây đầu, VIẾT HOA, tối đa 24 ký tự, gây tò mò, đúng nội dung video. Chỉ dùng con số nếu con số đó có trong lời nói. Không hứa hẹn quá sự thật, không ghi số điện thoại.
+- "pack": khoá phong cách hợp nội dung nhất trong danh sách PHONG CÁCH bên dưới.
+- "pics": hình minh hoạ (emoji) cho những câu có hình ảnh cụ thể — tối đa PICS hình, cách nhau ≥ 5 giây: "start" = giây của câu, "tu" = 1–2 từ tiếng Việt chỉ đồ vật/con vật/cảm xúc để tìm emoji (vd "ngôi nhà", "tiền", "đồng hồ", "trái tim", "xe hơi", "cây", "bánh mì", "cười", "ngạc nhiên").
+- "sfx": âm thanh nhấn theo nghĩa câu nói, tối đa SFXN cái: "start" = giây của câu, "key" một trong: ding (ý hay, mẹo), success (kết quả tốt), wrong (sai lầm, cảnh báo), heartbeat (hồi hộp), tick (thời gian, hạn chót), coin (tiết kiệm, tiền nhỏ), riser (sắp tiết lộ), boing (vui, hài hước).
+Chỉ trả JSON: {"items":[{"start":0,"lead":"","main":""}],"hook":"","pack":"","pics":[{"start":0,"tu":""}],"sfx":[{"start":0,"key":""}]}`;
 // ---------- Claude dựng / sửa ----------
 const ICON_LIST = 'house|pin|ruler|tag|doc|school|sofa|car|tree|star|bed|key|heart|fire|check|bulb|chat|thumb|clock|cart|gift|truck|food|coffee|book|chart|camera|plane';
 const GENRE_RULES = {
@@ -192,6 +197,8 @@ Các op được phép:
   Riêng thể loại này: ${GENRE_RULES[key]}
 - {"op":"add","list":"broll","item":{"src","start","dur","in","trans"}} src = id nguồn kind "broll"; dur 2–4 s; in = giây bắt đầu lấy trong nguồn; trans: fade|none|zoom|zoomout|slide|up|whip|wipe|circle|spin|flash|glitch.
 - {"op":"add","list":"stickers","item":{"kind":"emoji","key","label","start","dur","x","y","size","motion"}} hình minh hoạ Fluent Emoji (key tiếng Anh dạng gạch nối, vd money-bag, house, steaming-bowl, face-savoring-food, chart-increasing, red-heart, fire, light-bulb, wrapped-gift, delivery-truck), đúng lúc nói từ đó, 1 hình / ≥ 4 s, x 0.2 hoặc 0.8, y 0.4–0.55. motion: pop|bounce|float|wiggle|pulse|spin|drop|slide.
+- {"op":"add","list":"stickers","item":{"kind":"gfx","key","label","sub","start","dur","x","y","color","variant","size"}} ĐỒ HOẠ ĐỘNG tự vẽ: key hook (tiêu đề mở đầu, label ≤ 24 ký tự, variant band|box|line|burst|bubble, y 0.15–0.2) | lower (thanh tên người nói: label = tên, sub = chức danh — CHỈ khi khách cho tên) | progress (thanh tiến độ suốt video: start 0, dur = duration) | arrow (mũi tên chỉ vào điểm x,y) | circle (vòng khoanh quanh điểm x,y) | sparkle (lấp lánh) | confetti (pháo giấy) | leak (vệt sáng lướt qua, dur 0.8) | follow (nút "THEO DÕI" bấm, thường ở đoạn kết, y 0.8). color hex.
+- {"op":"pack","key"} đổi PHONG CÁCH cả video (font, kiểu chữ, màu, phụ đề, chuyển cảnh, màu video) — key trong project.packs.
 - {"op":"add","list":"sfx","item":{"sfx","start","vol"}} âm thanh: whoosh|whip|swoosh (chuyển cảnh, đặt trước chuyển cảnh 0,1–0,3 s), pop (hiện số), cash (hiện giá), coin, ding (ý chính), bubble (hiện hình), notify (câu kết), impact, riser, sparkle, success, wrong, click, typing, shutter, glitch, heartbeat, boing, tick. vol 0.3–0.5, không dày quá 1 âm / 1,5 s.
 - {"op":"look","set":{"filter","amt","vignette","grain","leak","bars"}} màu video: none|bright|vivid|warm|cool|film|vintage|moody|bw, amt 0.3–0.7 (nhẹ tay; khách tự chỉnh — "by":"user" — thì không đổi).
 - {"op":"add","list":"zooms","item":{"start","dur","scale","kind"}} kind: (bỏ trống) = đẩy vào rồi giữ lúc nhấn ý, dur 2–3 s; "punch" = zoom giật tức thì suốt đoạn (đặt từ chỗ cắt này tới chỗ cắt kế, xen kẽ chặt/rộng để che vết cắt lộ trên mặt người nói); "push" = đẩy máy chậm suốt đoạn nói dài không cắt. scale 1.05–1.12.
@@ -213,8 +220,10 @@ function buildPrompt(body) {
     const lines = (Array.isArray(body.phrases) ? body.phrases : []).slice(0, 150).map(([s, t]) => `[${(+s).toFixed(1)}] ${String(t).slice(0, 200)}`).join('\n');
     const count = Math.max(1, Math.min(20, +body.count || 5));
     const gap = Math.max(1.5, Math.min(10, +body.gap || 4));
-    const system = HL_SYS.replace('COUNT', count).replace('GAP', gap) + (body.genre ? `\nThể loại video: ${String(body.genre).slice(0, 200)}.` : '');
-    return {system, user: `Lời người nói:\n${lines}`, max: 1200, count};
+    const dur = Math.max(5, +body.dur || 60);
+    const packs = (Array.isArray(body.packs) ? body.packs : []).slice(0, 20).map((x) => `- ${String(x.key).slice(0, 30)}: ${String(x.name).slice(0, 40)} — ${String(x.desc).slice(0, 120)}`).join('\n');
+    const system = HL_SYS.replace('COUNT', count).replace('GAP', gap).replace('PICS', Math.max(1, Math.round(dur / 6))).replace('SFXN', Math.max(1, Math.round(dur / 12))) + (body.genre ? `\nThể loại video: ${String(body.genre).slice(0, 200)}.` : '') + (packs ? `\nPHONG CÁCH:\n${packs}` : '');
+    return {system, user: `Lời người nói:\n${lines}`, max: 1600, count};
   }
   const proj = JSON.stringify(body.project).slice(0, 120000); // giữ prompt < 100k token (Haiku 5.5 trên 100k token giá ×5)
   const user = body.mode === 'plan'
@@ -242,7 +251,10 @@ async function ai(body, env, url, ip, claude, cf) {
     provider = model;
   }
   if (!out) throw new Error(note || 'AI chưa bật');
-  if (body.mode === 'highlight') return {items: Array.isArray(out.items) ? out.items.slice(0, count + 3) : [], provider, fallback: note || undefined};
+  if (body.mode === 'highlight') {
+    const arr = (x, n) => (Array.isArray(x) ? x.slice(0, n) : []);
+    return {items: arr(out.items, count + 3), hook: String(out.hook || '').slice(0, 40), pack: String(out.pack || '').slice(0, 30), pics: arr(out.pics, 30), sfx: arr(out.sfx, 15), provider, fallback: note || undefined};
+  }
   return {note: out.note || '', reply: out.reply || '', ops: Array.isArray(out.ops) ? out.ops.slice(0, 120) : [], provider, fallback: note || undefined};
 }
 async function claudeJson(env, system, user, max, ip) {

@@ -1,5 +1,6 @@
 // Điều khiển giao diện: màn Dự án + màn Editor (khung xem nhanh, timeline, sửa tay, AI).
-import {loadFonts, duration, COLORS, ICONS, FONTS, W, H, SUB_STYLES, TEXT_STYLES, TEXT_MOTIONS, TEXT_PRESETS, TRANSITIONS, FILTERS, JUMP_TRANS, applyLook, tlOfSrc, srcAt, segStarts as segStartsOf, drawFrame, setFormat} from './render.js';
+import {loadFonts, duration, COLORS, ICONS, FONTS, W, H, SUB_STYLES, TEXT_STYLES, TEXT_MOTIONS, TEXT_PRESETS, TRANSITIONS, FILTERS, JUMP_TRANS, applyLook, tlOfSrc, srcAt, segStarts as segStartsOf, drawFrame, setFormat, GFX, GFX_MAP, HOOK_VARIANTS} from './render.js';
+import {PACKS, packsFor, restyle, gfxStyle, packText} from './styles.js';
 import {store} from './store.js';
 import {newProject, applyOp, History, find, newText, uid, ITEM_TYPES} from './model.js';
 import {SFX, SFX_MAP, playSfx} from './sfx.js';
@@ -474,6 +475,16 @@ function renderInspector() {
       <label class="fl">Lấy đoạn nào của cảnh <output>${it.in.toFixed(1).replace('.', ',')} s</output><input type="range" min="0" max="${Math.max(0, (src?.duration || 0) - it.dur).toFixed(2)}" step="0.1" value="${it.in}" data-num="in"></label>
       <div class="fl"><span>Đổi sang cảnh khác</span><div class="chips">${others.map((o) => `<button class="chip-b${o.id === it.src ? ' on' : ''}" data-set="src" data-v="${o.id}">${esc(o.name)}</button>`).join('')}</div></div>
       <p class="hint">Kéo clip trên timeline để dời, kéo hai đầu để dài/ngắn.</p>`;
+  } else if (s?.type === 'sticker' && it?.kind === 'gfx') {
+    const hasText = ['hook', 'lower', 'follow'].includes(it.key);
+    h = `<h4>Đồ hoạ · ${esc(GFX_MAP[it.key]?.label || '')}</h4>
+      ${hasText ? `<label class="fl">${it.key === 'lower' ? 'Tên' : 'Chữ'}<input data-k="label" value="${esc(it.label || '')}" maxlength="40"></label>` : ''}
+      ${it.key === 'lower' ? `<label class="fl">Dòng phụ<input data-k="sub" value="${esc(it.sub || '')}" maxlength="50"></label>` : ''}
+      ${it.key === 'hook' ? `<div class="fl"><span>Kiểu tiêu đề</span><div class="chips">${HOOK_VARIANTS.map(([k, l]) => `<button class="chip-b${(it.variant || 'band') === k ? ' on' : ''}" data-set="variant" data-v="${k}">${l}</button>`).join('')}</div></div>` : ''}
+      <div class="fl"><span>Màu</span><div class="swatches">${['#ffc61a', '#ff2a2a', '#2ad46a', '#2f8cff', '#ff5fb8', '#ffffff', '#f3d27a', '#2fd2ff'].map((c) => `<button class="sw${it.color === c ? ' on' : ''}" data-set="color" data-v="${c}" style="background:${c}" aria-label="Màu ${c}"></button>`).join('')}</div></div>
+      ${it.key !== 'progress' && it.key !== 'confetti' && it.key !== 'leak' ? `<label class="fl">Cỡ <output>${Math.round((it.size || 1) * 100)}%</output><input type="range" min="0.5" max="1.8" step="0.05" value="${it.size || 1}" data-num="size"></label>` : ''}
+      ${it.locked ? `<p class="lockn">${icon(I.lock, 15)} Bạn đã sửa tay — AI sẽ không ghi đè chỗ này.</p>` : ''}
+      <p class="hint">${['progress', 'confetti', 'leak'].includes(it.key) ? 'Kéo hai đầu clip trên timeline để đổi lúc hiện / ẩn.' : 'Kéo trên khung xem để đổi vị trí. Kéo hai đầu clip trên timeline để đổi lúc hiện / ẩn.'}</p>`;
   } else if (s?.type === 'sticker' && it) {
     h = `<h4>${it.kind === 'icon' ? 'Icon động' : 'Hình minh hoạ'}${it.label ? ' · ' + esc(it.label) : ''}</h4>
       <div class="stk-prev${it.kind === 'icon' ? ' ic' : ''}" style="${it.kind === 'icon' ? `--c:${it.color || '#2f8cff'}` : ''}"><img src="lib/${it.kind === 'icon' ? 'i' : 'e'}/${esc(it.key)}.svg" alt=""><button class="btn ghost sm" data-act="libReplace">Đổi hình khác</button></div>
@@ -510,6 +521,9 @@ function renderInspector() {
         <button class="qa" data-act="subs">${icon(I.sub)}<span>Phụ đề</span></button>
       </div>
       <div class="fl"><span>Thể loại video <small class="muted">— AI dựng theo kiểu này</small></span><div class="chips">${Object.entries(GENRES).map(([k, g]) => `<button class="chip-b${p.genre === k ? ' on' : ''}" data-genre="${k}" title="${esc(g.desc)}">${g.label}</button>`).join('')}</div></div>
+      <div class="fl"><span>Phong cách <small class="fcount">${p.pack ? (p.packBy === 'user' ? 'bạn chọn' : 'AI chọn') + ' · ' + esc(PACKS[p.pack]?.name || '') : 'AI chọn khi dựng'}</small></span>
+        <div class="pk-grid">${packsFor(p.genre).map((x) => `<button class="pk-it${p.pack === x.key ? ' on' : ''}" data-pack="${x.key}" title="${esc(x.desc)}"><canvas width="120" height="${Math.round((120 * H) / W)}" data-pkp="${x.key}"></canvas><small>${esc(x.name)}</small></button>`).join('')}</div>
+        ${p.packBy === 'user' ? '<button class="lnk" data-pack="auto">Để AI chọn phong cách</button>' : ''}</div>
       <div class="fl"><span>Nhịp cắt khoảng lặng <small class="fcount">AI cắt chỗ ngừng nói</small></span><div class="seg">${Object.entries(CUT_PACE).map(([k, v]) => `<button class="${(p.cutPace || 'tight') === k ? 'on' : ''}" data-pace="${k}">${v.label}</button>`).join('')}</div></div>
       <div class="fl"><span>Chữ điểm nhấn <small class="fcount">số liệu, giá, ý chính</small></span><div class="seg">${Object.entries(TEXT_DENSITY).map(([k, v]) => `<button class="${(p.textDensity || 'vua') === k ? 'on' : ''}" data-density="${k}">${v.label}</button>`).join('')}</div></div>
       <div class="fl"><span>Khổ hình</span><div class="fmts">${Object.entries(FORMATS).map(([k, f]) => `<button class="fmt${p.format === k ? ' on' : ''}" data-format="${k}" title="${esc(f.note)}"><i style="aspect-ratio:${f.w}/${f.h}"></i><b>${k}</b><small>${esc(f.note.split(',')[0])}</small></button>`).join('')}</div></div>
@@ -520,6 +534,7 @@ function renderInspector() {
   }
   box.innerHTML = h;
   if (h.includes('data-fload')) watchFontPreviews();
+  if (h.includes('data-pkp')) drawPackThumbs();
 }
 function subsPanel() {
   const st = ed.p.subs;
@@ -604,6 +619,17 @@ function bindInspector() {
       manual(() => (ed.p.cutPace = pc.dataset.pace), {lock: false});
       return toast(`Nhịp cắt: ${CUT_PACE[pc.dataset.pace].label}${ed.p.aiDone ? ' — bấm Dựng lại để AI cắt lại (không tốn lượt chép lời)' : ''}`);
     }
+    const pk = e.target.closest('[data-pack]');
+    if (pk) {
+      const k = pk.dataset.pack;
+      if (k === 'auto') {
+        manual(() => (ed.p.packBy = null), {lock: false});
+        return toast('AI sẽ tự chọn phong cách ở lần dựng sau');
+      }
+      manual(() => restyle(ed.p, k, 'user'), {lock: false});
+      ensureProjectFonts(ed.p).then(() => (ed.player.dirty = true));
+      return toast(`Phong cách: ${PACKS[k].name}${ed.p.aiDone ? ' — đã áp cho chữ, phụ đề, chuyển cảnh, màu (chỗ bạn sửa tay giữ nguyên)' : ' — AI sẽ dựng theo kiểu này'}`);
+    }
     const dn = e.target.closest('[data-density]');
     if (dn) {
       manual(() => (ed.p.textDensity = dn.dataset.density), {lock: false});
@@ -614,15 +640,15 @@ function bindInspector() {
     const b = e.target.closest('[data-set],[data-subs-color],[data-subs-style],[data-subs-hl]');
     if (!b) return;
     if (b.dataset.subsColor) {
-      manual(() => (ed.p.subs.color = b.dataset.subsColor), {lock: false});
+      manual(() => Object.assign(ed.p.subs, {color: b.dataset.subsColor, by: 'user'}), {lock: false});
       return;
     }
     if (b.dataset.subsStyle) {
-      manual(() => Object.assign(ed.p.subs, {style: b.dataset.subsStyle, on: true}), {lock: false});
+      manual(() => Object.assign(ed.p.subs, {style: b.dataset.subsStyle, on: true, by: 'user'}), {lock: false});
       return;
     }
     if (b.dataset.subsHl) {
-      manual(() => (ed.p.subs.hl = b.dataset.subsHl), {lock: false});
+      manual(() => Object.assign(ed.p.subs, {hl: b.dataset.subsHl, by: 'user'}), {lock: false});
       return;
     }
     const k = b.dataset.set;
@@ -933,7 +959,7 @@ function ctxTarget() {
   if (s.type === 'zoom') return {target: s.id, label: 'Hiệu ứng zoom', prefix: ''};
   if (s.type === 'sticker') {
     const it = find(p, s.id)?.item;
-    return it ? {target: s.id, label: `Hình ${it.label || ''}`, prefix: ''} : null;
+    return it ? {target: s.id, label: it.kind === 'gfx' ? `Đồ hoạ ${GFX_MAP[it.key]?.label || ''}` : `Hình ${it.label || ''}`, prefix: ''} : null;
   }
   if (s.type === 'sfx') {
     const it = find(p, s.id)?.item;
@@ -1036,6 +1062,7 @@ const LIB_TABS = [
   ['text', 'Chữ mẫu'],
   ['emoji', 'Hình'],
   ['icon', 'Icon'],
+  ['gfx', 'Đồ hoạ'],
   ['sfx', 'Âm thanh'],
   ['fx', 'Hiệu ứng'],
 ];
@@ -1070,6 +1097,12 @@ function renderMedia() {
       <h5>Chuyển cảnh cho mọi cảnh phụ</h5><div class="chips">${TRANSITIONS.map(([k, l]) => `<button class="chip-b" data-alltrans="${k}">${l}</button>`).join('')}<button class="chip-b" data-alltrans="mix">Đa dạng</button></div>
       <p class="hint">${lk.by === 'ai' ? 'Màu hiện tại do AI chọn theo thể loại — bạn chỉnh thì AI không đổi nữa.' : 'Màu áp cho cả video chính và cảnh phụ, chữ giữ nguyên màu.'}</p>`;
     drawFxThumbs();
+    return;
+  }
+  if (tab === 'gfx') {
+    box.innerHTML = `${head}<p class="hint" style="margin:2px 0 10px">Đồ hoạ động vẽ ngay trong app — bấm để chèn tại đầu phát, rồi sửa chữ / màu / vị trí ở bảng Chỉnh sửa. Màu và font theo phong cách đang chọn.</p>
+      <div class="gfx-grid">${GFX.map(([k, l]) => `<button class="gfx-it" data-addgfx="${k}"><canvas width="120" height="${Math.round((120 * H) / W)}" data-gfxp="${k}"></canvas><small>${esc(l)}</small></button>`).join('')}</div>`;
+    drawGfxThumbs();
     return;
   }
   if (tab === 'sfx') {
@@ -1171,6 +1204,68 @@ function insertSticker(kind, key, label) {
   if (kind === 'icon') it.color = '#2f8cff';
   manual(() => p.stickers.push(it), {lock: false});
   select({type: 'sticker', id: it.id});
+}
+// ảnh xem trước phong cách / đồ hoạ: vẽ bằng chính bộ dựng khung hình trên nền xám (giống hệt trên video)
+function fakeProject(extra) {
+  return {main: {src: 'x', segs: [{in: 0, out: 10}]}, sources: {x: {duration: 10}}, broll: [], zooms: [], stickers: [], sfx: [], texts: [], subs: {on: false}, cta: {on: false}, ...extra};
+}
+let thumbBg = null;
+function thumbDraw(c, fake, T) {
+  // nền thử: ảnh khung đang xem nếu có, không thì nền xám chuyển sắc (thay cho hình video)
+  if (!thumbBg || thumbBg.width !== W) {
+    thumbBg = document.createElement('canvas');
+    thumbBg.width = W;
+    thumbBg.height = H;
+    const bg = thumbBg.getContext('2d');
+    const gr = bg.createLinearGradient(0, 0, W, H);
+    gr.addColorStop(0, '#5b6a80');
+    gr.addColorStop(1, '#232a35');
+    bg.fillStyle = gr;
+    bg.fillRect(0, 0, W, H);
+  }
+  const g = c.getContext('2d');
+  g.setTransform(c.width / W, 0, 0, c.height / H, 0, 0);
+  const fr = ed.player?.frames?.();
+  drawFrame(g, fake, T, {main: fr?.main?.img ? fr.main : {img: thumbBg, w: W, h: H}});
+}
+function drawPackThumbs() {
+  const words = ['Pháp', 'lý', 'sổ', 'hồng', 'riêng'].map((w, i) => ({w, s: 0.4 + i * 0.35, e: 0.7 + i * 0.35}));
+  for (const c of $$('canvas[data-pkp]')) {
+    const pack = PACKS[c.dataset.pkp];
+    const t = newText(0, {kind: 'key', main: 'SỔ HỒNG RIÊNG', lead: 'pháp lý', dur: 9, y: 0.3, ...packText(pack, {kind: 'key'}, 0), motion: 'pop'});
+    const fake = fakeProject({texts: [t], transcript: {words}, subs: {on: true, y: 0.72, size: 1.15, ...pack.subs}, look: pack.look});
+    const go = () => thumbDraw(c, fake, 1.25);
+    go();
+    Promise.all([ensureFont(pack.font), ensureFont(pack.subs.font)]).then(go);
+  }
+}
+function drawGfxThumbs() {
+  const pack = PACKS[ed.p.pack] || PACKS.mau1;
+  for (const c of $$('canvas[data-gfxp]')) {
+    const k = c.dataset.gfxp;
+    const def = GFX_MAP[k].def;
+    const it = {id: 'g', kind: 'gfx', key: k, start: 0, ...def, ...gfxStyle(pack, k), dur: k === 'progress' ? 10 : def.dur};
+    if (k !== 'hook') delete it.variant;
+    if (k === 'hook') it.y = 0.4;
+    const T = {hook: 1.2, lower: 1.4, progress: 6, arrow: 1, circle: 1.2, sparkle: 0.45, confetti: 1.3, leak: 0.45, follow: 0.7}[k] ?? 1;
+    const go = () => thumbDraw(c, fakeProject({stickers: [it]}), T);
+    go();
+    if (it.font) ensureFont(it.font).then(go);
+  }
+}
+function insertGfx(key) {
+  const p = ed.p;
+  if (!p.main) return toast('Thêm video chính trước');
+  const pack = PACKS[p.pack] || PACKS.mau1;
+  const D = duration(p);
+  const def = GFX_MAP[key].def;
+  const start = key === 'progress' ? 0 : Math.max(0, Math.min(ed.player.T, D - 1));
+  const it = {id: uid('g'), kind: 'gfx', key, ...def, ...gfxStyle(pack, key), start, dur: key === 'progress' ? D : Math.min(def.dur, D - start), locked: true};
+  if (key !== 'hook') delete it.variant;
+  manual(() => p.stickers.push(it), {lock: false});
+  ensureProjectFonts(p).then(() => (ed.player.dirty = true));
+  select({type: 'sticker', id: it.id});
+  if (matchMedia('(min-width: 900px)').matches) $('#side [data-tab="edit"]')?.click();
 }
 function insertSfx(key) {
   const p = ed.p;
@@ -1648,6 +1743,8 @@ async function boot() {
     }
     const la = e.target.closest('[data-libadd]');
     if (la) insertSticker(ed.libTab === 'icon' ? 'icon' : 'emoji', la.dataset.libadd, la.dataset.label);
+    const ag = e.target.closest('[data-addgfx]');
+    if (ag) insertGfx(ag.dataset.addgfx);
     const ps2 = e.target.closest('[data-playsfx2]');
     if (ps2) playSfx(ps2.dataset.playsfx2, 0.7);
     const as = e.target.closest('[data-addsfx]');
