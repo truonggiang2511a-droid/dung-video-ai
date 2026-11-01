@@ -3,7 +3,7 @@
 // Toạ độ theo khung gốc của khổ hình đang dùng (9:16 = 1080 x 1920, 16:9 = 1920 x 1080…; cạnh ngắn luôn 1080
 // nên cỡ chữ/icon giữ nguyên) — nơi gọi tự scale ctx. Đổi khổ: setFormat(p.format) trước khi vẽ.
 import {FORMATS} from './templates.js';
-import {stickerImage} from './library.js';
+import {stickerImage, animFrame} from './library.js';
 import {FONT_LIB} from './font-list.js';
 
 export let W = 1080;
@@ -1120,11 +1120,17 @@ function drawGfx(ctx, it, t, boxes) {
   ctx.restore();
 }
 
+function mixHex(a, b, k) {
+  const pa = parseInt(a.slice(1), 16);
+  const pb = parseInt(b.slice(1), 16);
+  const ch = (s) => Math.round(((pa >> s) & 255) * (1 - k) + ((pb >> s) & 255) * k);
+  return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
+}
 function drawSticker(ctx, it, t, boxes) {
   if (it.kind === 'gfx') return drawGfx(ctx, it, t, boxes);
   const out = clamp((it.dur - t) / 0.25);
   if (out <= 0) return;
-  const img = stickerImage(it);
+  const img = it.kind === 'anim' ? animFrame(it, t) : stickerImage(it);
   const base = Math.min(W, H) * 0.24 * (it.size || 1);
   let cx = (it.x ?? 0.78) * W;
   let cy = (it.y ?? 0.3) * H;
@@ -1171,7 +1177,30 @@ function drawSticker(ctx, it, t, boxes) {
   ctx.translate(cx, cy);
   ctx.rotate(rot);
   ctx.scale(s, s);
-  if (it.kind === 'icon') {
+  if (it.kind === 'icon' && String(it.key).startsWith('bds-')) {
+    // bộ icon BĐS mẫu 1: huy hiệu tròn chuyển sắc + vệt bóng phía trên (như skill batdongsan-editor)
+    const r = base * 0.5;
+    const c = it.color || '#ff6a3d';
+    ctx.shadowColor = 'rgba(0,0,0,0.45)';
+    ctx.shadowBlur = 26;
+    ctx.shadowOffsetY = 10;
+    const gr = ctx.createLinearGradient(0, -r, 0, r);
+    gr.addColorStop(0, mixHex(c, '#ffffff', 0.35));
+    gr.addColorStop(1, c);
+    ctx.fillStyle = gr;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.save();
+    ctx.globalAlpha *= 0.35;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.ellipse(0, -r * 0.5, r * 0.72, r * 0.36, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    if (img) ctx.drawImage(img, -r * 0.56, -r * 0.56, r * 1.12, r * 1.12);
+  } else if (it.kind === 'icon') {
     const r = base * 0.5;
     ctx.shadowColor = 'rgba(0,0,0,0.45)';
     ctx.shadowBlur = 24;

@@ -2,4 +2,6 @@ Kho hình của Dựng Video AI
 - Hình minh hoạ (thư mục e/): Fluent Emoji (Flat) — Copyright (c) Microsoft Corporation — giấy phép MIT: https://github.com/microsoft/fluentui-emoji/blob/main/LICENSE
 - Nhãn tiếng Việt của hình: emojibase-data (MIT) dựa trên Unicode CLDR.
 - Icon (thư mục i/): Lucide — Copyright (c) Lucide Contributors — giấy phép ISC: https://github.com/lucide-icons/lucide/blob/main/LICENSE
+- Icon bds-*.svg: bộ icon bất động sản "mẫu 1" do Dựng Video AI tự vẽ (tools/build-bds-icons.py).
+- Emoji động (thư mục a/): Noto Emoji Animation — Copyright Google — giấy phép CC BY 4.0: https://creativecommons.org/licenses/by/4.0/ (nguồn: https://googlefonts.github.io/noto-emoji-animation/). Ghi công bắt buộc: giữ dòng này + dòng ghi công trong app.
 Cả hai giấy phép cho phép dùng thương mại, kể cả trong video khách xuất ra; chỉ cần giữ thông báo bản quyền này trong phần mềm.

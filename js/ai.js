@@ -4,7 +4,7 @@ import {duration, tlOfSrc, timelineWords, segStarts, clamp, ICONS, GFX_MAP} from
 import {applyOp, describeOp, find, newText, uid, TYPE_OF} from './model.js';
 import {genreOf, formatOf} from './templates.js';
 import {SFX_MAP} from './sfx.js';
-import {MOTIONS, stickerForPhrase, searchLib} from './library.js';
+import {MOTIONS, stickerForPhrase, searchLib, loadIndex} from './library.js';
 import {PACKS, packsFor, packText, gfxStyle, rotatePack} from './styles.js';
 
 // ---------- Gọi máy chủ ----------
@@ -290,6 +290,25 @@ export function mergeLockups(p, nums, keys) {
   return all;
 }
 
+// Lời nói → icon BĐS mẫu 1 (lấy từ skill batdongsan-editor, ICON_WORDS) — cụm dài khớp trước, khớp có dấu
+const BDS_ICON_WORDS = Object.entries({
+  'khu đô thị': 'city', 'đô thị': 'city', 'văn minh': 'city', '5 sao': 'star', 'cao cấp': 'star', 'đẳng cấp': 'star',
+  'trường học': 'school', 'trường': 'school', 'bệnh viện': 'hospital', 'công viên': 'park', 'hồ bơi': 'pool',
+  'gara': 'garage', 'ô tô': 'car', 'xe hơi': 'car', 'đậu xe': 'garage', 'xe máy': 'bike', 'cổng': 'gate', 'camera': 'cctv',
+  'an ninh': 'cctv', 'bảo vệ': 'shield', 'phòng khách': 'sofa', 'nội thất': 'sofa', 'ban công': 'balcony', 'cửa sổ': 'window',
+  'trong lành': 'leaf', 'không khí': 'leaf', 'nước': 'drop', 'điện âm': 'bolt', 'điện': 'bolt', 'ánh sáng': 'lamp', 'đèn': 'lamp',
+  'kinh doanh': 'shop', 'buôn bán': 'shop', 'cửa hàng': 'shop', 'quán': 'coffee', 'cà phê': 'coffee',
+  'giá bán': 'tag', 'thương lượng': 'handshake', 'tỷ': 'money', 'ngân hàng': 'bank', 'vay': 'bank', 'lãi suất': 'percent',
+  'sổ hồng': 'cert', 'pháp lý': 'cert', 'hoàn công': 'cert', 'công chứng': 'cert', 'đổ đúc': 'crane', 'xây dựng': 'crane', 'kiên cố': 'shield',
+  'phút': 'clock', 'hướng': 'compass', 'diện tích': 'ruler', 'chiều ngang': 'ruler', 'ngang': 'ruler',
+  'máy lạnh': 'ac', 'điều hòa': 'ac', 'điều hoà': 'ac', 'mát mẻ': 'wind', 'thoáng': 'wind', 'cây xanh': 'tree', 'cây': 'plant',
+  'chợ': 'cart', 'siêu thị': 'cart', 'phòng ngủ': 'bed', 'toilet': 'bath', 'vệ sinh': 'bath', 'bếp': 'kitchen', 'phòng thờ': 'temple',
+  'cầu thang': 'stairs', 'lầu': 'stairs', 'trệt': 'floors', 'sân thượng': 'sun', 'trục đường': 'road', 'đường': 'road', 'cao tốc': 'highway',
+  'vị trí': 'map', 'giáp ranh': 'map', 'nằm ở': 'pin', 'gia đình': 'people', 'dân cư': 'people', 'thành viên': 'heart',
+  'mới': 'sparkle', 'sạch sẽ': 'sparkle', 'chìa khóa': 'key', 'chìa khoá': 'key', 'dọn vào': 'key', 'cửa chính': 'door', 'tiềm năng': 'growth', 'phát triển': 'growth',
+  'xem nhà': 'calendar', 'nhắn tin': 'chat',
+}).sort((a, b) => b[0].length - a[0].length);
+
 // ---------- Bộ dựng chuyên nghiệp (chạy trên máy, không cần AI máy chủ) ----------
 // Quy tắc dân dựng video ngắn:
 //  • 2–3 giây đầu giữ mặt người nói (hook, zoom chặt), cuối video giữ người nói cho câu kêu gọi
@@ -536,11 +555,28 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
   let lastKey = '';
   let lastT = -9;
   let side = 0;
+  // Bất động sản: bộ icon BĐS mẫu 1 theo từ khoá trong lời (giống skill batdongsan-editor: icons_auto) — đặt trước, mỗi icon 1 lần
+  if ((p.genre || 'chung') === 'bds') {
+    const used = new Set();
+    for (const ph of phrases) {
+      if (ph.s < Math.max(0.6, hookEnd) || ph.s > D - ctaLen - 0.8 || stks.some((s) => Math.abs(s.start - ph.s) < 4.5)) continue;
+      const txt = ' ' + words.filter((w) => w.s >= ph.s - 0.01 && w.s <= ph.e + 0.01).map((w) => w.w.toLowerCase().replace(/[.,!?…:;"“”]/g, '')).join(' ') + ' ';
+      const hit = BDS_ICON_WORDS.find(([k, v]) => !used.has(v) && txt.includes(' ' + k + ' '));
+      if (!hit) continue;
+      used.add(hit[1]);
+      const w0 = words.find((w) => w.s >= ph.s - 0.01 && (' ' + w.w.toLowerCase() + ' ').includes(' ' + hit[0].split(' ')[0]));
+      const at = w0 ? w0.s : ph.s;
+      const busyText = lks.some((t) => at < t.start + t.dur && at + 2.4 > t.start);
+      const it = {id: uid('s'), kind: 'icon', key: 'bds-' + hit[1], label: hit[0], start: +at.toFixed(2), dur: 2.4, x: side++ % 2 ? 0.2 : 0.8, y: busyText ? 0.52 : 0.42, size: 0.8, motion: ['pop', 'bounce', 'wiggle', 'pulse'][stks.length % 4], color: '#ff6a3d', locked: false};
+      stks.push(it);
+      ops.push({op: 'add', list: 'stickers', item: it});
+    }
+  }
   // AI (Claude) đã chọn hình theo nghĩa câu nói → dùng trước; còn thiếu chỗ thì bảng từ khoá bổ sung
   for (const pc of pics || []) {
     if (pc.start < Math.max(0.6, hookEnd) || pc.start > D - ctaLen - 0.8 || stks.some((s) => Math.abs(s.start - pc.start) < 4.5)) continue;
     const busyText = lks.some((t) => pc.start < t.start + t.dur && pc.start + 2.4 > t.start);
-    const it = {id: uid('s'), kind: 'emoji', key: pc.key, label: pc.label, start: +pc.start.toFixed(2), dur: 2.4, x: side++ % 2 ? 0.2 : 0.8, y: busyText ? 0.52 : 0.42, size: 0.9, motion: ['bounce', 'pop', 'wiggle', 'float'][stks.length % 4], locked: false};
+    const it = {id: uid('s'), kind: pc.kind || 'emoji', key: pc.key, label: pc.label, start: +pc.start.toFixed(2), dur: 2.4, x: side++ % 2 ? 0.2 : 0.8, y: busyText ? 0.52 : 0.42, size: 0.9, motion: ['bounce', 'pop', 'wiggle', 'float'][stks.length % 4], locked: false};
     stks.push(it);
     ops.push({op: 'add', list: 'stickers', item: it});
   }
@@ -953,12 +989,14 @@ async function aiExtras(p, r) {
   if (r.pack && packsFor(p.genre).some((x) => x.key === r.pack)) out.pack = r.pack;
   const D = duration(p);
   out.pics = [];
+  // có bản ĐỘNG (Noto) của cùng emoji thì dùng bản động cho sinh động; không thì hình tĩnh Fluent
+  const animBy = new Map(((await loadIndex('anim')).items || []).filter((x) => x.fk).map((x) => [x.fk, x.key]));
   for (const pc of (r.pics || []).slice(0, 12)) {
     const q = String(pc.tu || '').trim().toLowerCase();
     if (!q || !(pc.start >= 0) || pc.start > D) continue;
     try {
       const hit = (await searchLib('emoji', q, -1, 3))[0];
-      if (hit) out.pics.push({start: pc.start, key: hit.key, label: q});
+      if (hit) out.pics.push(animBy.has(hit.key) ? {start: pc.start, kind: 'anim', key: animBy.get(hit.key), label: q} : {start: pc.start, kind: 'emoji', key: hit.key, label: q});
     } catch (e) {}
   }
   out.sfx = (r.sfx || []).filter((s) => SFX_MEAN.has(s.key) && s.start >= 0.5 && s.start < D - 0.5).slice(0, 8);

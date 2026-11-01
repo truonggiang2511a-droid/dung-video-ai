@@ -159,7 +159,7 @@ export class Timeline {
       .map((s) =>
         s.kind === 'gfx'
           ? clip('sticker', s.id, s.start, s.dur, 'c-sticker c-gfx', `<b>✦</b><span>${esc(GFX_MAP[s.key]?.label || 'Đồ hoạ')}${s.label && s.key !== 'progress' ? ' · ' + esc(s.label) : ''}</span>`, `--c:${s.color || '#ffc61a'}`)
-          : clip('sticker', s.id, s.start, s.dur, 'c-sticker', `<img src="lib/${s.kind === 'icon' ? 'i' : 'e'}/${esc(s.key)}.svg" alt="" loading="lazy"><span>${esc(s.label || '')}</span>`, s.kind === 'icon' ? `--c:${s.color || '#2f8cff'}` : ''),
+          : clip('sticker', s.id, s.start, s.dur, 'c-sticker', `<img src="${s.kind === 'anim' ? `lib/a/${esc(s.key)}.webp` : `lib/${s.kind === 'icon' ? 'i' : 'e'}/${esc(s.key)}.svg`}" alt="" loading="lazy"><span>${esc(s.label || '')}</span>`, s.kind === 'icon' ? `--c:${s.color || '#2f8cff'}` : ''),
       )
       .join('');
     // Âm thanh (SFX)

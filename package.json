@@ -12,6 +12,7 @@
   "license": "ISC",
   "dependencies": {
     "@mediabunny/aac-encoder": "^1.65.0",
+    "lottie-web": "^5.13.0",
     "mediabunny": "^1.65.0"
   },
   "devDependencies": {

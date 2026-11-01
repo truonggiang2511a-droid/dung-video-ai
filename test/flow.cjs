@@ -52,6 +52,14 @@ const M = '/home/claude/testmedia/';
   await p.press('#chatIn', 'Enter');
   await p.waitForFunction(() => !window.__dv.busy, null, {timeout: 20000});
   await p.waitForTimeout(500);
+  // ANIM=1: thêm emoji động + icon BĐS + tiêu đề mở đầu để kiểm xuất (lottie phải vẽ đúng khung khi xuất)
+  if (process.env.ANIM) await p.evaluate(() => {
+    const q = window.__dv.p;
+    q.stickers.push({id: 'ta1', kind: 'anim', key: '1f911', label: 'tiền', start: 1, dur: 3, x: 0.7, y: 0.4, size: 1, motion: 'pop'});
+    q.stickers.push({id: 'ti1', kind: 'icon', key: 'bds-cert', label: 'sổ hồng', start: 1, dur: 3, x: 0.3, y: 0.4, size: 1, motion: 'pop', color: '#ff6a3d'});
+    q.stickers.push({id: 'tg1', kind: 'gfx', key: 'hook', label: 'NHÀ ĐẸP TRUNG TÂM', start: 0.2, dur: 2.5, x: 0.5, y: 0.17, color: '#ffc61a', font: 'anton', variant: 'band'});
+    window.__dv.changed(true);
+  });
   // thêm chữ
   await p.evaluate(() => document.querySelector('.clip.sel')?.click());
   await p.click('#btnExport').catch(() => {});

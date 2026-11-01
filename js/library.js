@@ -9,9 +9,9 @@ const plain = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀
 const idx = {};
 export function loadIndex(kind) {
   if (!idx[kind])
-    idx[kind] = fetch(`lib/${kind === 'icon' ? 'icons' : 'emoji'}.json`)
+    idx[kind] = fetch(`lib/${kind === 'icon' ? 'icons' : kind === 'anim' ? 'anim' : 'emoji'}.json`)
       .then((r) => r.json())
-      .then((j) => ({groups: j.groups, items: j.items.map(([key, label, tags, g]) => ({key, label, tags, g, l: ' ' + norm(label) + ' ', ts: new Set([label, ...tags.split(',')].map(norm)), qv: ' ' + normV(label + ' ' + tags) + ' ', q: ' ' + norm(key.replace(/-/g, ' ') + ' ' + label + ' ' + tags) + ' '}))}))
+      .then((j) => ({groups: j.groups, items: j.items.map(([key, label, tags, g, fk]) => ({key, label, tags, g, fk, l: ' ' + norm(label) + ' ', ts: new Set([label, ...tags.split(',')].map(norm)), qv: ' ' + normV(label + ' ' + tags) + ' ', q: ' ' + norm(key.replace(/-/g, ' ') + ' ' + label + ' ' + tags) + ' '}))}))
       .catch(() => ({groups: [], items: []}));
   return idx[kind];
 }
@@ -39,7 +39,7 @@ export function onStickerLoad(fn) {
   onLoad = fn;
 }
 function key(it) {
-  return it.kind === 'icon' ? `i:${it.key}` : `e:${it.key}`;
+  return it.kind === 'icon' ? `i:${it.key}` : it.kind === 'animthumb' ? `a:${it.key}` : `e:${it.key}`;
 }
 function load(it) {
   const k = key(it);
@@ -62,7 +62,7 @@ function load(it) {
       res(rec.img);
     };
     im.onerror = () => res(null);
-    im.src = `lib/${it.kind === 'icon' ? 'i' : 'e'}/${it.key}.svg`;
+    im.src = it.kind === 'animthumb' ? `lib/a/${it.key}.webp` : `lib/${it.kind === 'icon' ? 'i' : 'e'}/${it.key}.svg`;
   });
   imgs.set(k, rec);
   return rec;
@@ -72,7 +72,60 @@ export function stickerImage(it) {
   return load(it).img;
 }
 export async function preloadStickers(p) {
-  await Promise.all((p.stickers || []).filter((s) => s.kind !== 'gfx').map((s) => load(s).p));
+  await Promise.all((p.stickers || []).filter((s) => s.kind !== 'gfx').map((s) => (s.kind === 'anim' ? loadAnim(s) : load(s).p)));
+}
+
+// ---------- EMOJI ĐỘNG (Noto Emoji Animation, Google, CC BY 4.0 — ghi công trong kho + GIAY-PHEP.txt) ----------
+// Mỗi hình động 1 bản lottie (lib/a/<mã>.json) + ảnh nhỏ (lib/a/<mã>.webp). Bộ chạy lottie-web (MIT) chỉ tải khi có emoji động.
+// Mỗi clip một bộ vẽ riêng (canvas 320 px), tua đúng khung theo thời gian → xem nhanh và xuất video giống hệt nhau.
+let lottieMod = null;
+const animData = new Map();
+const animInst = new Map();
+function lottieLib() {
+  if (!lottieMod) lottieMod = import('lottie-web/build/player/lottie_light_canvas').then((m) => m.default || m);
+  return lottieMod;
+}
+function animJson(key) {
+  if (!animData.has(key)) animData.set(key, fetch(`lib/a/${key}.json`).then((r) => r.json()).catch(() => null));
+  return animData.get(key);
+}
+async function loadAnim(it) {
+  const id = it.id + ':' + it.key;
+  let rec = animInst.get(id);
+  if (rec) return rec.p;
+  rec = {anim: null, canvas: null, p: null};
+  animInst.set(id, rec);
+  rec.p = (async () => {
+    const [lottie, data] = await Promise.all([lottieLib(), animJson(it.key)]);
+    if (!data) return null;
+    const c = document.createElement('canvas');
+    c.width = c.height = 320;
+    const g = c.getContext('2d');
+    rec.anim = lottie.loadAnimation({renderer: 'canvas', loop: true, autoplay: false, animationData: data, rendererSettings: {context: g, clearCanvas: true}});
+    rec.canvas = c;
+    onLoad?.();
+    return c;
+  })();
+  return rec.p;
+}
+// khung của emoji động tại thời điểm t (giây kể từ lúc hiện); chưa tải xong → ảnh nhỏ tĩnh
+export function animFrame(it, t) {
+  const rec = animInst.get(it.id + ':' + it.key);
+  if (!rec) {
+    loadAnim(it);
+    return load({kind: 'animthumb', key: it.key}).img;
+  }
+  if (!rec.anim) return load({kind: 'animthumb', key: it.key}).img;
+  const a = rec.anim;
+  const total = Math.max(1, a.totalFrames || 1);
+  const fr = ((Math.max(0, t) * (a.frameRate || 30)) % total);
+  a.goToAndStop(fr, true);
+  return rec.canvas;
+}
+// dọn bộ vẽ của clip đã xoá (đỡ tốn bộ nhớ máy yếu)
+export function pruneAnims(p) {
+  const live = new Set((p.stickers || []).filter((s) => s.kind === 'anim').map((s) => s.id + ':' + s.key));
+  for (const [id, rec] of animInst) if (!live.has(id)) rec.anim?.destroy?.(), animInst.delete(id);
 }
 
 // ---------- AI chọn hình theo lời nói ----------

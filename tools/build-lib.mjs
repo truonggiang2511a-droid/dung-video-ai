@@ -6,11 +6,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {createRequire} from 'node:module';
+import {execFileSync} from 'node:child_process';
 
 const require = createRequire(import.meta.url);
 const root = path.dirname(path.dirname(new URL(import.meta.url).pathname));
 const out = path.join(root, 'public/lib');
-fs.rmSync(out, {recursive: true, force: true});
+// chỉ xoá phần do file này dựng (giữ a/ = emoji động do tools/build-anim.mjs dựng)
+for (const d of ['e', 'i']) fs.rmSync(path.join(out, d), {recursive: true, force: true});
 fs.mkdirSync(path.join(out, 'e'), {recursive: true});
 fs.mkdirSync(path.join(out, 'i'), {recursive: true});
 
@@ -94,7 +96,11 @@ for (const name of Object.keys(lu.icons)) {
   icons.push([name, label, [...vn, ...words].join(','), cat < 0 ? CATS.length : cat]);
 }
 icons.sort((a, b) => a[3] - b[3]);
-fs.writeFileSync(path.join(out, 'icons.json'), JSON.stringify({groups: [...CATS.map((c) => c[0]), 'Khác'], items: icons}));
+// Bộ icon BĐS "mẫu 1" của Giang (skill batdongsan-editor) → nhóm đầu tiên; vẽ bằng tools/build-bds-icons.py
+execFileSync('python3', [path.join(root, 'tools/build-bds-icons.py')], {stdio: 'inherit'});
+const bds = JSON.parse(fs.readFileSync(path.join(root, 'tools/bds-icons.json'), 'utf8')).map(([k, l, t]) => [k, l, t, 0]);
+for (const it of icons) it[3] += 1;
+fs.writeFileSync(path.join(out, 'icons.json'), JSON.stringify({groups: ['Bộ BĐS mẫu 1', ...CATS.map((c) => c[0]), 'Khác'], items: [...bds, ...icons]}));
 console.log(`Icon: ${icons.length} (${icons.filter((x) => !/^[a-z0-9 ]+$/.test(x[1])).length} có nhãn tiếng Việt, ${icons.filter((x) => x[3] < CATS.length).length} có nhóm)`);
 
 fs.writeFileSync(
@@ -103,6 +109,8 @@ fs.writeFileSync(
 - Hình minh hoạ (thư mục e/): Fluent Emoji (Flat) — Copyright (c) Microsoft Corporation — giấy phép MIT: https://github.com/microsoft/fluentui-emoji/blob/main/LICENSE
 - Nhãn tiếng Việt của hình: emojibase-data (MIT) dựa trên Unicode CLDR.
 - Icon (thư mục i/): Lucide — Copyright (c) Lucide Contributors — giấy phép ISC: https://github.com/lucide-icons/lucide/blob/main/LICENSE
+- Icon bds-*.svg: bộ icon bất động sản "mẫu 1" do Dựng Video AI tự vẽ (tools/build-bds-icons.py).
+- Emoji động (thư mục a/): Noto Emoji Animation — Copyright Google — giấy phép CC BY 4.0: https://creativecommons.org/licenses/by/4.0/ (nguồn: https://googlefonts.github.io/noto-emoji-animation/). Ghi công bắt buộc: giữ dòng này + dòng ghi công trong app.
 Cả hai giấy phép cho phép dùng thương mại, kể cả trong video khách xuất ra; chỉ cần giữ thông báo bản quyền này trong phần mềm.
 `,
 );

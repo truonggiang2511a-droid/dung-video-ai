@@ -4,7 +4,7 @@ import {PACKS, packsFor, restyle, gfxStyle, packText} from './styles.js';
 import {store} from './store.js';
 import {newProject, applyOp, History, find, newText, uid, ITEM_TYPES} from './model.js';
 import {SFX, SFX_MAP, playSfx} from './sfx.js';
-import {MOTIONS, searchLib, loadIndex} from './library.js';
+import {MOTIONS, searchLib, loadIndex, pruneAnims} from './library.js';
 import {FONT_CATS, ensureFont, ensureProjectFonts} from './fonts.js';
 import {importFile, probeVideo, ensurePlayable, thumbs, CUT_PACE} from './media.js';
 import {Player} from './player.js';
@@ -88,6 +88,7 @@ const ed = {
     ed.tl.setTime(ed.player.T);
     ed.player.dirty = true;
     ensureProjectFonts(p).then(() => (ed.player.dirty = true));
+    pruneAnims(p);
     updateStage();
     renderBin();
     if (ed.sel && !selItem()) select(null);
@@ -486,8 +487,8 @@ function renderInspector() {
       ${it.locked ? `<p class="lockn">${icon(I.lock, 15)} Bạn đã sửa tay — AI sẽ không ghi đè chỗ này.</p>` : ''}
       <p class="hint">${['progress', 'confetti', 'leak'].includes(it.key) ? 'Kéo hai đầu clip trên timeline để đổi lúc hiện / ẩn.' : 'Kéo trên khung xem để đổi vị trí. Kéo hai đầu clip trên timeline để đổi lúc hiện / ẩn.'}</p>`;
   } else if (s?.type === 'sticker' && it) {
-    h = `<h4>${it.kind === 'icon' ? 'Icon động' : 'Hình minh hoạ'}${it.label ? ' · ' + esc(it.label) : ''}</h4>
-      <div class="stk-prev${it.kind === 'icon' ? ' ic' : ''}" style="${it.kind === 'icon' ? `--c:${it.color || '#2f8cff'}` : ''}"><img src="lib/${it.kind === 'icon' ? 'i' : 'e'}/${esc(it.key)}.svg" alt=""><button class="btn ghost sm" data-act="libReplace">Đổi hình khác</button></div>
+    h = `<h4>${it.kind === 'icon' ? 'Icon động' : it.kind === 'anim' ? 'Emoji động' : 'Hình minh hoạ'}${it.label ? ' · ' + esc(it.label) : ''}</h4>
+      <div class="stk-prev${it.kind === 'icon' ? ' ic' : ''}" style="${it.kind === 'icon' ? `--c:${it.color || '#2f8cff'}` : ''}"><img src="${it.kind === 'anim' ? `lib/a/${esc(it.key)}.webp` : `lib/${it.kind === 'icon' ? 'i' : 'e'}/${esc(it.key)}.svg`}" alt=""><button class="btn ghost sm" data-act="libReplace">Đổi hình khác</button></div>
       <div class="fl"><span>Chuyển động</span><div class="chips">${MOTIONS.map(([k, l]) => `<button class="chip-b${(it.motion || 'pop') === k ? ' on' : ''}" data-set="motion" data-v="${k}">${l}</button>`).join('')}</div></div>
       <label class="fl">Cỡ <output>${Math.round((it.size || 1) * 100)}%</output><input type="range" min="0.4" max="2.2" step="0.05" value="${it.size || 1}" data-num="size"></label>
       ${it.kind === 'icon' ? `<div class="fl"><span>Màu nền icon</span><div class="swatches">${COLORS.map((c) => `<button class="sw${it.color === c.hex ? ' on' : ''}" data-set="color" data-v="${c.hex}" style="background:${c.hex}" aria-label="Màu ${c.name}"></button>`).join('')}</div></div>` : ''}
@@ -769,7 +770,7 @@ async function act(a, el) {
       const it = selItem();
       if (!it || ed.sel?.type !== 'sticker') return;
       ed.libReplace = it.id;
-      ed.libTab = it.kind === 'icon' ? 'icon' : 'emoji';
+      ed.libTab = it.kind === 'icon' ? 'icon' : it.kind === 'anim' ? 'anim' : 'emoji';
       $('#side [data-tab="media"]')?.click();
       renderMedia();
       return;
@@ -1061,6 +1062,7 @@ const LIB_TABS = [
   ['video', 'Video'],
   ['text', 'Chữ mẫu'],
   ['emoji', 'Hình'],
+  ['anim', 'Emoji động'],
   ['icon', 'Icon'],
   ['gfx', 'Đồ hoạ'],
   ['sfx', 'Âm thanh'],
@@ -1072,10 +1074,10 @@ function renderMedia() {
   const p = ed.p;
   const tab = ed.libTab || 'video';
   const head = `<div class="lib-tabs" role="tablist">${LIB_TABS.map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-libtab="${k}">${l}</button>`).join('')}</div>${ed.libReplace ? `<p class="lib-note">Chọn hình để thay cho hình đang chọn · <button class="lnk" data-act="libCancel">Huỷ</button></p>` : ''}`;
-  if (tab === 'emoji' || tab === 'icon') {
-    box.innerHTML = `${head}<input class="inp lib-q" id="libQ" type="search" placeholder="${tab === 'emoji' ? 'Tìm: nhà, tiền, ngon, tim, cười…' : 'Tìm: nhà, giỏ hàng, đồng hồ, biểu đồ…'}" value="${esc(ed.libQ || '')}" autocomplete="off">
+  if (tab === 'emoji' || tab === 'icon' || tab === 'anim') {
+    box.innerHTML = `${head}<input class="inp lib-q" id="libQ" type="search" placeholder="${tab === 'icon' ? 'Tìm: nhà, sổ hồng, hồ bơi, giỏ hàng…' : 'Tìm: nhà, tiền, ngon, tim, cười…'}" value="${esc(ed.libQ || '')}" autocomplete="off">
       <div class="lib-groups" id="libGroups"></div><div class="lib-grid${tab === 'icon' ? ' ic' : ''}" id="libGrid"></div>
-      <p class="hint lib-lic">${tab === 'emoji' ? 'Hình Fluent Emoji (Microsoft, giấy phép MIT)' : 'Icon Lucide (giấy phép ISC)'} — dùng thương mại thoải mái.</p>`;
+      <p class="hint lib-lic">${tab === 'emoji' ? 'Hình Fluent Emoji (Microsoft, giấy phép MIT) — dùng thương mại thoải mái.' : tab === 'anim' ? 'Emoji động: Noto Emoji Animation © Google, giấy phép CC BY 4.0 (googlefonts.github.io/noto-emoji-animation) — dùng thương mại được, app đã ghi công.' : 'Bộ BĐS mẫu 1 (tự vẽ) + icon Lucide (giấy phép ISC) — dùng thương mại thoải mái.'}</p>`;
     fillLib();
     return;
   }
@@ -1137,9 +1139,9 @@ async function fillLib() {
   if (gb) gb.innerHTML = [[-1, 'Tất cả'], ...groups.map((x, i) => [i, x]).filter(([, x]) => x)].map(([i, x]) => `<button class="chip-b${g === i ? ' on' : ''}" data-libgroup="${i}">${esc(x)}</button>`).join('');
   const list = await searchLib(kind, ed.libQ || '', g, 300);
   if (ed.libTab !== kind || !$('#libGrid')) return;
-  const dir = kind === 'icon' ? 'i' : 'e';
+  const src = (k) => (kind === 'anim' ? `lib/a/${k}.webp` : `lib/${kind === 'icon' ? 'i' : 'e'}/${k}.svg`);
   grid.innerHTML = list.length
-    ? list.map((x) => `<button class="lib-it" data-libadd="${x.key}" data-label="${esc(x.label)}" title="${esc(x.label)}"><img src="lib/${dir}/${x.key}.svg" alt="${esc(x.label)}" loading="lazy" width="48" height="48"></button>`).join('')
+    ? list.map((x) => `<button class="lib-it${String(x.key).startsWith('bds-') ? ' bds' : ''}" data-libadd="${x.key}" data-label="${esc(x.label)}" title="${esc(x.label)}"><img src="${src(x.key)}" alt="${esc(x.label)}" loading="lazy" width="48" height="48"></button>`).join('')
     : '<p class="hint">Không tìm thấy — thử từ khác (vd: “nhà”, “tiền”, “tim”).</p>';
 }
 // ảnh xem trước màu video: chụp khung đang xem rồi áp từng màu
@@ -1201,7 +1203,7 @@ function insertSticker(kind, key, label) {
   }
   const D = duration(p);
   const it = {id: uid('s'), kind, key, label, start: Math.max(0, Math.min(ed.player.T, D - 2.5)), dur: Math.min(2.5, D), x: 0.78, y: 0.3, size: 1, motion: kind === 'icon' ? 'pop' : 'bounce', locked: true};
-  if (kind === 'icon') it.color = '#2f8cff';
+  if (kind === 'icon') it.color = String(key).startsWith('bds-') ? '#ff6a3d' : '#2f8cff';
   manual(() => p.stickers.push(it), {lock: false});
   select({type: 'sticker', id: it.id});
 }
@@ -1742,7 +1744,7 @@ async function boot() {
       fillLib();
     }
     const la = e.target.closest('[data-libadd]');
-    if (la) insertSticker(ed.libTab === 'icon' ? 'icon' : 'emoji', la.dataset.libadd, la.dataset.label);
+    if (la) insertSticker(ed.libTab === 'icon' ? 'icon' : ed.libTab === 'anim' ? 'anim' : 'emoji', la.dataset.libadd, la.dataset.label);
     const ag = e.target.closest('[data-addgfx]');
     if (ag) insertGfx(ag.dataset.addgfx);
     const ps2 = e.target.closest('[data-playsfx2]');
