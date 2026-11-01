@@ -262,8 +262,9 @@ async function callClaude(env, {system, user, max}) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json'},
-    // Haiku 5.5: KHÔNG gửi temperature/top_p/top_k (bị từ chối), không điền sẵn lượt trả lời
-    body: JSON.stringify({model: env.ANTHROPIC_MODEL || 'claude-haiku-5-5', max_tokens: max, system, messages: [{role: 'user', content: user}]}),
+    // Haiku 5.5: KHÔNG gửi temperature/top_p/top_k (bị từ chối), không điền sẵn lượt trả lời.
+    // Mặc định có "suy nghĩ" (adaptive thinking) và token suy nghĩ tính vào max_tokens → effort thấp + nới max_tokens (gọi thật 1/11: max 1200 hết sạch, không có chữ)
+    body: JSON.stringify({model: env.ANTHROPIC_MODEL || 'claude-haiku-5-5', max_tokens: max * 3, output_config: {effort: env.AI_EFFORT || 'low'}, system, messages: [{role: 'user', content: user}]}),
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) return {error: 'Claude: ' + (j.error?.message || r.status)};
