@@ -111,13 +111,13 @@ export function numberLockups(p) {
   for (let i = 0; i < ws.length; i++) {
     const w = plain(ws[i].w).replace(/[.,!?]$/, '');
     // “199”, “3,8”, “50%”, “399k”, “5tr”
-    const mm = w.replace('m²', 'm2').match(/^(\d+(?:[.,]\d+)*)(k|tr|%|m2)?$/);
+    const mm = w.replace('m²', 'm2').match(/^(\d+(?:[.,]\d+)*)(k|tr|%|m2|m)?$/);
     if (!mm) continue;
     const num = mm[1];
     const next = plain(ws[i + 1]?.w || '').replace(/[.,!?]$/, '');
     const prev = plain((ws[i - 2]?.w || '') + ' ' + (ws[i - 1]?.w || ''));
     const at = ws[i].s;
-    const unit = mm[2] === '%' ? UNITS[5] : mm[2] === 'k' ? UNITS[2] : mm[2] === 'tr' ? UNITS[1] : mm[2] === 'm2' ? UNITS[6] : UNITS.find(([re]) => re.test(next));
+    const unit = mm[2] === '%' ? UNITS[5] : mm[2] === 'k' ? UNITS[2] : mm[2] === 'tr' ? UNITS[1] : mm[2] === 'm2' || mm[2] === 'm' ? UNITS[6] : UNITS.find(([re]) => re.test(next));
     if (unit && unit[2] === 'price') {
       const lead = /chi con/.test(prev) ? 'chỉ còn' : /giam|sale|khuyen/.test(prev) ? 'giảm còn' : g === 'bds' || g === 'banhang' ? 'giá' : '';
       out.push(newText(at, {kind: 'price', lead, main: priceText(num, unit[1]), color: '#ff2a2a', icon: icons.includes('tag') ? 'tag' : icons[0], dur: 4}));
@@ -125,6 +125,14 @@ export function numberLockups(p) {
       out.push(newText(at, {lead: /giam|sale/.test(prev) ? 'giảm' : '', main: `${num.replace('%', '')}%`, color: '#ffc61a', icon: icons.includes('fire') ? 'fire' : icons[0], dur: 3.5}));
     } else if (unit && unit[2] === 'area') {
       out.push(newText(at, {lead: 'diện tích', main: `${num} M²`, color: '#ffc61a', icon: icons.includes('ruler') ? 'ruler' : icons[0], dur: 3.5}));
+    } else if (g === 'bds' && /^(phong|tang|lau|tret)$/.test(next)) {
+      // nhà đất: “3 phòng ngủ”, “4 tầng”, “1 trệt 2 lầu”
+      const W1 = (k) => (ws[i + k]?.w || '').replace(/[.,!?]$/, '');
+      let main = `${num} ${W1(1)}`;
+      if (next === 'phong' && /^(ngu|tam|khach|wc)$/.test(plain(W1(2)))) main += ' ' + W1(2);
+      if (next === 'tret' && /^\d+$/.test(W1(2)) && /^(lau|tang)$/.test(plain(W1(3)))) main += ` ${W1(2)} ${W1(3)}`;
+      out.push(newText(at, {main: main.toUpperCase(), color: PALETTE[ci % PALETTE.length], icon: next === 'phong' ? 'bed' : 'house', dur: 3.2}));
+      ci++;
     } else if (NOUNS.test(next) && g !== 'bds') {
       // “3 bước”, “5 mẹo”, “2 tầng”… → cụm chữ màu xoay vòng, icon theo thể loại
       out.push(newText(at, {main: `${num} ${ws[i + 1].w.replace(/[.,!?]$/, '')}`.toUpperCase(), color: PALETTE[ci % PALETTE.length], icon: icons[ci % icons.length], dur: 3.2}));
