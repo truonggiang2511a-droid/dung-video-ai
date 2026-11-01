@@ -45,6 +45,7 @@ const M = '/home/claude/testmedia/';
       texts: pp.texts.map((t) => `${t.start} ${t.main}`),
       stickers: (pp.stickers || []).map((t) => `${t.start} ${t.key} (${t.label}) ${t.motion}`),
       sfx: (pp.sfx || []).map((t) => `${t.start} ${t.sfx}`),
+      tags: Object.values(pp.sources).filter((x) => x.kind === 'broll').map((x) => `${x.name} → ${x.tag || '-'} (${x.tagBy || ''}) [${(x.keywords || []).join(', ')}]`),
     };
   });
   // phân tích: khoảng không đổi hình dài nhất (người nói không zoom, không cảnh phụ)
