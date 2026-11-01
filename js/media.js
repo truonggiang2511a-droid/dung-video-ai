@@ -38,6 +38,67 @@ function probeAudio(blob) {
   });
 }
 
+// Trình duyệt có hiện được hình của video này không (vd. HEVC/H.265 của iPhone trên Chrome máy tính thường KHÔNG)
+function canShow(blob) {
+  return new Promise((res) => {
+    const v = document.createElement('video');
+    v.muted = true;
+    v.playsInline = true;
+    v.preload = 'auto';
+    const url = URL.createObjectURL(blob);
+    let done = false;
+    const fin = (ok) => {
+      if (done) return;
+      done = true;
+      clearTimeout(t);
+      URL.revokeObjectURL(url);
+      v.removeAttribute('src');
+      v.load();
+      res(ok);
+    };
+    const t = setTimeout(() => fin(v.videoWidth > 0 && v.readyState >= 2), 12000);
+    v.onloadeddata = () => fin(v.videoWidth > 0);
+    v.onerror = () => fin(false);
+    v.src = url;
+  });
+}
+
+const CODEC_NAME = {hevc: 'HEVC (H.265)', avc: 'H.264', vp9: 'VP9', av1: 'AV1', prores: 'ProRes'};
+
+// Bảo đảm video phát được trong trình duyệt này; không được thì tự đổi sang H.264 (nếu máy giải mã được), không thì báo cách xử lý
+export async function ensurePlayable(file, onMsg) {
+  const meta = await probeVideo(file).catch(() => null);
+  if (meta && meta.w > 0 && (await canShow(file))) return {file, meta};
+  const m = await engine();
+  const input = new m.Input({source: new m.BlobSource(file), formats: m.ALL_FORMATS});
+  let track = null;
+  try {
+    track = await input.getPrimaryVideoTrack();
+  } catch (e) {
+    track = null;
+  }
+  if (!track) throw new Error(`File “${file.name}” không có hình hoặc định dạng lạ. Hãy chọn file video MP4/MOV.`);
+  const codec = CODEC_NAME[track.codec] || track.codec || 'không rõ';
+  if (!(await track.canDecode())) {
+    const tip = track.codec === 'hevc'
+      ? 'Video quay iPhone dạng HEVC (H.265) — trình duyệt này chưa đọc được. Cách nhanh: mở app bằng Safari hoặc Microsoft Edge; hoặc trên iPhone vào Cài đặt → Camera → Định dạng → chọn “Tương thích nhất” rồi quay lại.'
+      : `Trình duyệt này chưa đọc được video định dạng ${codec}. Hãy thử Safari, Edge hoặc Chrome bản mới, hoặc xuất lại video dạng MP4 (H.264).`;
+    throw new Error(tip);
+  }
+  // giải mã được bằng WebCodecs nhưng thẻ <video> không hiện → đổi sang H.264 ngay trên máy
+  m.useAac();
+  const target = new m.BufferTarget();
+  const output = new m.Output({format: new m.Mp4OutputFormat({fastStart: 'in-memory'}), target});
+  const conv = await m.Conversion.init({input, output, video: {codec: 'avc', bitrate: m.QUALITY_HIGH}, audio: {codec: 'aac'}});
+  if (!conv.isValid) throw new Error(`Không đổi được video ${codec} sang H.264 trên máy này. Hãy mở app bằng Safari hoặc Edge.`);
+  conv.onProgress = (k) => onMsg?.(`Video dạng ${codec} — đang đổi sang H.264 để phát được… ${Math.round(k * 100)}%`);
+  onMsg?.(`Video dạng ${codec} — đang đổi sang H.264 để phát được…`);
+  await conv.execute();
+  const out = new File([target.buffer], file.name.replace(/\.[^.]+$/, '') + '.mp4', {type: 'video/mp4'});
+  const meta2 = await probeVideo(out);
+  return {file: out, meta: meta2};
+}
+
 // Chụp vài khung nhỏ để vẽ dải ảnh trên timeline
 export async function thumbs(blob, n, height = 96) {
   const v = document.createElement('video');
@@ -206,9 +267,11 @@ export function wav16(pcm) {
 }
 
 // Thêm một file vào dự án
-export async function importFile(p, file, kind) {
+export async function importFile(p, file, kind, onMsg) {
   const isAudio = kind === 'music' || /^audio\//.test(file.type);
-  const meta = isAudio ? await probeAudio(file) : await probeVideo(file);
+  let meta;
+  if (isAudio) meta = await probeAudio(file);
+  else ({file, meta} = await ensurePlayable(file, onMsg));
   const id = uid('s');
   const fileKey = p.id + '/' + id;
   await store.putFile(fileKey, file);

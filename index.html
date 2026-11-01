@@ -32,24 +32,18 @@
 
 <main id="editor" class="screen" hidden>
   <header class="e-top">
-    <button id="btnBack" class="icon-btn" aria-label="Về danh sách dự án"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+    <button id="btnBack" class="icon-btn" aria-label="Danh sách dự án" title="Danh sách dự án"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg></button>
     <label class="pname"><span class="sr">Tên dự án</span><input id="pname" maxlength="60"></label>
     <button id="btnUndo" class="icon-btn" aria-label="Hoàn tác"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
     <button id="btnRedo" class="icon-btn" aria-label="Làm lại"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
-    <button id="btnExport" class="btn primary sm">Xuất video</button>
+    <button id="btnAi" class="btn ai sm" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg><span>AI dựng</span></button>
+    <button id="btnExport" class="btn primary sm" disabled>Xuất video</button>
   </header>
 
   <div class="e-body">
     <section class="e-stage">
       <div class="stage-wrap">
         <canvas id="cv" aria-label="Khung xem nhanh video"></canvas>
-        <div id="stageMsg" class="stage-msg" hidden></div>
-        <div id="aiPanel" class="ai-panel" hidden></div>
-        <div id="review" class="review" hidden>
-          <b>Bản nháp đã sẵn sàng</b>
-          <span>Xem thử, sửa nếu cần — ưng rồi duyệt để xuất.</span>
-          <div class="review-act"><button class="btn ghost sm" data-act="preview">Xem</button><button class="btn primary sm" data-act="approve">Duyệt &amp; xuất</button></div>
-        </div>
       </div>
       <div class="e-transport">
         <button id="btnPlay" class="play" aria-label="Phát"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg></button>
@@ -68,6 +62,7 @@
     </aside>
   </div>
 
+  <div id="status" class="status" role="status" aria-live="polite" hidden></div>
   <div id="bin" class="bin" hidden></div>
   <div id="selbar" class="selbar" hidden></div>
   <div id="tl" class="tl"></div>
@@ -79,6 +74,7 @@
   </form>
 </main>
 
+<div id="dropov" class="dropov" hidden><div><b>Thả video vào đây</b><small>Video dài nhất làm video chính, còn lại là cảnh phụ · file nhạc làm nhạc nền</small></div></div>
 <div id="install" class="install" hidden></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <div id="dlg" class="modal" hidden></div>

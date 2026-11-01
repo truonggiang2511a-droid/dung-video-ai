@@ -172,6 +172,13 @@ export class Player {
     if (!this.p.main) {
       g.fillStyle = '#12151b';
       g.fillRect(0, 0, W, H);
+      g.fillStyle = '#5d6675';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.font = '800 46px BVP, sans-serif';
+      g.fillText('Chưa có video', W / 2, H / 2 - 30);
+      g.font = '500 34px BVP, sans-serif';
+      g.fillText('Thêm video chính ở timeline bên dưới', W / 2, H / 2 + 34);
       return;
     }
     this.boxes = drawFrame(g, this.p, this.T, this.frames(), {placeholder: true});

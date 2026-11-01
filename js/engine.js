@@ -13,6 +13,7 @@ export {
   QUALITY_HIGH,
   getFirstEncodableVideoCodec,
   canEncodeAudio,
+  Conversion,
 } from 'mediabunny';
 import {registerAacEncoder} from '@mediabunny/aac-encoder';
 

@@ -2,7 +2,7 @@
 import {loadFonts, duration, COLORS, ICONS, FONTS, W, H} from './render.js';
 import {store} from './store.js';
 import {newProject, applyOp, History, find, newText, uid} from './model.js';
-import {importFile} from './media.js';
+import {importFile, probeVideo} from './media.js';
 import {Player} from './player.js';
 import {Timeline} from './timeline.js';
 import {Cursor} from './cursor.js';
@@ -172,7 +172,8 @@ async function openEditor(p) {
 }
 async function closeEditor() {
   ed.player.pause();
-  if (ed.p) await store.saveProject(ed.p);
+  if (ed.p && !ed.p.main && !Object.keys(ed.p.sources).length) await store.deleteProject(ed.p);
+  else if (ed.p) await store.saveProject(ed.p);
   ed.player.detach();
   ed.p = null;
   $('#editor').hidden = true;
@@ -182,24 +183,43 @@ async function closeEditor() {
   renderHome();
 }
 
-// ---------- KHUNG XEM ----------
+// ---------- THANH TRẠNG THÁI (không che khung xem) ----------
+let aiSteps = null;
 function updateStage() {
   const p = ed.p;
-  const s = $('#stageMsg');
   const D = p.main ? duration(p) : 0;
   $('#tDur').textContent = fmt(D);
-  if (!p.main) {
-    s.innerHTML = `<div class="sm-card"><b>Bắt đầu bằng video chính</b><span>Video bạn đứng nói giới thiệu căn nhà. Thêm vài cảnh phụ (phòng khách, bếp, mặt tiền…) để AI ghép vào.</span><button class="btn primary" data-act="addMain">${icon(I.plus, 18)} Thêm video chính</button></div>`;
-    s.hidden = false;
-  } else if (!p.aiDone && !ed.busy) {
-    const nb = Object.values(p.sources).filter((x) => x.kind === 'broll').length;
-    s.innerHTML = `<div class="sm-card"><b>Sẵn sàng dựng</b><span>${nb ? `Đã có ${nb} cảnh phụ. ` : 'Chưa có cảnh phụ — vẫn dựng được, thêm sau cũng được. '}AI sẽ cắt khoảng lặng, ghép cảnh, thêm chữ và hiệu ứng.</span><button class="btn primary glow" data-act="ai">${icon(I.sparkle, 18)} AI dựng từ A–Z</button></div>`;
-    s.hidden = false;
-  } else s.hidden = true;
-  $('#review').hidden = !(p.aiDone && !p.approved && !ed.busy);
-  $('#btnExport').disabled = !p.main || ed.busy;
+  const ai = $('#btnAi');
+  ai.disabled = !p.main || ed.busy;
+  ai.querySelector('span').textContent = p.aiDone ? 'Dựng lại' : 'AI dựng';
+  ai.classList.toggle('glow', !!p.main && !p.aiDone && !ed.busy);
+  ai.title = p.main ? 'AI cắt khoảng lặng, ghép cảnh, thêm chữ và hiệu ứng' : 'Thêm video chính trước';
+  const ex = $('#btnExport');
+  ex.disabled = !p.main || ed.busy;
+  ex.textContent = p.aiDone && !p.approved ? 'Duyệt & xuất' : 'Xuất video';
   $('#btnUndo').disabled = !ed.history.undo.length || ed.busy;
   $('#btnRedo').disabled = !ed.history.redo.length || ed.busy;
+  renderStatus();
+}
+function renderStatus() {
+  const p = ed.p;
+  const st = $('#status');
+  let h = '';
+  if (ed.busy && aiSteps) {
+    const cur = aiSteps.findIndex((x) => x.st === 'run');
+    const k = cur < 0 ? aiSteps.length : cur;
+    h = `<span class="st-ic spin" aria-hidden="true"></span><span class="st-t"><b>AI đang dựng</b> · ${esc(aiSteps[Math.min(k, aiSteps.length - 1)].text)}</span>
+      <span class="st-dots" aria-hidden="true">${aiSteps.map((x) => `<i class="${x.st}"></i>`).join('')}</span>
+      <button class="btn ghost xs" data-act="skip">${icon(I.ff, 14)} Tua nhanh</button>`;
+  } else if (!p.main) {
+    h = `<span class="st-t">Kéo thả video vào timeline, hoặc bấm <b>Thêm video chính</b> bên dưới.</span>`;
+  } else if (!p.aiDone) {
+    h = `<span class="st-ic" aria-hidden="true">${icon(I.sparkle, 15)}</span><span class="st-t">Sẵn sàng — bấm <b>AI dựng</b> để cắt khoảng lặng, ghép cảnh, thêm chữ và hiệu ứng.</span>`;
+  } else if (!p.approved) {
+    h = `<span class="st-ic ok" aria-hidden="true">${icon(I.check, 15)}</span><span class="st-t">Bản nháp đã xong — xem lại, sửa nếu cần, rồi bấm <b>Duyệt &amp; xuất</b>.</span><button class="btn ghost xs" data-act="preview">${icon(I.play, 13)} Xem từ đầu</button>`;
+  }
+  st.hidden = !h;
+  st.innerHTML = h;
 }
 function updateTime() {
   $('#tNow').textContent = fmt(ed.player.T);
@@ -231,8 +251,8 @@ async function addFiles(kind, files) {
   updateStage();
   try {
     for (const f of files) {
-      toast(`Đang nạp “${esc(f.name)}”…`, 60000);
-      const src = await importFile(p, f, kind);
+      toast(`Đang nạp “${esc(f.name)}”…`, 120000);
+      const src = await importFile(p, f, kind, (m) => toast(esc(m), 120000));
       if (kind === 'main') {
         p.main = {src: src.id, segs: [{in: 0, out: src.duration}]};
         p.transcript = null;
@@ -251,11 +271,51 @@ async function addFiles(kind, files) {
     await ed.player.attach(p, ed.getBlob);
     toast(kind === 'main' ? 'Đã thêm video chính.' : kind === 'music' ? 'Đã thêm nhạc nền.' : `Đã thêm ${files.length} cảnh phụ.`);
   } catch (e) {
-    toast('Lỗi: ' + esc(e.message));
+    $('#toast').classList.remove('on');
+    dialog({title: 'Chưa thêm được video', body: `<p>${esc(e.message)}</p>`, ok: 'Đã hiểu', cancel: ''});
   }
   ed.busy = false;
   ed.changed(true, true);
 }
+
+// Kéo thả file từ máy tính vào app
+function bindDrop() {
+  const ov = $('#dropov');
+  let depth = 0;
+  const isFiles = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+  document.addEventListener('dragenter', (e) => {
+    if (!isFiles(e) || $('#editor').hidden) return;
+    depth++;
+    ov.hidden = false;
+  });
+  document.addEventListener('dragleave', () => {
+    depth = Math.max(0, depth - 1);
+    if (!depth) ov.hidden = true;
+  });
+  document.addEventListener('dragover', (e) => {
+    if (isFiles(e)) e.preventDefault();
+  });
+  document.addEventListener('drop', async (e) => {
+    if (!isFiles(e)) return;
+    e.preventDefault();
+    depth = 0;
+    ov.hidden = true;
+    if ($('#editor').hidden || ed.busy) return;
+    const fs = [...e.dataTransfer.files];
+    const vids = fs.filter((f) => /^video\//.test(f.type) || /\.(mp4|mov|m4v|webm)$/i.test(f.name));
+    const auds = fs.filter((f) => /^audio\//.test(f.type));
+    if (!ed.p.main && vids.length) {
+      // video dài nhất là video chính, còn lại là cảnh phụ
+      const metas = await Promise.all(vids.map((f) => probeVideo(f).then((m) => m.duration).catch(() => 0)));
+      const i = metas.indexOf(Math.max(...metas));
+      await addFiles('main', [vids[i]]);
+      const rest = vids.filter((_, j) => j !== i);
+      if (rest.length) await addFiles('broll', rest);
+    } else if (vids.length) await addFiles('broll', vids);
+    if (auds.length) await addFiles('music', [auds[0]]);
+  });
+}
+
 function pick(kind) {
   const inp = $('#file');
   inp.accept = kind === 'music' ? 'audio/*' : 'video/*';
@@ -487,7 +547,6 @@ async function act(a, el) {
     case 'tlOut':
       return ed.tl.zoom(1 / 1.3);
     case 'preview':
-      $('#review').hidden = true;
       ed.seek(0);
       ed.player.play();
       return;
@@ -520,32 +579,40 @@ const STEPS = [
 async function runAuto() {
   const p = ed.p;
   if (!p.main || ed.busy) return;
+  if (p.aiDone) {
+    const ok = await dialog({title: 'Dựng lại từ đầu?', body: 'AI sẽ dựng lại toàn bộ: cảnh phụ, chữ và hiệu ứng hiện tại được thay mới. Chỗ bạn muốn giữ thì nhờ AI sửa từng chỗ sẽ an toàn hơn.', ok: 'Dựng lại'});
+    if (!ok) return;
+    const src = p.sources[p.main.src];
+    p.main.segs = [{in: 0, out: src.duration}];
+    p.broll = [];
+    p.texts = [];
+    p.zooms = [];
+    p.aiDone = false;
+  }
   ed.busy = true;
   ed.history.push(p);
   select(null);
   openSheet(false);
+  aiSteps = STEPS.map(([k, l]) => ({k, text: l, st: ''}));
   updateStage();
-  const panel = $('#aiPanel');
-  panel.hidden = false;
-  panel.innerHTML = `<div class="aip-h">${icon(I.sparkle, 18)}<b>AI đang dựng video</b><button class="btn ghost sm" data-act="skip">${icon(I.ff, 15)} Tua nhanh</button></div><ol>${STEPS.map(([k, l]) => `<li data-step="${k}"><i></i><span>${l}</span></li>`).join('')}</ol>`;
   const log = (k, st, text) => {
-    const li = panel.querySelector(`[data-step="${k}"]`);
-    if (!li) return;
-    li.className = st;
-    li.querySelector('span').textContent = text;
+    const s = aiSteps.find((x) => x.k === k);
+    if (!s) return;
+    s.st = st;
+    s.text = text;
+    renderStatus();
   };
   ed.cur.skip = false;
   try {
     await autoEdit(ed, log);
     ed.seek(0);
-    toast('Xong! Bấm <b>Xem bản nháp</b> để duyệt.');
   } catch (e) {
     console.error(e);
     toast('AI dựng bị lỗi: ' + esc(e.message), 8000);
   }
   ed.cur.skip = false;
   ed.busy = false;
-  setTimeout(() => (panel.hidden = true), 1800);
+  aiSteps = null;
   ed.changed(true, true);
 }
 
@@ -778,9 +845,10 @@ function bindStageDrag() {
 // ---------- kéo / cắt trên timeline ----------
 let dragOrig = null;
 const tlCb = {
-  onScrub(T) {
+  onScrub(T, fromPointer) {
     if (ed.player.playing) ed.player.pause();
     ed.player.seek(T);
+    if (fromPointer) ed.tl.setTime(ed.player.T);
     updateTime();
   },
   onSelect(sel) {
@@ -879,21 +947,22 @@ async function boot() {
   ed.player = new Player($('#cv'), $('#vids'));
   ed.player.setScale(matchMedia('(min-width: 900px)').matches ? 720 : 540);
   ed.player.onTime = (T) => {
-    if (ed.player.playing) ed.tl.setTime(T);
+    if (ed.player.playing || ed.tl.left) ed.tl.setTime(T);
     updateTime();
   };
   ed.player.onState = (on) => {
     $('#btnPlay').innerHTML = icon(on ? I.pause : I.play, 22);
     $('#btnPlay').setAttribute('aria-label', on ? 'Tạm dừng' : 'Phát');
   };
-  ed.player.onEnd = () => {
-    if (ed.p?.aiDone && !ed.p.approved) $('#review').hidden = false;
-  };
+  ed.player.onEnd = () => renderStatus();
   ed.tl = new Timeline($('#tl'), tlCb);
   ed.cur = new Cursor();
   window.__dv = ed; // để kiểm thử (xem CLAUDE.md)
   bindInspector();
   bindStageDrag();
+  bindDrop();
+  placeChat();
+  matchMedia('(min-width: 900px)').addEventListener?.('change', placeChat);
 
   document.addEventListener('click', (e) => {
     const a = e.target.closest('[data-act]');
@@ -929,6 +998,7 @@ async function boot() {
   $('#btnUndo').onclick = () => undoRedo(-1);
   $('#btnRedo').onclick = () => undoRedo(1);
   $('#btnExport').onclick = openExport;
+  $('#btnAi').onclick = runAuto;
   $('#pname').addEventListener('change', (e) => {
     ed.p.name = e.target.value.trim() || ed.p.name;
     queueSave();
@@ -959,10 +1029,22 @@ async function boot() {
     $('#aiState').classList.toggle('ok', !!h.ai);
   });
 
+  // Vào app là vào thẳng timeline: mở dự án gần nhất, chưa có thì tạo mới
   const id = location.hash.slice(1);
-  const p = id ? await store.getProject(id) : null;
-  if (p) openEditor(p);
-  else renderHome();
+  let p = id ? await store.getProject(id) : null;
+  if (!p) p = (await store.listProjects())[0] || null;
+  if (!p) {
+    p = newProject();
+    await store.saveProject(p);
+  }
+  openEditor(p);
+}
+
+function placeChat() {
+  const desk = matchMedia('(min-width: 900px)').matches;
+  const chat = $('#chat');
+  if (desk && chat.parentElement !== $('#side')) $('#side').appendChild(chat);
+  if (!desk && chat.parentElement !== $('#editor')) $('#editor').appendChild(chat);
 }
 
 function undoRedo(dir) {

@@ -18,15 +18,20 @@ export class Timeline {
   constructor(root, cb) {
     this.root = root;
     this.cb = cb; // {onScrub, onSelect, onDragStart, onDrag, onDragEnd, onAdd, onClipAi}
-    this.pps = matchMedia('(min-width: 900px)').matches ? 70 : 46;
+    // Máy tính: timeline bắt đầu từ mép trái, đầu phát chạy theo thời gian (kiểu Premiere).
+    // Điện thoại: đầu phát cố định giữa, kéo timeline để tua (kiểu CapCut).
+    this.mq = matchMedia('(min-width: 900px)');
+    this.left = this.mq.matches;
+    this.pps = this.left ? 70 : 46;
     this.sel = null;
     this.p = null;
     root.innerHTML = `
       <div class="tl-labels">${ROWS.map((r) => `<div class="tl-label" data-row="${r.key}">${svg(r.icon, 15)}<span>${r.label}</span></div>`).join('')}</div>
       <div class="tl-scroll" tabindex="0" aria-label="Timeline, kéo ngang để tua">
         <div class="tl-inner">
-          <div class="tl-ruler"></div>
+          <div class="tl-ruler" title="Bấm hoặc kéo để tua"></div>
           ${ROWS.map((r) => `<div class="tl-row" data-row="${r.key}"></div>`).join('')}
+          <div class="tl-ph" aria-hidden="true"><i></i></div>
         </div>
       </div>
       <div class="tl-head" aria-hidden="true"><i></i></div>
@@ -36,12 +41,21 @@ export class Timeline {
     this.ruler = root.querySelector('.tl-ruler');
     this.rows = Object.fromEntries(ROWS.map((r) => [r.key, root.querySelector(`.tl-row[data-row="${r.key}"]`)]));
     this.empty = root.querySelector('.tl-empty');
+    this.ph = root.querySelector('.tl-ph');
+    root.classList.toggle('left', this.left);
+    this.mq.addEventListener?.('change', () => {
+      this.left = this.mq.matches;
+      root.classList.toggle('left', this.left);
+      this.render(this.p);
+      this.setTime(this.T || 0);
+    });
     this._prog = false;
     this.scroll.addEventListener('scroll', () => {
       if (this._prog) {
         this._prog = false;
         return;
       }
+      if (this.left) return; // máy tính: cuộn chỉ để xem, không tua
       this.cb.onScrub?.(this.scroll.scrollLeft / this.pps);
     });
     this.scroll.addEventListener('wheel', (e) => {
@@ -62,7 +76,7 @@ export class Timeline {
   }
 
   get half() {
-    return this.scroll.clientWidth / 2;
+    return this.left ? 18 : this.scroll.clientWidth / 2;
   }
   x(T) {
     return this.half + T * this.pps;
@@ -77,6 +91,17 @@ export class Timeline {
 
   setTime(T) {
     this.T = T;
+    if (this.left) {
+      const x = this.x(T);
+      this.ph.style.left = x + 'px';
+      const vx = x - this.scroll.scrollLeft;
+      const w = this.scroll.clientWidth;
+      if (vx < 30 || vx > w - 60) {
+        this._prog = true;
+        this.scroll.scrollLeft = Math.max(0, x - w * 0.25);
+      }
+      return;
+    }
     const want = T * this.pps;
     if (Math.abs(this.scroll.scrollLeft - want) > 0.5) {
       this._prog = true;
@@ -99,7 +124,7 @@ export class Timeline {
     const D = duration(p);
     const half = this.half;
     const total = D * this.pps;
-    this.inner.style.width = total + half * 2 + 'px';
+    this.inner.style.width = (this.left ? Math.max(this.scroll.clientWidth, total + half + 240) : total + half * 2) + 'px';
     this.inner.style.setProperty('--pad', half + 'px');
     // thước thời gian
     const step = this.pps >= 60 ? 1 : this.pps >= 30 ? 2 : 5;
@@ -159,6 +184,9 @@ export class Timeline {
         ? `<button class="tl-add" data-add="music" style="left:${half}px">+ Thêm nhạc nền</button>`
         : '';
 
+    if (this.left) this.ph.style.left = this.x(this.T || 0) + 'px';
+    this.ph.hidden = !this.left || !p.main;
+
     // màn trống
     if (!p.main) {
       this.empty.hidden = false;
@@ -215,7 +243,26 @@ export class Timeline {
     this.render(this.p);
   }
 
+  _timeAt(clientX) {
+    const r = this.scroll.getBoundingClientRect();
+    return Math.max(0, (clientX - r.left + this.scroll.scrollLeft - this.half) / this.pps);
+  }
+
   _down(e) {
+    if (this.left && this.p?.main && !e.target.closest('.clip, button') && (e.target.closest('.tl-ruler') || e.target.classList.contains('tl-row') || e.target === this.inner)) {
+      // tua bằng chuột trên máy tính
+      const el = e.target;
+      el.setPointerCapture?.(e.pointerId);
+      const go = (ev) => this.cb.onScrub?.(this._timeAt(ev.clientX), true);
+      go(e);
+      const up = () => {
+        el.removeEventListener('pointermove', go);
+        el.removeEventListener('pointerup', up);
+      };
+      el.addEventListener('pointermove', go);
+      el.addEventListener('pointerup', up);
+      return;
+    }
     const c = e.target.closest('.clip.sel');
     if (!c || !['text', 'broll', 'zoom', 'seg'].includes(c.dataset.type)) return;
     const h = e.target.dataset.h;

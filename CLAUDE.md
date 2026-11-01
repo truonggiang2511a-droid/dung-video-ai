@@ -56,6 +56,7 @@ Giang cho phép tự bổ sung/sửa file này khi thấy thiếu/sai so với c
 npm ci && bash build.sh
 python3 -m http.server 8790 --directory site      # mở http://127.0.0.1:8790 (không có /api → chế độ cơ bản)
 URL=https://dung-video-ai.truonggiang2511a.workers.dev/ node test/flow.cjs 390 844   # chạy trên web thật; bỏ URL= để chạy bản cục bộ
+node test/pc.cjs                                   # máy tính 1600×900: mở thẳng timeline, file HEVC báo lỗi rõ, AI dựng, bấm thước để tua
 node test/flow.cjs 390 844                         # kiểm thử luồng chính trên khổ điện thoại (cần playwright + file trong /home/claude/testmedia)
 ```
 Font: `public/fonts/*.woff2` là bản GỘP 3 bộ chữ latin + latin-ext + vietnamese từ @fontsource (gộp bằng fontTools — xem nhật ký 1/11).
@@ -74,6 +75,7 @@ Font: `public/fonts/*.woff2` là bản GỘP 3 bộ chữ latin + latin-ext + vi
 ## 3. Điều Giang đã chốt (đừng làm ngược)
 - 1/11/2026: **Tự vẽ canvas** (giống phần xuất video Vị Trí Studio), KHÔNG dùng Remotion cho app này — Remotion web-renderer bắt buộc Safari 26, iPhone iOS 18 (như máy Giang) không render được.
   Không chặn khách iOS cũ; chỉ hiện thẻ gợi ý cài app lên màn hình chính, iOS < 16.4 mới nhắc cập nhật.
+- 1/11 11:03 (Giang góp ý PC): **mở app là vào thẳng timeline** (dự án gần nhất, chưa có thì tạo mới; nút ô lưới góc trái = danh sách dự án). **KHÔNG có thẻ/nút che giữa khung xem**: nút AI dựng nằm trên thanh trên cùng, tiến độ AI + nhắc duyệt nằm ở thanh trạng thái `#status` giữa khung xem và timeline. Máy tính: timeline bắt đầu từ mép trái, đầu phát chạy theo thời gian, bấm/kéo thước để tua; ô chat AI nằm dưới bảng bên phải. Kéo thả file vào app (video dài nhất = video chính).
 - Mục dự án **chỉ có timeline**: khách thả video chính (A-roll) + cảnh phụ (B-roll) lên timeline; AI cắt/xếp/hậu kỳ A–Z.
 - 3 cách sửa: (1) sửa tay (chữ, font, màu, kiểu, cỡ, icon, vị trí kéo trên khung, chuyển cảnh, cắt/tách/kéo đầu clip), (2) chạm clip → **Nhờ AI sửa**, (3) chat ô dưới cùng.
 - **Chỗ khách đã sửa tay tự khoá** (`locked: true`) — AI không ghi đè trừ khi khách nhờ sửa đúng chỗ đó.
@@ -104,6 +106,8 @@ Font: `public/fonts/*.woff2` là bản GỘP 3 bộ chữ latin + latin-ext + vi
 - 2026-11-01: GitHub MCP KHÔNG tạo được repo (403 "Resource not accessible by integration") → Giang tạo repo trống `dung-video-ai` trên GitHub, rồi thêm repo vào GitHub App **Claude** (github.com/apps/claude → Configure → Repository access) mới đẩy được (trước đó push bị 403). Đã đẩy `main` 1/11 10:50.
 
 - 2026-11-01 10:58: Tạo Worker Cloudflare từ repo (Claude bấm trong trình duyệt của app Claude, Giang tự đăng nhập). Build 59 s OK; `/api/health` → `{"ai":false,"stt":false}` (đúng, AI chưa bật); chạy `test/flow.cjs` trên web thật: cắt 7 khoảng lặng, ghép 2 cảnh, xuất 720p h264+aac trong 23 s.
+
+- 2026-11-01 11:03: Giang tải video iPhone `IMG_8415` trên PC → không hiện hình, timeline không có ảnh (thời lượng vẫn đọc được 1:13) — dấu hiệu video HEVC (H.265) mà trình duyệt không giải mã được hình. Sửa: `ensurePlayable()` (media.js) thử phát bằng thẻ `<video>`; không hiện → nếu WebCodecs giải mã được thì tự đổi sang H.264 bằng Mediabunny `Conversion` ngay trên máy; không thì báo rõ cách xử lý (mở bằng Safari/Edge, hoặc iPhone: Cài đặt → Camera → Định dạng → Tương thích nhất). Kiểm thử: `test/pc.cjs` với file HEVC tạo bằng `ffmpeg -c:v libx265 -tag:v hvc1` (Chromium Linux không có HEVC → ra đúng thông báo).
 
 ## 6. Công nghệ đã cân nhắc
 | Thứ | Kết luận |
