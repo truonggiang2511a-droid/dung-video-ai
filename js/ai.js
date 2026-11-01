@@ -1,5 +1,5 @@
 // AI dựng từ A–Z + sửa theo lời nói. Mọi thay đổi là "op" → con trỏ diễn lại trên timeline rồi mới áp vào dự án.
-import {analyzeAudio, findSilences, wav16} from './media.js';
+import {analyzeAudio, findSilences, levels, wav16} from './media.js';
 import {duration, tlOfSrc, timelineWords, ICONS} from './render.js';
 import {applyOp, describeOp, find, newText, uid} from './model.js';
 import {genreOf, formatOf} from './templates.js';
@@ -16,8 +16,8 @@ export async function aiHealth() {
   }
   return health;
 }
-async function api(path, body, isBlob) {
-  const r = await fetch('api/' + path, {
+async function api(path, body, isBlob, query = '') {
+  const r = await fetch('api/' + path + query, {
     method: 'POST',
     headers: isBlob ? {'content-type': 'audio/wav'} : {'content-type': 'application/json'},
     body: isBlob ? body : JSON.stringify(body),
@@ -204,7 +204,11 @@ export function localCommand(p, text, target) {
   const num = +((t.match(/(\d+([.,]\d+)?)\s*giay/) || [])[1] || '1').replace(',', '.');
 
   if (/phu de/.test(t)) {
-    if (/tat|bo|an /.test(t)) ops.push({op: 'subs', set: {on: false}});
+    if (/hop|khung/.test(t)) ops.push({op: 'subs', set: {on: true, style: 'box'}});
+    else if (/noi bat|karaoke|doi mau/.test(t)) ops.push({op: 'subs', set: {on: true, style: 'karaoke'}});
+    else if (/toi gian|don gian|nhe nhang/.test(t)) ops.push({op: 'subs', set: {on: true, style: 'clean'}});
+    else if (/tung chu|bat chu/.test(t)) ops.push({op: 'subs', set: {on: true, style: 'pop'}});
+    else if (/tat|bo|an /.test(t)) ops.push({op: 'subs', set: {on: false}});
     else if (/to hon|lon hon/.test(t)) ops.push({op: 'subs', set: {on: true, size: Math.min(1.6, (p.subs.size || 1) * 1.15)}});
     else if (/nho hon|nho lai/.test(t)) ops.push({op: 'subs', set: {on: true, size: Math.max(0.7, (p.subs.size || 1) / 1.15)}});
     else if (/len tren/.test(t)) ops.push({op: 'subs', set: {y: Math.max(0.3, (p.subs.y ?? 0.7) - 0.08)}});
@@ -377,6 +381,86 @@ async function animateOne(ed, o, text) {
   applyOp(p, o);
 }
 
+// ---------- Chép lời bằng Whisper (máy chủ) ----------
+// Chia âm thanh 16 kHz thành đoạn ~30 s, cắt tại chỗ nhỏ tiếng nhất (không chặt đôi chữ), gửi lần lượt, cộng bù thời gian.
+const PROMPTS = {
+  bds: 'Xin chào cả nhà, hôm nay mình giới thiệu căn nhà này. Diện tích, giá bán, pháp lý sổ hồng.',
+  banhang: 'Xin chào mọi người, hôm nay mình giới thiệu sản phẩm này. Giá, ưu đãi, công dụng.',
+  amthuc: 'Xin chào mọi người, hôm nay mình đi ăn thử món ngon này. Giá, địa chỉ quán.',
+  kienthuc: 'Xin chào các bạn, hôm nay mình chia sẻ kiến thức hữu ích. Bước một, bước hai.',
+  vlog: 'Xin chào mọi người, hôm nay mình đi chơi và kể cho các bạn nghe.',
+  chung: 'Xin chào mọi người, hôm nay mình chia sẻ với các bạn.',
+};
+export async function transcribeAll(p, an, onProgress) {
+  const SR = 16000;
+  const pcm = an.pcm16;
+  const total = pcm.length / SR;
+  const lv = levels(an);
+  const quietAt = (a, b) => {
+    // giây có mức âm thấp nhất trong [a, b]
+    let best = b;
+    let bd = 999;
+    for (let i = Math.floor(a / an.win); i < Math.min(lv.db.length, Math.ceil(b / an.win)); i++) if (lv.db[i] < bd) (bd = lv.db[i]), (best = i * an.win + an.win / 2);
+    return best;
+  };
+  const cuts = [0];
+  while (total - cuts[cuts.length - 1] > 40) {
+    const t0 = cuts[cuts.length - 1];
+    cuts.push(quietAt(t0 + 22, t0 + 34));
+  }
+  cuts.push(total);
+  const words = [];
+  let prompt = PROMPTS[p.genre] || PROMPTS.chung;
+  for (let k = 0; k < cuts.length - 1; k++) {
+    const a = cuts[k];
+    const b = cuts[k + 1];
+    onProgress?.(k / (cuts.length - 1));
+    const part = pcm.subarray(Math.floor(a * SR), Math.floor(b * SR));
+    let r = null;
+    for (let tryN = 0; tryN < 3 && !r; tryN++) {
+      try {
+        r = await api('transcribe', wav16(part), true, '?prompt=' + encodeURIComponent(prompt));
+      } catch (e) {
+        if (tryN === 2 || /tắt/.test(e.message)) throw e;
+        await new Promise((res) => setTimeout(res, /nhanh/.test(e.message) ? 15000 : 1500));
+      }
+    }
+    for (const w of r.words || []) words.push({w: w.w, s: +(w.s + a).toFixed(3), e: +(w.e + a).toFixed(3)});
+    // ngữ cảnh cho đoạn sau: ~20 chữ cuối
+    const tail = (r.words || []).slice(-20).map((x) => x.w).join(' ');
+    if (tail) prompt = tail;
+  }
+  onProgress?.(1);
+  // bỏ chữ “bịa” rơi vào chỗ không có tiếng (mức âm cả chữ dưới ngưỡng thấp)
+  return words.filter((w) => {
+    const i0 = Math.max(0, Math.floor(w.s / an.win));
+    const i1 = Math.min(lv.db.length, Math.max(i0 + 1, Math.ceil(w.e / an.win)));
+    let mx = -999;
+    for (let i = i0; i < i1; i++) mx = Math.max(mx, lv.db[i]);
+    return mx >= lv.lo;
+  });
+}
+
+// Video ồn (ngoài trời, nhạc nền): đo độ lớn khó tách lời → dùng lời chép tìm thêm khoảng nghỉ ≥ 0,9 s giữa 2 chữ,
+// chỉ cắt khi chỗ đó nhỏ tiếng hơn lời nói rõ rệt (giữ 0,25 s sau chữ trước, 0,15 s trước chữ sau)
+export function wordGapCuts(an, words, have) {
+  const lv = levels(an);
+  const out = [];
+  const med = (a, b) => {
+    const v = lv.db.slice(Math.floor(a / an.win), Math.ceil(b / an.win)).sort((x, y) => x - y);
+    return v.length ? v[Math.floor(v.length / 2)] : 0;
+  };
+  for (let i = 0; i < words.length - 1; i++) {
+    const a = words[i].e + 0.25;
+    const b = words[i + 1].s - 0.15;
+    if (words[i + 1].s - words[i].e < 0.9 || b - a < 0.35) continue;
+    if (have.some((c) => a < c.b && b > c.a)) continue;
+    if (med(a, b) > lv.noise + lv.range * 0.45) continue;
+    out.push({a, b});
+  }
+  return out;
+}
+
 // ---------- AI dựng từ A–Z ----------
 export async function autoEdit(ed, log) {
   const {p} = ed;
@@ -392,32 +476,41 @@ export async function autoEdit(ed, log) {
   } catch (e) {
     log('nghe', 'warn', 'Không phân tích được âm thanh: ' + e.message);
   }
+  // 2. chép lời trước khi cắt (để phụ đề + tìm thêm chỗ nghỉ ở video ồn)
+  let words = null;
+  if (p.transcript?.words?.length) {
+    // Dựng lại: dùng lời đã chép (không tốn lượt chép lời)
+    words = p.transcript.words;
+    log('nghe2', 'ok', `Dùng lời đã chép (${words.length} chữ)`);
+  } else if (h.stt && an) {
+    log('nghe2', 'run', 'Chép lời để làm phụ đề');
+    try {
+      words = await transcribeAll(p, an, (k) => log('nghe2', 'run', `Chép lời… ${Math.round(k * 100)}%`));
+      if (words.length) log('nghe2', 'ok', `Đã chép ${words.length} chữ`);
+      else log('nghe2', 'warn', 'Không nghe rõ lời nói');
+    } catch (e) {
+      log('nghe2', 'warn', 'Chưa chép được lời: ' + e.message);
+    }
+  } else log('nghe2', 'skip', 'Phụ đề: máy chủ chép lời đang tắt');
+
   if (an) {
     src.peaks = an.peaks;
-    const sil = findSilences(an);
+    let sil = findSilences(an);
+    const extra = words?.length > 8 ? wordGapCuts(an, words, sil) : [];
+    sil = [...sil, ...extra].sort((x, y) => x.a - y.a);
     const total = sil.reduce((a, s) => a + Math.min(s.b, src.duration) - s.a, 0);
     log('nghe', 'ok', `Tìm thấy ${sil.length} khoảng lặng (${total.toFixed(1).replace('.', ',')} giây)`);
-    // 2. cắt — diễn từ cuối lên đầu để vị trí phía trước không xê dịch
+    // 3. cắt — diễn từ cuối lên đầu để vị trí phía trước không xê dịch
     log('cat', 'run', 'Cắt khoảng lặng');
     const cuts = sil.map((s) => ({op: 'cut', a: s.a, b: Math.min(s.b, src.duration + 0.5)})).reverse();
     await animateOps(ed, cuts, {fastAfter: 5});
     log('cat', 'ok', `Đã cắt ${sil.length} chỗ · còn ${duration(p).toFixed(1).replace('.', ',')} giây`);
   } else log('cat', 'skip', 'Bỏ qua bước cắt');
-
-  // 3. phiên âm lời nói
-  if (h.stt && an) {
-    log('nghe2', 'run', 'Chép lời người dẫn để làm phụ đề');
-    try {
-      const r = await api('transcribe', wav16(an.pcm16), true);
-      if (r.words?.length) {
-        applyOp(p, {op: 'transcript', value: {words: r.words}});
-        ed.changed(false);
-        log('nghe2', 'ok', `Đã chép ${r.words.length} từ`);
-      } else log('nghe2', 'warn', 'Không nghe rõ lời nói');
-    } catch (e) {
-      log('nghe2', 'warn', 'Chưa chép được lời: ' + e.message);
-    }
-  } else log('nghe2', 'skip', 'Phụ đề: cần bật AI máy chủ (chưa bật)');
+  if (words?.length && words !== p.transcript?.words) {
+    applyOp(p, {op: 'transcript', value: {words}});
+    if (p.subs) p.subs.on = true;
+    ed.changed(false);
+  }
 
   // 4. lên kế hoạch dựng
   log('ke', 'run', 'Lên kịch bản dựng: cảnh phụ, chữ, hiệu ứng');

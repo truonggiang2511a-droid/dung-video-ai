@@ -152,12 +152,19 @@ export function subLines(p) {
     lines.push({ws: cur, s: cur[0].s, e: cur[cur.length - 1].e + 0.15});
     cur = [];
   };
-  for (const w of ws) {
+  const UNIT = /^(tỷ|tỉ|triệu|tr|nghìn|ngàn|k|đồng|đ|%|m2|m²|mét|phần|năm|tháng|ngày|giờ|phút|bước|mẹo|cách)[.,!?…]*$/i;
+  for (let i = 0; i < ws.length; i++) {
+    const w = ws[i];
     const text = cur.map((x) => x.w).join(' ');
     const gap = cur.length ? w.s - cur[cur.length - 1].e : 0;
-    if (cur.length >= 3 || (cur.length && (text + ' ' + w.w).length > 16) || gap > 0.6) flush();
+    const prevNum = cur.length && /\d[.,]?$/.test(cur[cur.length - 1].w);
+    // không tách con số khỏi đơn vị (“3,8 | tỷ”): cho dòng dài thêm 1 chữ
+    const glue = prevNum && UNIT.test(w.w) && gap < 0.6;
+    if (!glue && (cur.length >= 3 || (cur.length && (text + ' ' + w.w).length > 16) || gap > 0.6)) flush();
+    // dòng sắp đầy mà chữ tiếp theo là số kèm đơn vị → sang dòng mới luôn cho số đứng cùng đơn vị
+    else if (!glue && cur.length >= 2 && /\d/.test(w.w) && UNIT.test(ws[i + 1]?.w || '') && (text + ' ' + w.w + ' ' + ws[i + 1].w).length > 18) flush();
     cur.push(w);
-    if (/[.,!?…]$/.test(w.w)) flush();
+    if (/[.,!?…]$/.test(w.w) && !/\d[.,]$/.test(w.w)) flush();
   }
   flush();
   for (let i = 0; i < lines.length - 1; i++) lines[i].e = Math.min(lines[i].e, lines[i + 1].s);
@@ -353,48 +360,109 @@ function drawLockup(ctx, it, t, boxes) {
 }
 
 // ---------- Phụ đề bật từng từ ----------
+// Kiểu phụ đề (giống ứng dụng dựng phổ biến): Nổi bật = chữ đang nói đổi màu + nảy; Hộp màu = hộp màu sau chữ đang nói;
+// Bật từng chữ = chữ hiện dần theo lời; Tối giản = cả dòng trên dải tối mờ
+export const SUB_STYLES = {
+  karaoke: {label: 'Nổi bật', upper: true, size: 96},
+  box: {label: 'Hộp màu', upper: true, size: 92},
+  pop: {label: 'Bật từng chữ', upper: false, size: 92},
+  clean: {label: 'Tối giản', upper: false, size: 66},
+};
+const isNum = (w) => /\d/.test(w);
+function lightColor(hex) {
+  const n = parseInt(String(hex || '#ffffff').slice(1), 16);
+  return ((n >> 16) & 255) * 0.299 + ((n >> 8) & 255) * 0.587 + (n & 255) * 0.114 > 150;
+}
 function drawSubs(ctx, p, T, low) {
   const lines = subLines(p);
   const line = lines.find((l) => T >= l.s && T < l.e);
   if (!line) return;
   const st = p.subs || {};
-  const size = 92 * (st.size || 1);
+  const style = SUB_STYLES[st.style] ? st.style : 'karaoke';
+  const cfg = SUB_STYLES[style];
+  const base = st.color || '#ffffff';
+  const hl = st.hl || '#ffd21f';
+  const size = cfg.size * (st.size || 1);
   const y = (low ? 0.8 : st.y ?? 0.7) * H;
+  const txt = (w) => (cfg.upper ? w.toLocaleUpperCase('vi') : w);
+  // dòng vào: nảy nhẹ + hiện dần; dòng ra: mờ dần
+  const inP = clamp((T - line.s) / 0.14);
+  const outP = clamp((line.e - T) / 0.1);
+  const lineScale = 0.9 + 0.1 * easeOut(inP);
   ctx.save();
-  ctx.font = `800 ${Math.round(size)}px BVP, sans-serif`;
+  ctx.globalAlpha = Math.min(1, inP * 1.6) * outP;
   ctx.textBaseline = 'middle';
-  ctx.textAlign = 'left';
-  const gap = size * 0.24;
-  const widths = line.ws.map((w) => ctx.measureText(w.w).width);
-  let total = widths.reduce((a, b) => a + b, 0) + gap * (widths.length - 1);
-  let k = 1;
-  if (total > W * 0.92) {
-    k = (W * 0.92) / total;
-    total *= k;
+  ctx.lineJoin = 'round';
+
+  if (style === 'clean') {
+    const text = line.ws.map((w) => w.w).join(' ');
+    ctx.font = `700 ${Math.round(size)}px BVP, sans-serif`;
+    let tw = ctx.measureText(text).width;
+    const k = Math.min(1, (W * 0.86) / tw);
+    tw *= k;
+    const bh = size * 1.45 * k;
+    ctx.fillStyle = 'rgba(8,10,14,0.55)';
+    roundRect(ctx, (W - tw) / 2 - size * 0.45, y - bh / 2, tw + size * 0.9, bh, bh * 0.28);
+    ctx.fill();
+    ctx.translate(W / 2, y);
+    ctx.scale(k, k);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = base;
+    ctx.fillText(text, 0, 2);
+    ctx.restore();
+    return;
   }
-  let x = (W - total) / 2;
-  line.ws.forEach((w, i) => {
+
+  ctx.font = `800 ${Math.round(size)}px BVP, sans-serif`;
+  ctx.textAlign = 'center';
+  const gap = size * (style === 'box' ? 0.46 : 0.28);
+  const words = line.ws.map((w) => ({...w, t: txt(w.w)}));
+  const widths = words.map((w) => ctx.measureText(w.t).width);
+  let total = widths.reduce((a, b) => a + b, 0) + gap * (widths.length - 1);
+  const k = Math.min(1, (W * 0.92) / total) * lineScale;
+  total *= k / lineScale;
+  // chữ đang nói = chữ cuối cùng đã bắt đầu
+  let act = -1;
+  words.forEach((w, i) => T >= w.s && (act = i));
+  let x = (W - total * lineScale) / 2;
+  words.forEach((w, i) => {
     const ww = widths[i] * k;
-    if (T >= w.s) {
-      const pp = clamp((T - w.s) / 0.12);
-      const pop = 0.6 + 0.4 * (1 - Math.pow(1 - pp, 3)) + Math.sin(pp * Math.PI) * 0.08;
-      ctx.save();
-      ctx.translate(x + ww / 2, y + (1 - pp) * 18);
-      ctx.scale(pop * k, pop * k);
-      ctx.globalAlpha = Math.min(1, pp * 1.4);
-      ctx.lineJoin = 'round';
-      ctx.lineWidth = size * 0.12;
-      ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-      ctx.textAlign = 'center';
-      ctx.strokeText(w.w, 0, 0);
-      ctx.shadowColor = 'rgba(0,0,0,0.5)';
-      ctx.shadowBlur = 16;
-      ctx.shadowOffsetY = 4;
-      ctx.fillStyle = st.color || '#ffffff';
-      ctx.fillText(w.w, 0, 0);
-      ctx.restore();
-    }
+    const cx = x + ww / 2;
     x += ww + gap * k;
+    const started = T >= w.s;
+    if (style === 'pop' && !started) return;
+    const pp = started ? clamp((T - w.s) / 0.14) : 0;
+    const bounce = i === act ? 1 + 0.14 * Math.sin(Math.min(1, pp) * Math.PI) * (1 - pp * 0.3) + 0.04 : 1;
+    ctx.save();
+    ctx.translate(cx, y + (style === 'pop' ? (1 - pp) * 18 : 0));
+    let sc = k * (style === 'pop' ? 0.6 + 0.4 * easeOut(pp) + Math.sin(pp * Math.PI) * 0.08 : bounce);
+    ctx.scale(sc, sc);
+    if (style === 'pop') ctx.globalAlpha *= Math.min(1, pp * 1.4);
+    let fill = base;
+    if (style === 'box' && i === act) {
+      // hộp màu bo góc sau chữ đang nói
+      const bw = widths[i] + size * 0.36;
+      const bh = size * 1.18;
+      ctx.fillStyle = hl;
+      ctx.shadowColor = 'rgba(0,0,0,0.35)';
+      ctx.shadowBlur = 14;
+      roundRect(ctx, -bw / 2, -bh / 2, bw, bh, size * 0.2);
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+      fill = lightColor(hl) ? '#111111' : '#ffffff';
+    } else {
+      if (style === 'karaoke' && i === act) fill = hl;
+      else if (isNum(w.w) && style !== 'box') fill = hl;
+      ctx.lineWidth = size * 0.16;
+      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+      ctx.strokeText(w.t, 0, 0);
+      ctx.shadowColor = 'rgba(0,0,0,0.45)';
+      ctx.shadowBlur = 14;
+      ctx.shadowOffsetY = 5;
+    }
+    ctx.fillStyle = fill;
+    ctx.fillText(w.t, 0, 2);
+    ctx.restore();
   });
   ctx.restore();
 }

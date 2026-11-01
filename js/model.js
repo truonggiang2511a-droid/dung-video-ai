@@ -22,7 +22,7 @@ export function newProject(name, opt = {}) {
     broll: [],
     texts: [],
     zooms: [],
-    subs: {on: true, y: 0.7, size: 1, color: '#ffffff'},
+    subs: {on: true, y: 0.7, size: 1, color: '#ffffff', style: 'karaoke', hl: '#ffd21f'},
     cta: {on: true, text: GENRES[genre].cta, len: 4},
     music: null, // {src, vol}
     transcript: null, // {words:[{w,s,e}]} theo giây nguồn
@@ -152,7 +152,7 @@ export function describeOp(p, o) {
     case 'remove':
       return 'Xoá';
     case 'subs':
-      return o.set.on === false ? 'Tắt phụ đề' : 'Bật phụ đề';
+      return o.set.on === false ? 'Tắt phụ đề' : o.set.style ? 'Đổi kiểu phụ đề' : 'Bật phụ đề';
     case 'music':
       return o.set ? 'Chỉnh nhạc nền' : 'Bỏ nhạc nền';
     case 'cta':

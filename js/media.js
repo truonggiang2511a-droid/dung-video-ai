@@ -237,6 +237,17 @@ export function voiceFilter(sr) {
   return (x) => lp(hp(x));
 }
 
+// Mức âm (dB) của video: ồn nền, lời nói, 2 ngưỡng VAD — dùng chung cho cắt khoảng lặng & lọc lời chép
+export function levels(an, {hiK = [3.5, 8, 0.2], loK = [2, 4, 0.08]} = {}) {
+  const db = an.rms.map((x) => 20 * Math.log10(x + 1e-7));
+  const sorted = [...db].sort((a, b) => a - b);
+  const q = (x) => sorted[Math.floor((sorted.length - 1) * x)] ?? -100;
+  const noise = q(0.1);
+  const speech = q(0.92);
+  const range = speech - noise;
+  return {db, noise, speech, range, hi: noise + Math.max(hiK[0], Math.min(hiK[1], range * hiK[2])), lo: noise + Math.max(loK[0], Math.min(loK[1], range * loK[2]))};
+}
+
 // Tìm các khoảng lặng cần cắt (giây nguồn) — kiểu VAD 2 ngưỡng:
 //  - đo theo dB so với tiếng ồn nền của CHÍNH video này (yên tĩnh hay ngoài trời đều đúng)
 //  - ngưỡng cao để nhận chắc chắn có lời, ngưỡng thấp để nới hai đầu lời (âm đầu nhẹ, cuối câu xuống giọng không bị mất)
@@ -245,15 +256,7 @@ export function findSilences(an, {min = 0.35, pre = 0.1, post = 0.15, hiK = [3.5
   const {rms, win} = an;
   const N = rms.length;
   if (!N) return [];
-  const db = rms.map((x) => 20 * Math.log10(x + 1e-7));
-  const sorted = [...db].sort((a, b) => a - b);
-  const q = (x) => sorted[Math.floor((N - 1) * x)];
-  const noise = q(0.1);
-  const speech = q(0.92);
-  const range = speech - noise;
-  // video gần như không có chỗ nghỉ rõ (ồn lớn / nhạc nền to) → chỉ cắt đầu/cuối thật sự im
-  const hi = noise + Math.max(hiK[0], Math.min(hiK[1], range * hiK[2]));
-  const lo = noise + Math.max(loK[0], Math.min(loK[1], range * loK[2]));
+  const {db, hi, lo} = levels(an, {hiK, loK});
   // 1) vùng chắc chắn có lời: vượt ngưỡng cao; lan ra hai bên khi còn trên ngưỡng thấp
   const sp = new Uint8Array(N);
   for (let i = 0; i < N; i++) if (db[i] >= hi) sp[i] = 1;

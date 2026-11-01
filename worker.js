@@ -2,7 +2,10 @@
 //  POST /api/transcribe  (audio/wav 16 kHz mono) → Workers AI Whisper → {words:[{w,s,e}]}
 //  POST /api/ai          ({mode:'plan'|'edit', ...}) → Claude → {note|reply, ops:[...]}
 //  GET  /api/health      → {ai, stt}
-// AI chỉ chạy khi AI_OPEN = "on" (đặt trong Cloudflare → Settings → Variables). Chưa có tài khoản/lượt dùng thì để tắt.
+// Claude (/api/ai) chỉ chạy khi AI_OPEN = "on" (Cloudflare → Settings → Variables). Chưa có tài khoản/lượt dùng thì để tắt.
+// Chép lời (/api/transcribe, Whisper ~0,0005 USD/phút, 10.000 neuron/ngày miễn phí ≈ 214 phút) BẬT sẵn từ 1/11;
+// tắt khẩn cấp: đặt biến STT_OFF = "on" trong Cloudflare (wrangler.toml có keep_vars nên deploy không xoá).
+// Giới hạn: STT_LIMIT (ratelimits, theo IP) + mỗi lần gửi ≤ ~75 giây âm thanh (máy khách tự chia đoạn ~30 giây).
 
 const json = (o, s = 200) => new Response(JSON.stringify(o), {status: s, headers: {'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store'}});
 
@@ -10,11 +13,16 @@ export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     const open = env.AI_OPEN === 'on';
+    const stt = env.STT_OFF !== 'on' && !!env.AI;
     try {
-      if (url.pathname === '/api/health') return json({ai: open && !!(env.ANTHROPIC_API_KEY || env.GEMINI_API_KEY), stt: open && !!env.AI});
+      if (url.pathname === '/api/health') return json({ai: open && !!(env.ANTHROPIC_API_KEY || env.GEMINI_API_KEY), stt});
       if (url.pathname === '/api/transcribe' && req.method === 'POST') {
-        if (!open || !env.AI) return json({error: 'AI chưa bật'}, 503);
-        return json(await transcribe(req, env));
+        if (!stt) return json({error: 'Chép lời đang tắt'}, 503);
+        if (env.STT_LIMIT) {
+          const {success} = await env.STT_LIMIT.limit({key: req.headers.get('cf-connecting-ip') || 'x'});
+          if (!success) return json({error: 'Gửi quá nhanh — thử lại sau 1 phút'}, 429);
+        }
+        return json(await transcribe(req, env, url));
       }
       if (url.pathname === '/api/ai' && req.method === 'POST') {
         if (!open) return json({error: 'AI chưa bật'}, 503);
@@ -29,24 +37,42 @@ export default {
 };
 
 // ---------- Phiên âm ----------
-async function transcribe(req, env) {
+// Câu Whisper hay "bịa" ở đoạn im lặng / nhạc (tiếng Việt)
+const HALLU = /(subscribe|đăng ký kênh|ghiền mì gõ|like và share|bấm chuông|cảm ơn các bạn đã (theo dõi|xem)|hẹn gặp lại các bạn trong (những|các) video|vietsub|phụ đề (bởi|được))/i;
+async function transcribe(req, env, url) {
   const buf = await req.arrayBuffer();
-  if (buf.byteLength > 24 * 1024 * 1024) throw new Error('Âm thanh quá dài (tối đa ~12 phút)');
+  if (buf.byteLength > 2.6 * 1024 * 1024) throw new Error('Đoạn âm thanh quá dài (tối đa ~75 giây mỗi lần)');
   const bytes = new Uint8Array(buf);
   let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  const r = await env.AI.run('@cf/openai/whisper-large-v3-turbo', {audio: btoa(bin), language: 'vi', vad_filter: true});
+  const input = {audio: btoa(bin), task: 'transcribe', language: 'vi', vad_filter: true};
+  const prompt = (url.searchParams.get('prompt') || '').slice(0, 200).trim();
+  if (prompt) input.initial_prompt = prompt;
+  let r;
+  try {
+    r = await env.AI.run('@cf/openai/whisper-large-v3-turbo', input);
+  } catch (e) {
+    // phòng khi tham số tuỳ chọn bị từ chối: thử lại tối giản
+    r = await env.AI.run('@cf/openai/whisper-large-v3-turbo', {audio: input.audio, language: 'vi'});
+  }
   const words = [];
+  let dropped = 0;
   for (const seg of r.segments || []) {
+    const text = String(seg.text || '').trim();
+    const nsp = +seg.no_speech_prob || 0;
+    if (nsp > 0.75 || (HALLU.test(text) && (nsp > 0.15 || (+seg.avg_logprob || 0) < -0.5))) {
+      dropped++;
+      continue;
+    }
     if (seg.words?.length) for (const w of seg.words) words.push({w: String(w.word).trim(), s: +w.start, e: +w.end});
-    else if (seg.text) {
-      const ts = seg.text.trim().split(/\s+/);
+    else if (text) {
+      const ts = text.split(/\s+/);
       const d = (seg.end - seg.start) / Math.max(1, ts.length);
       ts.forEach((t, i) => words.push({w: t, s: seg.start + i * d, e: seg.start + (i + 1) * d}));
     }
   }
-  if (!words.length && r.words) for (const w of r.words) words.push({w: String(w.word).trim(), s: +w.start, e: +w.end});
-  return {words: words.filter((w) => w.w), text: r.text || ''};
+  if (!words.length && !(r.segments || []).length && r.words) for (const w of r.words) words.push({w: String(w.word).trim(), s: +w.start, e: +w.end});
+  return {words: words.filter((w) => w.w && isFinite(w.s) && isFinite(w.e)), text: r.text || '', dropped, info: r.transcription_info || null};
 }
 
 // ---------- Claude dựng / sửa ----------
@@ -76,7 +102,7 @@ Các op được phép:
 - {"op":"add","list":"broll","item":{"src","start","dur","in","trans"}} src = id nguồn kind "broll"; dur 2–4 s; in = giây bắt đầu lấy trong nguồn; trans: fade|zoom|slide|none.
 - {"op":"add","list":"zooms","item":{"start","dur","scale"}} zoom đẩy máy lúc nhấn ý, scale 1.05–1.12, dur 2–3 s.
 - {"op":"update","id","set":{...}} / {"op":"remove","id"} — với texts, broll, zooms đã có.
-- {"op":"subs","set":{"on","size","y","color"}} · {"op":"cta","set":{"on","text"}} (câu kết mặc định: "${g.cta || 'THEO DÕI ĐỂ XEM THÊM'}") · {"op":"music","set":{"vol"}}
+- {"op":"subs","set":{"on","size","y","color","style","hl"}} (style: karaoke = chữ đang nói đổi màu | box = hộp màu | pop = bật từng chữ | clean = tối giản; hl = màu nhấn hex) · {"op":"cta","set":{"on","text"}} (câu kết mặc định: "${g.cta || 'THEO DÕI ĐỂ XEM THÊM'}") · {"op":"music","set":{"vol"}}
 
 LUẬT BẮT BUỘC:
 1. KHÔNG bịa số liệu. Số/giá trên hình phải đúng lời người nói trong words. Không viết "rẻ nhất", "tốt nhất" nếu người nói không nói. Không đưa số điện thoại lên hình.

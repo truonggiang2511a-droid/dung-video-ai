@@ -308,3 +308,13 @@ kbd{display:inline-block;min-width:18px;padding:0 5px;margin:0 1px;border:1px so
 .chip-set{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 11px;border-radius:16px;border:1px solid var(--line2);background:var(--card);color:var(--tx2);font:600 12px/1 inherit;cursor:pointer;margin-right:4px;max-width:46vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chip-set:hover{color:var(--tx);border-color:var(--mu)}
 @media (min-width:900px){.chip-set{display:none}}
+/* kiểu phụ đề */
+.substyles{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.sst{display:flex;flex-direction:column;align-items:center;gap:5px;padding:9px 4px 7px;border-radius:10px;border:1px solid var(--line2);background:#0b0d11;color:var(--tx2);font:inherit;cursor:pointer;min-width:0}
+.sst i{font-style:normal;font-weight:800;font-size:12px;color:#fff;white-space:nowrap;text-shadow:0 0 2px #000,0 0 2px #000}
+.sst u{text-decoration:none;color:#ffd21f}
+.sst-box u{color:#111;background:#ffd21f;border-radius:3px;padding:0 3px;text-shadow:none}
+.sst-clean i{font-weight:600;background:rgba(255,255,255,.12);border-radius:4px;padding:1px 5px}
+.sst-pop u{color:#fff;opacity:.45}
+.sst small{font-size:11px}
+.sst.on{border-color:var(--acc);color:var(--acc)}

@@ -1,5 +1,5 @@
 // Điều khiển giao diện: màn Dự án + màn Editor (khung xem nhanh, timeline, sửa tay, AI).
-import {loadFonts, duration, COLORS, ICONS, FONTS, W, H} from './render.js';
+import {loadFonts, duration, COLORS, ICONS, FONTS, W, H, SUB_STYLES} from './render.js';
 import {store} from './store.js';
 import {newProject, applyOp, History, find, newText, uid} from './model.js';
 import {importFile, probeVideo, ensurePlayable, thumbs} from './media.js';
@@ -483,12 +483,15 @@ function renderInspector() {
 }
 function subsPanel() {
   const st = ed.p.subs;
+  const style = SUB_STYLES[st.style] ? st.style : 'karaoke';
   return `<h4>Phụ đề</h4>
     <label class="fl tog"><input type="checkbox" data-subs="on" ${st.on ? 'checked' : ''}> Hiện phụ đề</label>
-    ${ed.p.transcript ? '' : '<p class="hint">Phụ đề có sau khi AI chép lời (cần bật AI máy chủ).</p>'}
+    ${ed.p.transcript ? '' : '<p class="hint">Phụ đề có sau khi bấm <b>AI dựng</b> (AI nghe và chép lời).</p>'}
+    <div class="fl"><span>Kiểu phụ đề</span><div class="substyles">${Object.entries(SUB_STYLES).map(([k, v]) => `<button class="sst sst-${k}${style === k ? ' on' : ''}" data-subs-style="${k}"><i>${k === 'clean' ? 'Xin chào' : k === 'pop' ? 'Xin <u>chào</u>' : 'XIN <u>CHÀO</u>'}</i><small>${v.label}</small></button>`).join('')}</div></div>
+    ${style !== 'clean' && style !== 'pop' ? `<div class="fl"><span>Màu nhấn (chữ đang nói, con số)</span><div class="swatches">${['#ffd21f', '#2ad46a', '#5fd3ff', '#ff5fb8', '#ff7a1a', '#ffffff'].map((c) => `<button class="sw${(st.hl || '#ffd21f') === c ? ' on' : ''}" data-subs-hl="${c}" style="background:${c}" aria-label="Màu nhấn ${c}"></button>`).join('')}</div></div>` : ''}
     <label class="fl">Cỡ chữ <output>${Math.round((st.size || 1) * 100)}%</output><input type="range" min="0.6" max="1.6" step="0.05" value="${st.size || 1}" data-subs="size"></label>
     <label class="fl">Vị trí (cao ↔ thấp)<input type="range" min="0.3" max="0.9" step="0.01" value="${st.y ?? 0.7}" data-subs="y"></label>
-    <div class="fl"><span>Màu</span><div class="swatches">${['#ffffff', '#ffc61a', '#2ad46a', '#5fd3ff'].map((c) => `<button class="sw${st.color === c ? ' on' : ''}" data-subs-color="${c}" style="background:${c}" aria-label="Màu ${c}"></button>`).join('')}</div></div>`;
+    <div class="fl"><span>Màu chữ</span><div class="swatches">${['#ffffff', '#ffc61a', '#2ad46a', '#5fd3ff'].map((c) => `<button class="sw${(st.color || '#ffffff') === c ? ' on' : ''}" data-subs-color="${c}" style="background:${c}" aria-label="Màu ${c}"></button>`).join('')}</div></div>`;
 }
 
 // ---------- bảng sửa: sự kiện ----------
@@ -538,10 +541,18 @@ function bindInspector() {
     if (g) return setGenre(g.dataset.genre);
     const fm = e.target.closest('[data-format]');
     if (fm) return setFormatOf(fm.dataset.format);
-    const b = e.target.closest('[data-set],[data-subs-color]');
+    const b = e.target.closest('[data-set],[data-subs-color],[data-subs-style],[data-subs-hl]');
     if (!b) return;
     if (b.dataset.subsColor) {
       manual(() => (ed.p.subs.color = b.dataset.subsColor), {lock: false});
+      return;
+    }
+    if (b.dataset.subsStyle) {
+      manual(() => Object.assign(ed.p.subs, {style: b.dataset.subsStyle, on: true}), {lock: false});
+      return;
+    }
+    if (b.dataset.subsHl) {
+      manual(() => (ed.p.subs.hl = b.dataset.subsHl), {lock: false});
       return;
     }
     const k = b.dataset.set;
@@ -669,8 +680,8 @@ function openSheet(on) {
 // ---------- AI dựng từ A–Z ----------
 const STEPS = [
   ['nghe', 'Nghe video'],
-  ['cat', 'Cắt khoảng lặng'],
   ['nghe2', 'Chép lời làm phụ đề'],
+  ['cat', 'Cắt khoảng lặng'],
   ['ke', 'Lên kịch bản dựng'],
   ['dung', 'Ghép cảnh, chữ, hiệu ứng'],
 ];

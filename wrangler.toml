@@ -1,6 +1,8 @@
 name = "dung-video-ai"
 main = "worker.js"
 compatibility_date = "2026-10-01"
+# giữ biến đặt trong bảng Cloudflare (AI_OPEN, STT_OFF…) khi deploy
+keep_vars = true
 
 [assets]
 directory = "./site"
@@ -9,3 +11,12 @@ run_worker_first = ["/api/*"]
 
 [ai]
 binding = "AI"
+
+# Giới hạn chép lời theo IP (mỗi điểm Cloudflare, gần đúng): 30 đoạn ~30 s / phút. namespace riêng, KHÔNG dùng chung số với Vị Trí Studio
+[[ratelimits]]
+name = "STT_LIMIT"
+namespace_id = "2611011"
+
+  [ratelimits.simple]
+  limit = 30
+  period = 60
