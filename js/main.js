@@ -1,5 +1,5 @@
 // Điều khiển giao diện: màn Dự án + màn Editor (khung xem nhanh, timeline, sửa tay, AI).
-import {loadFonts, duration, COLORS, ICONS, FONTS, W, H, SUB_STYLES, TEXT_STYLES, TEXT_MOTIONS, TEXT_PRESETS, tlOfSrc, srcAt, drawFrame, setFormat} from './render.js';
+import {loadFonts, duration, COLORS, ICONS, FONTS, W, H, SUB_STYLES, TEXT_STYLES, TEXT_MOTIONS, TEXT_PRESETS, TRANSITIONS, FILTERS, applyLook, tlOfSrc, srcAt, drawFrame, setFormat} from './render.js';
 import {store} from './store.js';
 import {newProject, applyOp, History, find, newText, uid, ITEM_TYPES} from './model.js';
 import {SFX, SFX_MAP, playSfx} from './sfx.js';
@@ -427,12 +427,7 @@ function renderSelBar() {
     ${['text', 'broll', 'zoom', 'seg', 'music', 'sticker', 'sfx'].includes(s.type) ? `<button class="sb" data-act="del">${icon(I.trash, 17)}<span>Xoá</span></button>` : ''}`;
 }
 
-const TRANS = [
-  ['fade', 'Mờ dần'],
-  ['zoom', 'Phóng to'],
-  ['slide', 'Trượt'],
-  ['none', 'Cắt thẳng'],
-];
+const TRANS = TRANSITIONS;
 
 function renderInspector() {
   const box = $('#insp');
@@ -460,7 +455,7 @@ function renderInspector() {
     h = `<h4>Cảnh phụ · ${esc(src?.name)}</h4>
       <div class="fl"><span>Cảnh này là</span><button class="mtag${src?.tag ? '' : ' none'}" data-tagsrc="${src?.id}">${src?.tag ? `${esc(src.tag)}${src.tagBy === 'ai' ? ' · AI đoán' : ''}` : 'Đặt nhãn cảnh'}</button></div>
       ${it.locked ? `<p class="lockn">${icon(I.lock, 15)} Bạn đã sửa tay — AI sẽ không ghi đè chỗ này.</p>` : ''}
-      <div class="fl"><span>Chuyển cảnh</span><div class="seg">${TRANS.map(([k, l]) => `<button class="${(it.trans || 'fade') === k ? 'on' : ''}" data-set="trans" data-v="${k}">${l}</button>`).join('')}</div></div>
+      <div class="fl"><span>Chuyển cảnh</span><div class="chips">${TRANS.map(([k, l]) => `<button class="chip-b${(it.trans || 'fade') === k ? ' on' : ''}" data-set="trans" data-v="${k}">${l}</button>`).join('')}</div></div>
       <label class="fl">Lấy đoạn nào của cảnh <output>${it.in.toFixed(1).replace('.', ',')} s</output><input type="range" min="0" max="${Math.max(0, (src?.duration || 0) - it.dur).toFixed(2)}" step="0.1" value="${it.in}" data-num="in"></label>
       <div class="fl"><span>Đổi sang cảnh khác</span><div class="chips">${others.map((o) => `<button class="chip-b${o.id === it.src ? ' on' : ''}" data-set="src" data-v="${o.id}">${esc(o.name)}</button>`).join('')}</div></div>
       <p class="hint">Kéo clip trên timeline để dời, kéo hai đầu để dài/ngắn.</p>`;
@@ -1009,6 +1004,7 @@ const LIB_TABS = [
   ['emoji', 'Hình'],
   ['icon', 'Icon'],
   ['sfx', 'Âm thanh'],
+  ['fx', 'Hiệu ứng'],
 ];
 function renderMedia() {
   const box = $('#media');
@@ -1027,6 +1023,18 @@ function renderMedia() {
     box.innerHTML = `${head}<p class="hint" style="margin:2px 0 10px">Bấm để chèn tại đầu phát, rồi sửa chữ ở bảng Chỉnh sửa. ${TEXT_STYLES.length} kiểu chữ × ${TEXT_MOTIONS.length} chuyển động × ${Object.keys(FONTS).length} font.</p>
       <div class="tp-grid">${TEXT_PRESETS.map((pr, i) => `<button class="tp-it" data-preset="${i}"><canvas width="240" height="132" data-tp="${i}"></canvas><small>${esc(pr.name)}</small></button>`).join('')}</div>`;
     drawPresetThumbs();
+    return;
+  }
+  if (tab === 'fx') {
+    const lk = p.look || {};
+    const sl = (k, l) => `<label class="fl">${l} <output>${Math.round((lk[k] || 0) * 100)}%</output><input type="range" min="0" max="1" step="0.05" value="${lk[k] || 0}" data-look="${k}"></label>`;
+    box.innerHTML = `${head}<h5>Màu video</h5><div class="fx-grid">${FILTERS.map(([k, l]) => `<button class="fx-it${(lk.filter || 'none') === k ? ' on' : ''}" data-lookf="${k}"><canvas width="96" height="${Math.round((96 * H) / W)}" data-fxp="${k}"></canvas><small>${l}</small></button>`).join('')}</div>
+      ${sl('amt', 'Độ mạnh màu')}
+      <h5>Lớp phủ</h5>${sl('vignette', 'Tối 4 góc')}${sl('grain', 'Hạt phim')}${sl('leak', 'Loé sáng trôi')}
+      <label class="fl tog"><input type="checkbox" data-look="bars" ${lk.bars ? 'checked' : ''}> Viền điện ảnh (2 dải đen)</label>
+      <h5>Chuyển cảnh cho mọi cảnh phụ</h5><div class="chips">${TRANSITIONS.map(([k, l]) => `<button class="chip-b" data-alltrans="${k}">${l}</button>`).join('')}<button class="chip-b" data-alltrans="mix">Đa dạng</button></div>
+      <p class="hint">${lk.by === 'ai' ? 'Màu hiện tại do AI chọn theo thể loại — bạn chỉnh thì AI không đổi nữa.' : 'Màu áp cho cả video chính và cảnh phụ, chữ giữ nguyên màu.'}</p>`;
+    drawFxThumbs();
     return;
   }
   if (tab === 'sfx') {
@@ -1065,6 +1073,23 @@ async function fillLib() {
   grid.innerHTML = list.length
     ? list.map((x) => `<button class="lib-it" data-libadd="${x.key}" data-label="${esc(x.label)}" title="${esc(x.label)}"><img src="lib/${dir}/${x.key}.svg" alt="${esc(x.label)}" loading="lazy" width="48" height="48"></button>`).join('')
     : '<p class="hint">Không tìm thấy — thử từ khác (vd: “nhà”, “tiền”, “tim”).</p>';
+}
+// ảnh xem trước màu video: chụp khung đang xem rồi áp từng màu
+function drawFxThumbs() {
+  if (!ed.player?.p) return;
+  // vẽ khung đang xem KHÔNG kèm màu/chữ hiện tại (để so các màu cho công bằng)
+  const fr = ed.player.frames();
+  const bare = {...ed.p, look: null, texts: [], stickers: [], subs: {on: false}, cta: {on: false}};
+  for (const c of $$('canvas[data-fxp]')) {
+    const g = c.getContext('2d');
+    g.setTransform(c.width / W, 0, 0, c.height / H, 0, 0);
+    drawFrame(g, bare, ed.player.T, fr, {placeholder: true});
+    applyLook(g, {filter: c.dataset.fxp, amt: Math.max(0.5, ed.p.look?.amt ?? 0.6)}, ed.player.T);
+  }
+}
+function setLook(set) {
+  const p = ed.p;
+  manual(() => (p.look = {...(p.look || {}), ...set, by: 'user'}), {lock: false});
 }
 // ảnh xem trước mẫu chữ: vẽ bằng chính bộ dựng khung hình (giống hệt trên video)
 function drawPresetThumbs() {
@@ -1593,6 +1618,14 @@ async function boot() {
     if (as) insertSfx(as.dataset.addsfx);
     const tp = e.target.closest('[data-preset]');
     if (tp) insertPreset(+tp.dataset.preset);
+    const lf = e.target.closest('[data-lookf]');
+    if (lf) setLook({filter: lf.dataset.lookf});
+    const at = e.target.closest('[data-alltrans]');
+    if (at && ed.p.broll.length) {
+      const all = TRANSITIONS.filter(([k]) => k !== 'none' && k !== 'fade').map(([k]) => k);
+      manual(() => ed.p.broll.forEach((b, i) => (b.trans = at.dataset.alltrans === 'mix' ? all[i % all.length] : at.dataset.alltrans)), {lock: false});
+      toast(`Đã đổi chuyển cảnh cho ${ed.p.broll.length} cảnh phụ`);
+    }
     const chip = e.target.closest('[data-tagchip]');
     if (chip && $('#tagIn')) $('#tagIn').value = chip.dataset.tagchip;
     const tool = e.target.closest('[data-tool]');
@@ -1600,7 +1633,24 @@ async function boot() {
   });
   // tìm trong kho hình / icon (gõ tới đâu lọc tới đó)
   let libT = null;
+  let lookPushed = false;
+  document.addEventListener('change', (e) => {
+    if (e.target.dataset?.look) lookPushed = false;
+  });
   document.addEventListener('input', (e) => {
+    const lk = e.target.dataset?.look;
+    if (lk) {
+      const p = ed.p;
+      if (!lookPushed) ed.history.push(p), (lookPushed = true);
+      p.look = {...(p.look || {}), [lk]: e.target.type === 'checkbox' ? e.target.checked : +e.target.value, by: 'user'};
+      const o = e.target.closest('label')?.querySelector('output');
+      if (o) o.textContent = Math.round(+e.target.value * 100) + '%';
+      p._rev++;
+      ed.player.dirty = true;
+      queueSave();
+      if (lk === 'amt') drawFxThumbs();
+      return;
+    }
     if (e.target.id !== 'libQ') return;
     ed.libQ = e.target.value;
     clearTimeout(libT);

@@ -222,9 +222,9 @@ export function localPlan(p) {
   });
   const anchors = phrases.length ? phrases.map((x) => x.s) : [0, ...cuts];
   const stops = phrases.length ? [...phrases.map((x) => x.e), ...phrases.map((x) => x.s)] : [...cuts, D];
-  const sentAt = (t) => {
+  const sentAt = (t, i = 0) => {
     const ph = phrases.find((x) => Math.abs(x.s - t) < 0.06);
-    return ph ? ph.sent : true;
+    return ph ? ph.sent : phrases.length ? false : i % 2 === 0;
   };
 
   // vùng: hook | thân (có cảnh phụ) | đuôi (câu kêu gọi)
@@ -335,7 +335,10 @@ export function localPlan(p) {
     const d = o.c.x.duration;
     const span = Math.max(0, d - 0.6 - dur);
     const inn = d <= dur + 0.6 ? Math.max(0, (d - dur) / 2) : 0.3 + (o.c.nWin > 1 ? (span * (o.k % o.c.nWin)) / (o.c.nWin - 1) : span / 2);
-    const trans = i === 0 || sentAt(o.s) || prevSrc === o.c.x.id ? st.accent : st.base;
+    let trans = i === 0 || sentAt(o.s, i) || prevSrc === o.c.x.id ? st.accent : st.base;
+    // 2 lần nhấn liền nhau thì đổi kiểu cho đỡ lặp
+    const ALT = {whip: 'zoom', zoom: 'slide', slide: 'zoom', wipe: 'zoomout', fade: 'zoom'};
+    if (trans === st.accent && ops.length && ops[ops.length - 1].item?.trans === st.accent && ops[ops.length - 1].list === 'broll') trans = ALT[st.accent] || st.accent;
     prevSrc = o.c.x.id;
     ops.push({op: 'add', list: 'broll', item: {id: uid('b'), src: o.c.x.id, start: +o.s.toFixed(2), dur, in: +Math.min(inn, Math.max(0, d - dur)).toFixed(2), trans, locked: false}});
   });
@@ -404,11 +407,18 @@ export function localPlan(p) {
     sfxAt.push(t);
     ops.push({op: 'add', list: 'sfx', item: {id: uid('a'), sfx: key, name: SFX_MAP[key].name, start: +t.toFixed(2), dur: SFX_MAP[key].len, vol, locked: false}});
   };
-  for (const o of ops.filter((x) => x.list === 'broll')) if (o.item.trans === 'zoom' || o.item.trans === 'slide') sfx(o.item.trans === 'slide' ? 'whip' : 'whoosh', Math.max(0, o.item.start - (o.item.trans === 'slide' ? 0.1 : 0.3)), 0.4);
+  const TR_SFX = {zoom: 'whoosh', zoomout: 'whoosh', spin: 'whoosh', circle: 'whoosh', slide: 'swoosh', up: 'swoosh', wipe: 'swoosh', whip: 'whip', flash: 'impact', glitch: 'glitch'};
+  for (const o of ops.filter((x) => x.list === 'broll')) {
+    const k = TR_SFX[o.item.trans];
+    if (k) sfx(k, Math.max(0, o.item.start - (k === 'whoosh' ? 0.3 : k === 'swoosh' ? 0.12 : 0.05)), k === 'impact' ? 0.3 : 0.4);
+  }
   for (const t of lks) sfx(t.kind === 'price' ? 'cash' : 'pop', t.start + (t.kind === 'price' ? 0.05 : 0.1), t.kind === 'price' ? 0.45 : 0.4);
   for (const s of stks) sfx('bubble', s.start, 0.3);
   sfx('notify', Math.max(0, D - ctaLen + 0.1), 0.45);
 
+  // màu video nhẹ theo thể loại (khách đã tự chỉnh màu thì giữ nguyên)
+  const look = genreOf(p).look;
+  if (look && p.look?.by !== 'user') ops.push({op: 'look', set: {filter: 'none', amt: 0.6, vignette: 0, grain: 0, leak: 0, bars: false, ...look, by: 'ai'}});
   if (!p.cta?.on) ops.push({op: 'cta', set: {on: true}});
   return ops;
 }

@@ -240,6 +240,146 @@ function fontStr(key, size) {
   return `${f.weight} ${Math.round(size)}px ${f.family}, sans-serif`;
 }
 
+// ---------- Màu video (lọc màu) & lớp phủ — dùng chế độ trộn màu canvas (chạy cả Safari cũ, không cần ctx.filter) ----------
+export const TRANSITIONS = [
+  ['fade', 'Mờ dần'],
+  ['none', 'Cắt thẳng'],
+  ['zoom', 'Phóng to'],
+  ['zoomout', 'Thu nhỏ'],
+  ['slide', 'Trượt ngang'],
+  ['up', 'Trượt lên'],
+  ['whip', 'Lia nhanh'],
+  ['wipe', 'Quét'],
+  ['circle', 'Mở tròn'],
+  ['spin', 'Xoay'],
+  ['flash', 'Loé sáng'],
+  ['glitch', 'Nhiễu'],
+];
+export const FILTERS = [
+  ['none', 'Gốc'],
+  ['bright', 'Sáng trong'],
+  ['vivid', 'Rực rỡ'],
+  ['warm', 'Ấm áp'],
+  ['cool', 'Mát lạnh'],
+  ['film', 'Điện ảnh'],
+  ['vintage', 'Cổ điển'],
+  ['moody', 'Trầm'],
+  ['bw', 'Đen trắng'],
+];
+let grainTile = null;
+let grainFrame = -1;
+function grain() {
+  if (!grainTile) {
+    grainTile = document.createElement('canvas');
+    grainTile.width = grainTile.height = 192;
+  }
+  const g = grainTile.getContext('2d');
+  const im = g.createImageData(192, 192);
+  for (let i = 0; i < im.data.length; i += 4) {
+    const v = 128 + (Math.random() - 0.5) * 255;
+    im.data[i] = im.data[i + 1] = im.data[i + 2] = v;
+    im.data[i + 3] = 255;
+  }
+  g.putImageData(im, 0, 0);
+  return grainTile;
+}
+function blend(ctx, op, color, a) {
+  if (a <= 0) return;
+  ctx.globalCompositeOperation = op;
+  ctx.globalAlpha = clamp(a);
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, W, H);
+}
+export function applyLook(ctx, look, T) {
+  if (!look) return;
+  const k = look.amt ?? 0.6;
+  ctx.save();
+  switch (look.filter) {
+    case 'bright':
+      blend(ctx, 'screen', '#ffffff', 0.13 * k);
+      blend(ctx, 'saturation', '#ff0000', 0.12 * k);
+      break;
+    case 'vivid':
+      blend(ctx, 'saturation', '#ff0000', 0.32 * k);
+      blend(ctx, 'soft-light', '#ffffff', 0.18 * k);
+      break;
+    case 'warm':
+      blend(ctx, 'soft-light', '#ff9a3c', 0.55 * k);
+      break;
+    case 'cool':
+      blend(ctx, 'soft-light', '#3c8cff', 0.5 * k);
+      break;
+    case 'film':
+      blend(ctx, 'soft-light', '#ff8a2a', 0.35 * k);
+      blend(ctx, 'color', '#0a8f8f', 0.1 * k);
+      blend(ctx, 'multiply', '#e9e2d6', 0.4 * k);
+      break;
+    case 'vintage':
+      blend(ctx, 'saturation', '#808080', 0.45 * k);
+      blend(ctx, 'soft-light', '#c08040', 0.6 * k);
+      blend(ctx, 'screen', '#2a1a10', 0.5 * k);
+      break;
+    case 'moody':
+      blend(ctx, 'saturation', '#808080', 0.25 * k);
+      blend(ctx, 'multiply', '#5a6a90', 0.3 * k);
+      break;
+    case 'bw':
+      blend(ctx, 'saturation', '#808080', k > 0.05 ? 1 : 0);
+      blend(ctx, 'soft-light', '#ffffff', 0.15 * k);
+      break;
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  // loé sáng trôi (light leak)
+  if (look.leak > 0) {
+    ctx.globalCompositeOperation = 'screen';
+    ctx.globalAlpha = clamp(look.leak) * 0.55;
+    const x = W * (0.5 + 0.55 * Math.sin(T * 0.45));
+    const y = H * (0.25 + 0.2 * Math.cos(T * 0.31));
+    const g = ctx.createRadialGradient(x, y, 0, x, y, Math.max(W, H) * 0.6);
+    g.addColorStop(0, 'rgba(255,170,80,0.9)');
+    g.addColorStop(0.4, 'rgba(255,80,60,0.35)');
+    g.addColorStop(1, 'rgba(255,80,60,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  // hạt phim
+  if (look.grain > 0) {
+    const f = Math.floor(T * 15);
+    if (f !== grainFrame || !grainTile) {
+      grain();
+      grainFrame = f;
+    }
+    ctx.globalCompositeOperation = 'overlay';
+    ctx.globalAlpha = clamp(look.grain) * 0.35;
+    const pat = ctx.createPattern(grainTile, 'repeat');
+    ctx.fillStyle = pat;
+    ctx.save();
+    ctx.scale(2.2, 2.2);
+    ctx.fillRect(0, 0, W / 2.2 + 1, H / 2.2 + 1);
+    ctx.restore();
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  // tối 4 góc
+  if (look.vignette > 0) {
+    ctx.globalAlpha = 1;
+    const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.hypot(W, H) * 0.58);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, `rgba(0,0,0,${clamp(look.vignette) * 0.75})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+  // viền điện ảnh (2 dải đen trên dưới)
+  if (look.bars) {
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#000';
+    const bh = W > H ? H * 0.1 : H * 0.07;
+    ctx.fillRect(0, 0, W, bh);
+    ctx.fillRect(0, H - bh, W, bh);
+  }
+  ctx.restore();
+}
+
 // ---------- Kiểu chữ (mẫu chữ) & chuyển động chữ ----------
 export const TEXT_STYLES = [
   ['3d', 'Nổi 3D'],
@@ -892,27 +1032,109 @@ export function drawFrame(ctx, p, T, frames, opt = {}) {
     ctx.fillRect(0, 0, W, H);
   }
 
-  // 2. cảnh phụ
+  // 2. cảnh phụ (12 kiểu chuyển cảnh vào, ra luôn mờ nhanh 0,25 s)
+  let flash = 0;
   for (const b of activeBrolls(p, T)) {
     const t = T - b.start;
     const tr = b.trans || 'fade';
-    const inP = tr === 'none' ? 1 : easeOut(t / 0.3);
+    const inP = tr === 'none' ? 1 : easeOut(t / (tr === 'whip' || tr === 'flash' ? 0.22 : 0.3));
     const outP = clamp((b.start + b.dur - T) / 0.25);
     const drift = 1.08 - 0.08 * clamp(t / b.dur);
+    const fr = frames.broll?.[b.id];
+    const paint = (sc, x = 0, y = 0) => {
+      if (!drawCover(ctx, fr, sc, x, y) && opt.placeholder) {
+        ctx.fillStyle = '#2a3140';
+        ctx.fillRect(x, y, W, H);
+      }
+    };
     ctx.save();
-    let scale = drift;
-    let dx = 0;
     let alpha = Math.min(inP, outP);
-    if (tr === 'zoom') scale = drift + (1 - inP) * 0.3;
-    if (tr === 'slide') {
-      dx = (1 - inP) * W;
-      alpha = outP;
+    switch (tr) {
+      case 'zoom':
+        ctx.globalAlpha = alpha;
+        paint(drift + (1 - inP) * 0.3);
+        break;
+      case 'zoomout':
+        ctx.globalAlpha = alpha;
+        paint(drift + (1 - inP) * -0.25 + (1 - inP) * 0.5);
+        break;
+      case 'slide':
+        ctx.globalAlpha = outP;
+        paint(drift, (1 - inP) * W);
+        break;
+      case 'up':
+        ctx.globalAlpha = outP;
+        paint(drift, 0, (1 - inP) * H);
+        break;
+      case 'whip': {
+        // lia nhanh: nhiều bản chồng mờ theo hướng chạy → nhoè chuyển động
+        ctx.globalAlpha = outP;
+        const off = (1 - inP) * W * 0.9;
+        if (inP < 1) for (let k = 3; k >= 1; k--) {
+          ctx.globalAlpha = outP * 0.22;
+          paint(drift, off + k * W * 0.05 * (1 - inP));
+        }
+        ctx.globalAlpha = outP;
+        paint(drift, off);
+        break;
+      }
+      case 'wipe':
+        ctx.globalAlpha = outP;
+        ctx.beginPath();
+        ctx.rect(0, 0, W * inP, H);
+        ctx.clip();
+        paint(drift);
+        break;
+      case 'circle': {
+        ctx.globalAlpha = outP;
+        ctx.beginPath();
+        ctx.arc(W / 2, H / 2, Math.hypot(W, H) * 0.55 * inP, 0, Math.PI * 2);
+        ctx.clip();
+        paint(drift);
+        break;
+      }
+      case 'spin':
+        ctx.globalAlpha = alpha;
+        ctx.translate(W / 2, H / 2);
+        ctx.rotate((1 - inP) * 0.5);
+        ctx.scale(0.55 + 0.45 * inP, 0.55 + 0.45 * inP);
+        ctx.translate(-W / 2, -H / 2);
+        paint(drift);
+        break;
+      case 'flash':
+        ctx.globalAlpha = outP;
+        paint(drift);
+        flash = Math.max(flash, t < 0.3 ? 1 - Math.abs(t - 0.08) / 0.22 : 0);
+        break;
+      case 'glitch': {
+        ctx.globalAlpha = outP;
+        if (t < 0.35) {
+          // cắt lát ngang lệch nhau
+          const n = 9;
+          for (let i = 0; i < n; i++) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(0, (H * i) / n, W, H / n + 1);
+            ctx.clip();
+            paint(drift, Math.sin(i * 7.3 + t * 90) * W * 0.06 * (1 - t / 0.35));
+            ctx.restore();
+          }
+        } else paint(drift);
+        break;
+      }
+      default:
+        ctx.globalAlpha = alpha;
+        paint(drift);
     }
-    ctx.globalAlpha = alpha;
-    if (!drawCover(ctx, frames.broll?.[b.id], scale, dx, 0) && opt.placeholder) {
-      ctx.fillStyle = '#2a3140';
-      ctx.fillRect(dx, 0, W, H);
-    }
+    ctx.restore();
+  }
+  // màu video + lớp phủ (áp lên cả video chính lẫn cảnh phụ, dưới chữ)
+  applyLook(ctx, p.look, T);
+  if (flash > 0) {
+    ctx.save();
+    ctx.globalAlpha = clamp(flash) * 0.9;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, W, H);
     ctx.restore();
   }
 

@@ -484,3 +484,9 @@ kbd{display:inline-block;min-width:18px;padding:0 5px;margin:0 1px;border:1px so
 .tp-it:hover{border-color:var(--accbd);background:var(--accbg);color:var(--acc)}
 .tp-it canvas{width:100%;height:auto;aspect-ratio:240/132;border-radius:9px;background:#000}
 .tp-it small{font-size:12px;font-weight:700;padding:0 4px 2px}
+.fx-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px;margin-bottom:12px}
+.fx-it{display:flex;flex-direction:column;align-items:center;gap:3px;padding:3px;border:1.5px solid transparent;border-radius:10px;background:none;color:var(--tx2);cursor:pointer}
+.fx-it canvas{width:100%;height:auto;border-radius:7px;background:#000}
+.fx-it small{font-size:11px;font-weight:600;white-space:nowrap}
+.fx-it.on{border-color:var(--acc);color:var(--acc)}
+#media h5{margin:14px 0 8px}

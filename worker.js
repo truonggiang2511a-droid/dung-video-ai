@@ -150,10 +150,14 @@ Bạn nhận JSON dự án (thời gian tính bằng giây trên timeline đã c
 Các op được phép:
 - {"op":"add","list":"texts","item":{"start","dur","lead","main","sign","color","font","style","size","y","icon","kind"}}
   Cụm chữ 3 tầng: lead = chữ dẫn nhỏ, main = TỪ KHOÁ/SỐ in hoa ngắn (≤ 18 ký tự), sign = chữ ký tay nghiêng, có thể để trống.
-  font: anton|montserrat|oswald|bvp. style: 3d|flat|outline. color (hex): xoay vòng #ffc61a, #2f8cff, #ff5fb8, #2ad46a, #9a6bff, #ff8a1f; giá → kind "price", #ff2a2a.
+  font: anton|montserrat|oswald|bvp (hoặc khoá kho font: bevietnampro900, montserrat900, bungee400, paytoneone400, kanit800, playfairdisplay900, dancingscript700, pattaya400, baloo2800, unbounded800…).
+  style: 3d|flat|outline|stroke2|shadow|box|highlight|neon|gradient|tape|bubble. motion: pop|zoom|stamp|slide|rise|bounce|type|wave|flip|glitch|spread (giá → stamp). color (hex): xoay vòng #ffc61a, #2f8cff, #ff5fb8, #2ad46a, #9a6bff, #ff8a1f; giá → kind "price", #ff2a2a.
   y: 0.12–0.3 (phía trên đầu người nói). icon: ${ICON_LIST}|"" — ưu tiên bộ icon của thể loại: ${(g.icons || []).join(', ')}; mỗi cụm một icon đúng ý, không lặp liền nhau.
   Riêng thể loại này: ${GENRE_RULES[key]}
-- {"op":"add","list":"broll","item":{"src","start","dur","in","trans"}} src = id nguồn kind "broll"; dur 2–4 s; in = giây bắt đầu lấy trong nguồn; trans: fade|zoom|slide|none.
+- {"op":"add","list":"broll","item":{"src","start","dur","in","trans"}} src = id nguồn kind "broll"; dur 2–4 s; in = giây bắt đầu lấy trong nguồn; trans: fade|none|zoom|zoomout|slide|up|whip|wipe|circle|spin|flash|glitch.
+- {"op":"add","list":"stickers","item":{"kind":"emoji","key","label","start","dur","x","y","size","motion"}} hình minh hoạ Fluent Emoji (key tiếng Anh dạng gạch nối, vd money-bag, house, steaming-bowl, face-savoring-food, chart-increasing, red-heart, fire, light-bulb, wrapped-gift, delivery-truck), đúng lúc nói từ đó, 1 hình / ≥ 4 s, x 0.2 hoặc 0.8, y 0.4–0.55. motion: pop|bounce|float|wiggle|pulse|spin|drop|slide.
+- {"op":"add","list":"sfx","item":{"sfx","start","vol"}} âm thanh: whoosh|whip|swoosh (chuyển cảnh, đặt trước chuyển cảnh 0,1–0,3 s), pop (hiện số), cash (hiện giá), coin, ding (ý chính), bubble (hiện hình), notify (câu kết), impact, riser, sparkle, success, wrong, click, typing, shutter, glitch, heartbeat, boing, tick. vol 0.3–0.5, không dày quá 1 âm / 1,5 s.
+- {"op":"look","set":{"filter","amt","vignette","grain","leak","bars"}} màu video: none|bright|vivid|warm|cool|film|vintage|moody|bw, amt 0.3–0.7 (nhẹ tay; khách tự chỉnh — "by":"user" — thì không đổi).
 - {"op":"add","list":"zooms","item":{"start","dur","scale","kind"}} kind: (bỏ trống) = đẩy vào rồi giữ lúc nhấn ý, dur 2–3 s; "punch" = zoom giật tức thì suốt đoạn (đặt từ chỗ cắt này tới chỗ cắt kế, xen kẽ chặt/rộng để che vết cắt lộ trên mặt người nói); "push" = đẩy máy chậm suốt đoạn nói dài không cắt. scale 1.05–1.12.
 - {"op":"update","id","set":{...}} / {"op":"remove","id"} — với texts, broll, zooms đã có.
 - {"op":"subs","set":{"on","size","y","color","style","hl"}} (style: karaoke = chữ đang nói đổi màu | box = hộp màu | pop = bật từng chữ | clean = tối giản; hl = màu nhấn hex) · {"op":"cta","set":{"on","text"}} (câu kết mặc định: "${g.cta || 'THEO DÕI ĐỂ XEM THÊM'}") · {"op":"music","set":{"vol"}}
