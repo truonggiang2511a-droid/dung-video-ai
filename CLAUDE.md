@@ -109,6 +109,8 @@ Font: `public/fonts/*.woff2` là bản GỘP 3 bộ chữ latin + latin-ext + vi
 
 - 2026-11-01 11:03: Giang tải video iPhone `IMG_8415` trên PC → không hiện hình, timeline không có ảnh (thời lượng vẫn đọc được 1:13) — dấu hiệu video HEVC (H.265) mà trình duyệt không giải mã được hình. Sửa: `ensurePlayable()` (media.js) thử phát bằng thẻ `<video>`; không hiện → nếu WebCodecs giải mã được thì tự đổi sang H.264 bằng Mediabunny `Conversion` ngay trên máy; không thì báo rõ cách xử lý (mở bằng Safari/Edge, hoặc iPhone: Cài đặt → Camera → Định dạng → Tương thích nhất). Kiểm thử: `test/pc.cjs` với file HEVC tạo bằng `ffmpeg -c:v libx265 -tag:v hvc1` (Chromium Linux không có HEVC → ra đúng thông báo).
 
+- 2026-11-01 11:18: Đẩy code lên GitHub mà Cloudflare KHÔNG tự build (Settings → Builds báo "disconnected from your Git account") — vì GitHub App **Cloudflare Workers and Pages** chưa có quyền repo này (Vị Trí Studio vẫn bình thường). Giang thêm `dung-video-ai` vào github.com/settings/installations → Cloudflare Workers and Pages → Configure → Repository access (giữ nguyên vi-tri-studio). Repo mới sau này: nhớ cấp quyền cho CẢ app Claude lẫn app Cloudflare.
+
 ## 6. Công nghệ đã cân nhắc
 | Thứ | Kết luận |
 |---|---|
