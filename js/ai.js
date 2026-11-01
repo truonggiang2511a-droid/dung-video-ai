@@ -91,6 +91,16 @@ const UNITS = [
   [/^%$/, '%', 'pct'],
   [/^(m2|met)$/, 'M²', 'area'],
 ];
+// “3.800” (dấu chấm ngăn nghìn) → 3800; “3,8” → 3.8
+const viNum = (s) => (/^\d{1,3}(\.\d{3})+$/.test(s) ? +s.replace(/\./g, '') : +s.replace(',', '.'));
+const viFmt = (x) => String(Math.round(x * 100) / 100).replace('.', ',');
+// giá: ≥ 1000 triệu → tỷ; ≥ 1000 nghìn → triệu
+function priceText(num, unit) {
+  const v = viNum(num);
+  if (unit === 'TRIỆU' && v >= 1000) return `${viFmt(v / 1000)} TỶ`;
+  if (unit === 'K' && v >= 1000) return `${viFmt(v / 1000)} TRIỆU`;
+  return unit === 'K' || unit === 'Đ' ? `${num}${unit}` : `${num} ${unit}`;
+}
 const NOUNS = /^(buoc|meo|cach|ly do|dieu|loai|mon|phong|tang|lau|ngay|thang|nam|phut|gio|nguoi|san pham|mau|size|cai|chiec|hop|goi|kg|km|lan|diem|sao)$/;
 export function numberLockups(p) {
   const g = p.genre || 'chung';
@@ -101,16 +111,16 @@ export function numberLockups(p) {
   for (let i = 0; i < ws.length; i++) {
     const w = plain(ws[i].w).replace(/[.,!?]$/, '');
     // “199”, “3,8”, “50%”, “399k”, “5tr”
-    const mm = w.match(/^(\d+(?:[.,]\d+)?)(k|tr|%)?$/);
+    const mm = w.replace('m²', 'm2').match(/^(\d+(?:[.,]\d+)*)(k|tr|%|m2)?$/);
     if (!mm) continue;
     const num = mm[1];
     const next = plain(ws[i + 1]?.w || '').replace(/[.,!?]$/, '');
     const prev = plain((ws[i - 2]?.w || '') + ' ' + (ws[i - 1]?.w || ''));
     const at = ws[i].s;
-    const unit = mm[2] === '%' ? UNITS[5] : mm[2] === 'k' ? UNITS[2] : mm[2] === 'tr' ? UNITS[1] : UNITS.find(([re]) => re.test(next));
+    const unit = mm[2] === '%' ? UNITS[5] : mm[2] === 'k' ? UNITS[2] : mm[2] === 'tr' ? UNITS[1] : mm[2] === 'm2' ? UNITS[6] : UNITS.find(([re]) => re.test(next));
     if (unit && unit[2] === 'price') {
       const lead = /chi con/.test(prev) ? 'chỉ còn' : /giam|sale|khuyen/.test(prev) ? 'giảm còn' : g === 'bds' || g === 'banhang' ? 'giá' : '';
-      out.push(newText(at, {kind: 'price', lead, main: `${num} ${unit[1]}`.replace(' K', 'K').replace(' Đ', 'Đ'), color: '#ff2a2a', icon: icons.includes('tag') ? 'tag' : icons[0], dur: 4}));
+      out.push(newText(at, {kind: 'price', lead, main: priceText(num, unit[1]), color: '#ff2a2a', icon: icons.includes('tag') ? 'tag' : icons[0], dur: 4}));
     } else if (unit && unit[2] === 'pct') {
       out.push(newText(at, {lead: /giam|sale/.test(prev) ? 'giảm' : '', main: `${num.replace('%', '')}%`, color: '#ffc61a', icon: icons.includes('fire') ? 'fire' : icons[0], dur: 3.5}));
     } else if (unit && unit[2] === 'area') {
@@ -431,8 +441,17 @@ export async function transcribeAll(p, an, onProgress) {
     if (tail) prompt = tail;
   }
   onProgress?.(1);
+  // Whisper hay tách số: “3” + “.800”, “50” + “%” → ghép lại
+  const merged = [];
+  for (const w of words) {
+    const prev = merged[merged.length - 1];
+    if (prev && /\d$/.test(prev.w) && (/^[.,]\d/.test(w.w) || /^%/.test(w.w)) && w.s - prev.e < 0.15) {
+      prev.w += w.w;
+      prev.e = w.e;
+    } else merged.push({...w});
+  }
   // bỏ chữ “bịa” rơi vào chỗ không có tiếng (mức âm cả chữ dưới ngưỡng thấp)
-  return words.filter((w) => {
+  return merged.filter((w) => {
     const i0 = Math.max(0, Math.floor(w.s / an.win));
     const i1 = Math.min(lv.db.length, Math.max(i0 + 1, Math.ceil(w.e / an.win)));
     let mx = -999;
