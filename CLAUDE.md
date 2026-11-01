@@ -99,7 +99,7 @@ Font: `public/fonts/*.woff2` là bản GỘP 3 bộ chữ latin + latin-ext + vi
 - 2026-11-01: Không có `/api` (Netlify/tĩnh) → `aiHealth()` trả tắt → `localPlan` (ghép cảnh theo tên file khớp lời / rải đều, zoom ~7 s, chữ số liệu chỉ khi có lời) + `localCommand` (đổi màu, cỡ, font, kiểu, dời, dài/ngắn, xoá, phụ đề, nhạc).
 
 - 2026-11-01: iPhone iOS < 26 KHÔNG có `AudioDecoder` (WebCodecs âm thanh) → Mediabunny `canDecode()` = false. Dự phòng: `decodeWhole()` (Web Audio `decodeAudioData` cả file) cho cả phân tích khoảng lặng lẫn xuất âm thanh. Kiểm bằng `NO_AD=1 node test/flow.cjs` (xoá `window.AudioDecoder`) → vẫn cắt đúng 7 chỗ, file xuất có tiếng.
-- 2026-11-01: GitHub MCP KHÔNG tạo được repo (403 "Resource not accessible by integration") → Giang tạo repo trống `dung-video-ai` trên GitHub rồi Claude đẩy code lên.
+- 2026-11-01: GitHub MCP KHÔNG tạo được repo (403 "Resource not accessible by integration") → Giang tạo repo trống `dung-video-ai` trên GitHub, rồi thêm repo vào GitHub App **Claude** (github.com/apps/claude → Configure → Repository access) mới đẩy được (trước đó push bị 403). Đã đẩy `main` 1/11 10:50.
 
 ## 6. Công nghệ đã cân nhắc
 | Thứ | Kết luận |
