@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0f1115">
+<meta name="theme-color" content="#131517">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -33,45 +33,80 @@
 <main id="editor" class="screen" hidden>
   <header class="e-top">
     <button id="btnBack" class="icon-btn" aria-label="Danh sách dự án" title="Danh sách dự án"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/></svg></button>
+    <nav class="crumb" aria-label="Đường dẫn"><button class="crumb-home" data-act="home"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg><span>Dự án</span></button><span class="crumb-sep">/</span></nav>
     <label class="pname"><span class="sr">Tên dự án</span><input id="pname" maxlength="60"></label>
-    <button id="btnUndo" class="icon-btn" aria-label="Hoàn tác"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
-    <button id="btnRedo" class="icon-btn" aria-label="Làm lại"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
+    <div class="e-logo" aria-hidden="true"><span class="logo"></span><b>Dựng Video AI</b></div>
+    <span class="sp"></span>
+    <button id="btnUndo" class="icon-btn" aria-label="Hoàn tác" title="Hoàn tác (Ctrl+Z)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+    <button id="btnRedo" class="icon-btn" aria-label="Làm lại" title="Làm lại (Ctrl+Y)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
     <button id="btnAi" class="btn ai sm" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg><span>AI dựng</span></button>
     <button id="btnExport" class="btn primary sm" disabled>Xuất video</button>
   </header>
 
   <div class="e-body">
+    <aside id="chatcol" class="e-chatcol" aria-label="Trợ lý AI">
+      <div class="cc-head"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg><b>Trợ lý AI</b><small>Nhắn để sửa video</small></div>
+    </aside>
+
     <section class="e-stage">
       <div class="stage-wrap">
         <canvas id="cv" aria-label="Khung xem nhanh video"></canvas>
+        <div id="note" class="note" hidden></div>
       </div>
       <div class="e-transport">
+        <div class="tools" role="toolbar" aria-label="Công cụ trên khung xem">
+          <button class="tool on" data-tool="select" title="Chọn và kéo chữ (V)" aria-label="Chọn"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3l14 8-6 2-2 6z"/></svg></button>
+          <button class="tool" data-tool="note" title="Ghi chú lên hình để nhờ AI sửa (C)" aria-label="Ghi chú"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2zM12 7v6M9 10h6"/></svg></button>
+        </div>
         <button id="btnPlay" class="play" aria-label="Phát"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg></button>
         <span class="time"><b id="tNow">0:00</b> / <span id="tDur">0:00</span></span>
         <span class="sp"></span>
         <button class="chip-set" data-act="project" aria-label="Cài đặt video: thể loại, khổ hình, đoạn kết"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span id="fmtLabel">9:16</span></button>
-        <button class="icon-btn" data-act="tlOut" aria-label="Thu nhỏ timeline"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM21 21l-4.3-4.3M8 11h6"/></svg></button>
-        <button class="icon-btn" data-act="tlIn" aria-label="Phóng to timeline"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM21 21l-4.3-4.3M11 8v6M8 11h6"/></svg></button>
+        <button class="icon-btn mob" data-act="tlOut" aria-label="Thu nhỏ timeline"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM21 21l-4.3-4.3M8 11h6"/></svg></button>
+        <button class="icon-btn mob" data-act="tlIn" aria-label="Phóng to timeline"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM21 21l-4.3-4.3M11 8v6M8 11h6"/></svg></button>
       </div>
     </section>
 
     <aside id="side" class="e-side" aria-label="Bảng chỉnh sửa">
       <div class="side-grab"><button data-act="closeSheet" aria-label="Đóng bảng sửa"><i></i></button></div>
-      <div class="side-tabs" role="tablist"><button data-tab="edit" class="on" role="tab">Chỉnh sửa</button><button data-tab="chat" role="tab">Trợ lý AI</button></div>
+      <div class="side-tabs" role="tablist">
+        <button data-tab="edit" class="on" role="tab"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4"/></svg><span>Chỉnh sửa</span></button>
+        <button data-tab="script" role="tab"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>Lời thoại</span></button>
+        <button data-tab="media" role="tab"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18v14H3zM3 9h18M8 5v4M16 5v4"/></svg><span>Kho</span></button>
+        <button data-tab="chat" class="tab-chat" role="tab"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg><span>Trợ lý AI</span></button>
+      </div>
       <div class="side-pane" data-pane="edit"><div id="insp" class="insp"></div></div>
-      <div class="side-pane" data-pane="chat" hidden><div id="chatlog" class="chatlog"><p class="chat-empty">Nhắn AI sửa bất cứ gì: “đổi chữ giá sang vàng”, “cảnh bếp dài thêm 1 giây”, “phụ đề to hơn”. Hoặc chạm vào một clip rồi bấm <b>Nhờ AI sửa</b>.</p></div></div>
+      <div class="side-pane" data-pane="script" hidden><div id="script" class="script"></div></div>
+      <div class="side-pane" data-pane="media" hidden><div id="media" class="media"></div></div>
+      <div class="side-pane" data-pane="chat" hidden><div id="chatlog" class="chatlog"><p class="chat-empty">Nhắn AI sửa bất cứ gì: “đổi chữ giá sang vàng”, “cảnh bếp dài thêm 1 giây”, “phụ đề to hơn”. Hoặc chọn một clip rồi gõ — AI hiểu bạn đang nói về clip đó.</p></div></div>
     </aside>
   </div>
 
-  <div id="status" class="status" role="status" aria-live="polite" hidden></div>
-  <div id="bin" class="bin" hidden></div>
-  <div id="selbar" class="selbar" hidden></div>
-  <div id="tl" class="tl"></div>
+  <section class="e-bottom">
+    <div class="tl-bar">
+      <div class="tl-tools">
+        <button class="tb" data-act="split" title="Tách tại đầu phát (S)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M7 8l-4 4 4 4M17 8l4 4-4 4"/></svg><span>Tách</span></button>
+        <button class="tb" data-act="del" title="Xoá clip đang chọn (Delete)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 13h12l1-13M9 7V4h6v3"/></svg><span>Xoá</span></button>
+      </div>
+      <div id="status" class="status" role="status" aria-live="polite" hidden></div>
+      <div class="tl-zoom">
+        <button class="tb icon" data-act="tlOut" aria-label="Thu nhỏ timeline" title="Thu nhỏ (−)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+        <span id="tlZoom">100%</span>
+        <button class="tb icon" data-act="tlIn" aria-label="Phóng to timeline" title="Phóng to (+)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+      </div>
+    </div>
+    <div id="bin" class="bin" hidden></div>
+    <div id="selbar" class="selbar" hidden></div>
+    <div id="tl" class="tl"></div>
+  </section>
   <form id="chat" class="e-chat" autocomplete="off">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="#ff7a1a" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>
-    <label class="sr" for="chatIn">Nhắn AI sửa video</label>
-    <input id="chatIn" placeholder="Nhắn AI sửa: “đổi chữ giá sang vàng”" enterkeyhint="send">
-    <button aria-label="Gửi cho AI"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg></button>
+    <div id="chatCtx" class="chat-ctx" hidden></div>
+    <div class="chat-row">
+      <svg class="chat-ic" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>
+      <label class="sr" for="chatIn">Nhắn AI sửa video</label>
+      <input id="chatIn" placeholder="Nhắn AI sửa: “đổi chữ giá sang vàng”" enterkeyhint="send">
+      <button aria-label="Gửi cho AI"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+    </div>
   </form>
 </main>
 

@@ -1,5 +1,5 @@
 // Điều khiển giao diện: màn Dự án + màn Editor (khung xem nhanh, timeline, sửa tay, AI).
-import {loadFonts, duration, COLORS, ICONS, FONTS, W, H, SUB_STYLES} from './render.js';
+import {loadFonts, duration, COLORS, ICONS, FONTS, W, H, SUB_STYLES, tlOfSrc, srcAt} from './render.js';
 import {store} from './store.js';
 import {newProject, applyOp, History, find, newText, uid} from './model.js';
 import {importFile, probeVideo, ensurePlayable, thumbs} from './media.js';
@@ -87,6 +87,9 @@ const ed = {
     renderBin();
     if (ed.sel && !selItem()) select(null);
     else renderInspector();
+    renderScript();
+    renderMedia();
+    renderCtx();
     if (save) queueSave();
   },
 };
@@ -229,6 +232,7 @@ function renderStatus() {
 }
 function updateTime() {
   $('#tNow').textContent = fmt(ed.player.T);
+  scriptNow();
 }
 
 // ---------- KHO CẢNH PHỤ CHỜ XẾP ----------
@@ -388,6 +392,7 @@ function pick(kind) {
 
 // ---------- CHỌN & BẢNG SỬA ----------
 function select(sel) {
+  if (JSON.stringify(sel) !== JSON.stringify(ed.sel)) ed.ctxOff = false;
   ed.sel = sel;
   ed.tl.sel = sel;
   ed.player.highlight = sel?.type === 'text' ? sel.id : null;
@@ -395,6 +400,7 @@ function select(sel) {
   ed.tl.render(ed.p);
   renderSelBar();
   renderInspector();
+  renderCtx();
   if (sel && ['text', 'broll', 'zoom'].includes(sel.type)) {
     const it = selItem();
     if (it && (ed.player.T < it.start || ed.player.T > it.start + it.dur)) ed.seek(it.start + Math.min(0.8, it.dur / 2));
@@ -647,7 +653,45 @@ async function act(a, el) {
     case 'closeSheet':
       return openSheet(false);
     case 'clipAi':
+      // máy tính: gõ thẳng vào ô chat (clip đã gắn thẻ); điện thoại: hộp thoại gợi ý
+      if (matchMedia('(min-width: 900px)').matches) {
+        ed.ctxOff = false;
+        renderCtx();
+        if (!matchMedia('(min-width: 1200px)').matches) $('#side [data-tab="chat"]')?.click();
+        $('#chatIn').focus();
+        return;
+      }
       return openClipAi();
+    case 'ctxOff':
+      ed.ctxOff = true;
+      renderCtx();
+      return;
+    case 'undoMsg':
+      el.disabled = true;
+      undoRedo(-1);
+      return;
+    case 'home':
+      return closeEditor();
+    case 'scCut': {
+      if (scriptSel.a < 0) return;
+      const {a, b} = scriptRange();
+      manual(() => applyOp(p, {op: 'cut', a, b}), {lock: false});
+      scriptSel.a = scriptSel.b = -1;
+      renderScript();
+      return;
+    }
+    case 'scUncut': {
+      if (scriptSel.a < 0) return;
+      const {a, b} = scriptRange();
+      manual(() => applyOp(p, {op: 'uncut', a, b}), {lock: false});
+      scriptSel.a = scriptSel.b = -1;
+      renderScript();
+      return;
+    }
+    case 'scClear':
+      scriptSel.a = scriptSel.b = -1;
+      renderScript();
+      return;
     case 'play':
       ed.player.toggle();
       return;
@@ -757,15 +801,18 @@ function openClipAi() {
     await sendAi(q, s.type === 'subs' || s.type === 'music' ? null : s.id, s.type === 'subs' ? 'phụ đề ' : s.type === 'music' ? 'nhạc ' : '');
   };
 }
-async function sendAi(q, target, prefix = '') {
+async function sendAi(q, target, prefix = '', ctxLabel = '') {
   if (ed.busy) return;
-  addMsg('me', q);
+  addMsg('me', (ctxLabel ? `<span class="ctx">${esc(ctxLabel)}</span><br>` : '') + esc(q), true);
   ed.busy = true;
   updateStage();
   const typing = addMsg('ai', '<span class="dots"><i></i><i></i><i></i></span>');
+  const before = ed.history.undo.length;
   try {
     const r = await askAi(ed, prefix + q, target);
-    typing.innerHTML = esc(r.reply);
+    const changed = ed.history.undo.length > before;
+    $$('.msg-act [data-act="undoMsg"]').forEach((b) => (b.disabled = true));
+    typing.innerHTML = esc(r.reply) + (changed ? `<div class="msg-act"><span>${r.ops?.length || 1} thay đổi</span><button class="btn ghost xs" data-act="undoMsg">${icon(I.undo, 13)} Hoàn tác</button></div>` : '');
     toast(esc(r.reply), 6000);
   } catch (e) {
     typing.textContent = 'Lỗi: ' + e.message;
@@ -773,15 +820,225 @@ async function sendAi(q, target, prefix = '') {
   ed.busy = false;
   ed.changed(true, true);
 }
-function addMsg(who, html) {
+function addMsg(who, html, safe = false) {
   const log = $('#chatlog');
   log.querySelector('.chat-empty')?.remove();
   const m = document.createElement('div');
   m.className = 'msg ' + who;
-  m.innerHTML = who === 'me' ? esc(html) : html;
+  m.innerHTML = who === 'me' && !safe ? esc(html) : html;
   log.appendChild(m);
   log.scrollTop = log.scrollHeight;
   return m;
+}
+
+
+// ---------- THẺ NGỮ CẢNH TRONG Ô CHAT (chọn clip → AI hiểu đang nói về clip đó, kiểu HyperFrames) ----------
+function ctxTarget() {
+  const s = ed.sel;
+  if (!s || ed.ctxOff || !ed.p) return null;
+  const p = ed.p;
+  if (s.type === 'text') {
+    const it = find(p, s.id)?.item;
+    return it ? {target: s.id, label: `Chữ “${it.main}”`, prefix: ''} : null;
+  }
+  if (s.type === 'broll') {
+    const it = find(p, s.id)?.item;
+    return it ? {target: s.id, label: `Cảnh phụ ${p.sources[it.src]?.name || ''}`, prefix: ''} : null;
+  }
+  if (s.type === 'zoom') return {target: s.id, label: 'Hiệu ứng zoom', prefix: ''};
+  if (s.type === 'subs') return {target: null, label: 'Phụ đề', prefix: 'phụ đề '};
+  if (s.type === 'music') return {target: null, label: 'Nhạc nền', prefix: 'nhạc '};
+  if (s.type === 'seg') return {target: null, label: `Đoạn video ${+s.id + 1}`, prefix: ''};
+  return null;
+}
+function renderCtx() {
+  const box = $('#chatCtx');
+  if (!box) return;
+  const c = ctxTarget();
+  box.hidden = !c;
+  box.innerHTML = c ? `<span class="ctx-chip">${icon(I.sparkle, 12)}<span>${esc(c.label)}</span><button type="button" data-act="ctxOff" aria-label="Bỏ gắn clip">✕</button></span>` : '';
+  $('#chatIn').placeholder = c ? `Nhờ AI sửa ${c.label.toLowerCase()}…` : 'Nhắn AI sửa: “đổi chữ giá sang vàng”';
+}
+
+// ---------- BẢNG PHẢI: LỜI THOẠI (sửa video bằng chữ) ----------
+const scriptSel = {a: -1, b: -1};
+function renderScript() {
+  const box = $('#script');
+  if (!box || $('[data-pane="script"]').hidden) return;
+  const p = ed.p;
+  const ws = p?.transcript?.words || [];
+  if (!p?.main || !ws.length) {
+    box.innerHTML = `<p class="sc-empty">${p?.main ? 'Lời thoại có sau khi bấm <b>AI dựng</b> — AI nghe và chép lời người nói.' : 'Thêm video chính trước đã nhé.'}</p><p class="hint">Có lời thoại rồi: bấm một chữ để tua tới đó; bấm chữ đầu rồi <b>Shift + bấm</b> chữ cuối để chọn cả đoạn, rồi bấm <b>Cắt đoạn</b> — video cắt theo.</p>`;
+    return;
+  }
+  const lo = Math.min(scriptSel.a, scriptSel.b);
+  const hi = Math.max(scriptSel.a, scriptSel.b);
+  const html = ws
+    .map((w, i) => {
+      const t = tlOfSrc(p, (w.s + w.e) / 2);
+      const cls = ['w'];
+      if (t === null) cls.push('cut');
+      if (lo >= 0 && i >= lo && i <= hi) cls.push('pick');
+      if (/\d/.test(w.w)) cls.push('num');
+      return `<span class="${cls.join(' ')}" data-w="${i}">${esc(w.w)}</span>`;
+    })
+    .join(' ');
+  const picked = lo >= 0;
+  const allCut = picked && ws.slice(lo, hi + 1).every((w) => tlOfSrc(p, (w.s + w.e) / 2) === null);
+  box.innerHTML = `<div class="sc-head"><b>Lời thoại · ${ws.length} chữ</b><span class="hint">${p.subs?.on ? 'Phụ đề đang bật' : 'Phụ đề đang tắt'}</span></div>
+    <div class="sc-text">${html}</div>
+    <div class="sc-bar">${picked ? `<small>Đã chọn ${hi - lo + 1} chữ</small>${allCut ? `<button class="btn ghost xs" data-act="scUncut">Khôi phục đoạn</button>` : `<button class="btn primary xs" data-act="scCut">${icon(I.trash, 13)} Cắt đoạn</button>`}<button class="btn ghost xs" data-act="scClear">Bỏ chọn</button>` : `<small>Bấm chữ để tua · Shift + bấm để chọn đoạn rồi cắt. Chữ gạch ngang là đoạn đã cắt.</small>`}</div>`;
+  scriptNow(true);
+}
+let scriptLast = -1;
+function scriptNow(force) {
+  const p = ed.p;
+  const box = $('#script');
+  if (!p?.transcript || !box || $('[data-pane="script"]').hidden) return;
+  const at = srcAt(p, ed.player.T);
+  if (!at) return;
+  const ws = p.transcript.words;
+  let k = -1;
+  for (let i = 0; i < ws.length; i++) {
+    if (ws[i].s <= at.t + 0.02) k = i;
+    else break;
+  }
+  if (k === scriptLast && !force) return;
+  box.querySelector('.w.now')?.classList.remove('now');
+  scriptLast = k;
+  const el = k >= 0 ? box.querySelector(`.w[data-w="${k}"]`) : null;
+  if (el) {
+    el.classList.add('now');
+    if (ed.player.playing) el.scrollIntoView({block: 'nearest'});
+  }
+}
+function scriptClick(e) {
+  const w = e.target.closest('.w');
+  if (!w) return;
+  const i = +w.dataset.w;
+  const p = ed.p;
+  const word = p.transcript.words[i];
+  if (e.shiftKey && scriptSel.a >= 0) scriptSel.b = i;
+  else {
+    scriptSel.a = scriptSel.b = i;
+    const t = tlOfSrc(p, (word.s + word.e) / 2);
+    if (t !== null) ed.seek(Math.max(0, tlOfSrc(p, word.s) ?? t - 0.05));
+  }
+  renderScript();
+}
+function scriptRange() {
+  const ws = ed.p.transcript.words;
+  const lo = Math.min(scriptSel.a, scriptSel.b);
+  const hi = Math.max(scriptSel.a, scriptSel.b);
+  // không lấn sang chữ bên cạnh
+  const a = Math.max(ws[lo].s - 0.05, lo > 0 ? ws[lo - 1].e + 0.01 : 0);
+  const b = Math.min(ws[hi].e + 0.08, hi < ws.length - 1 ? ws[hi + 1].s - 0.01 : ws[hi].e + 0.3);
+  return {a, b};
+}
+
+// ---------- BẢNG PHẢI: KHO (mọi file của dự án) ----------
+function renderMedia() {
+  const box = $('#media');
+  if (!box || $('[data-pane="media"]').hidden) return;
+  const p = ed.p;
+  const all = Object.values(p.sources);
+  const used = new Set(p.broll.map((b) => b.src));
+  const item = (s) => {
+    const th = s.thumbs?.[0] ? `style="background-image:url(${s.thumbs[0]})"` : '';
+    const isMain = p.main?.src === s.id;
+    const tag = s.kind === 'broll' ? (used.has(s.id) ? '<span class="tag dim">Đã dùng</span>' : `<button class="tag" data-insert="${s.id}" title="Chèn tại đầu phát">+ Chèn</button>`) : isMain ? '<span class="tag">Đang dùng</span>' : s.kind === 'music' && p.music?.src === s.id ? '<span class="tag">Đang dùng</span>' : '';
+    return `<div class="mi"><i ${th}>${s.kind === 'music' ? icon(I.music, 20) : ''}</i><div><b>${esc(s.name)}</b><small>${fmt(s.duration)}${s.w ? ` · ${s.w}×${s.h}` : ''}</small></div>${tag}</div>`;
+  };
+  const group = (title, list, act, label) => `<h5>${title}</h5><div class="mlist">${list.map(item).join('') || '<p class="hint">Chưa có.</p>'}</div>${act ? `<button class="btn ghost wide" data-act="${act}" style="margin:-8px 0 16px">${icon(I.plus, 16)} ${label}</button>` : ''}`;
+  box.innerHTML =
+    group('Video chính', all.filter((s) => s.kind === 'main' && p.main?.src === s.id), p.main ? 'replaceMain' : 'addMain', p.main ? 'Thay video chính' : 'Thêm video chính') +
+    group('Cảnh phụ', all.filter((s) => s.kind === 'broll'), 'addBroll', 'Thêm cảnh phụ') +
+    group('Nhạc nền', all.filter((s) => s.kind === 'music'), 'addMusic', p.music ? 'Đổi bài nhạc' : 'Thêm nhạc nền');
+}
+function insertBroll(srcId) {
+  const p = ed.p;
+  const src = p.sources[srcId];
+  if (!src || !p.main) return;
+  const dur = Math.min(3, src.duration);
+  const b = {id: uid('b'), src: src.id, start: Math.min(ed.player.T, Math.max(0, duration(p) - dur)), dur, in: Math.max(0, src.duration / 2 - dur / 2), trans: 'fade', locked: true};
+  manual(() => p.broll.push(b), {lock: false});
+  select({type: 'broll', id: b.id});
+}
+
+// ---------- GHI CHÚ LÊN HÌNH (kiểu HyperFrames): bấm vào khung xem → ghim + hỏi AI sửa chỗ đó ----------
+function setTool(t) {
+  ed.tool = t;
+  $$('.tool').forEach((b) => b.classList.toggle('on', b.dataset.tool === t));
+  $('#cv').classList.toggle('noting', t === 'note');
+  if (t !== 'note') closeNote();
+}
+function closeNote() {
+  $('#note').hidden = true;
+  $('.note-pin')?.remove();
+}
+function openNote(e) {
+  const cv = $('#cv');
+  const wrap = cv.parentElement;
+  const r = cv.getBoundingClientRect();
+  const wr = wrap.getBoundingClientRect();
+  const pt = ed.player.toComp(e.clientX, e.clientY);
+  const hitId = ed.player.hit(pt.x, pt.y);
+  const T = ed.player.T;
+  const bro = !hitId && ed.p.broll.find((b) => T >= b.start && T < b.start + b.dur);
+  const target = hitId || bro?.id || null;
+  const what = hitId ? `chữ “${find(ed.p, hitId)?.item?.main || ''}”` : bro ? `cảnh phụ ${ed.p.sources[bro.src]?.name || ''}` : 'khung hình này';
+  const where = pt.y < H * 0.33 ? 'phía trên' : pt.y > H * 0.66 ? 'phía dưới' : 'giữa';
+  closeNote();
+  const pin = document.createElement('div');
+  pin.className = 'note-pin';
+  pin.textContent = '+';
+  pin.style.left = e.clientX - wr.left + 'px';
+  pin.style.top = e.clientY - wr.top + 'px';
+  wrap.appendChild(pin);
+  const n = $('#note');
+  const hints = hitId ? ['Đổi sang màu vàng', 'Chữ to hơn', 'Dời lên trên', 'Xoá cụm chữ này'] : bro ? ['Dài thêm 1 giây', 'Chuyển cảnh trượt', 'Xoá cảnh này'] : ['Thêm chữ ở đây', 'Phụ đề to hơn'];
+  n.innerHTML = `<div class="note-h"><b>${fmt(T)}</b><span>${esc(what)} · ${where}</span></div>
+    <textarea placeholder="Muốn sửa gì ở đây?" aria-label="Muốn sửa gì ở đây?"></textarea>
+    <div class="chips">${hints.map((x) => `<button type="button" class="chip-b" data-nq="${esc(x)}">${esc(x)}</button>`).join('')}</div>
+    <div class="note-act"><small>Enter để gửi</small><button type="button" class="btn ghost xs" data-nx="0">Huỷ</button><button type="button" class="btn primary xs" data-nx="1">Gửi cho AI</button></div>`;
+  n.hidden = false;
+  const x = Math.min(wr.width - n.offsetWidth - 8, Math.max(8, e.clientX - wr.left - n.offsetWidth / 2));
+  const below = e.clientY - wr.top < wr.height / 2;
+  n.style.left = x + 'px';
+  n.style.top = (below ? e.clientY - wr.top + 18 : Math.max(8, e.clientY - wr.top - n.offsetHeight - 18)) + 'px';
+  const ta = n.querySelector('textarea');
+  ta.focus();
+  const send = () => {
+    const q = ta.value.trim();
+    if (!q) return;
+    closeNote();
+    // “thêm chữ ở đây” → đặt cụm chữ đúng chỗ vừa bấm, mở bảng sửa để gõ nội dung
+    if (!hitId && /th[eê]m ch[uữ]/i.test(q)) {
+      const t = newText(T, {main: 'CHỮ MỚI', lead: '', x: Math.max(0.15, Math.min(0.85, pt.x / W)), y: Math.max(0.08, Math.min(0.9, pt.y / H)), locked: true});
+      manual(() => ed.p.texts.push(t));
+      select({type: 'text', id: t.id});
+      openSheet(true);
+      setTimeout(() => $('#insp [data-k="main"]')?.select(), 50);
+      return;
+    }
+    sendAi(q, target, '', `${what} · ${where} · ${fmt(T)}`);
+  };
+  n.onclick = (ev) => {
+    const c = ev.target.closest('[data-nq]');
+    if (c) {
+      ta.value = c.dataset.nq;
+      ta.focus();
+    }
+    const x2 = ev.target.closest('[data-nx]');
+    if (x2) x2.dataset.nx === '1' ? send() : closeNote();
+  };
+  ta.onkeydown = (ev) => {
+    if (ev.key === 'Enter' && !ev.shiftKey) {
+      ev.preventDefault();
+      send();
+    }
+    if (ev.key === 'Escape') closeNote();
+  };
 }
 
 // ---------- XUẤT VIDEO (sau khi duyệt) ----------
@@ -912,6 +1169,11 @@ function bindStageDrag() {
   let drag = null;
   cv.addEventListener('pointerdown', (e) => {
     if (!ed.p?.main || ed.busy) return;
+    if (ed.tool === 'note') {
+      ed.player.pause();
+      openNote(e);
+      return;
+    }
     const pt = ed.player.toComp(e.clientX, e.clientY);
     const id = ed.player.hit(pt.x, pt.y);
     if (!id) {
@@ -954,6 +1216,10 @@ function bindStageDrag() {
 // ---------- kéo / cắt trên timeline ----------
 let dragOrig = null;
 const tlCb = {
+  onZoom(k) {
+    const z = $('#tlZoom');
+    if (z) z.textContent = Math.round(k * 100) + '%';
+  },
   onScrub(T, fromPointer) {
     if (ed.player.playing) ed.player.pause();
     ed.player.seek(T);
@@ -1076,6 +1342,9 @@ async function boot() {
   bindDrop();
   placeChat();
   matchMedia('(min-width: 900px)').addEventListener?.('change', placeChat);
+  matchMedia('(min-width: 1200px)').addEventListener?.('change', placeChat);
+  $('#script').addEventListener('click', scriptClick);
+  setTool('select');
 
   document.addEventListener('click', (e) => {
     const a = e.target.closest('[data-act]');
@@ -1103,7 +1372,13 @@ async function boot() {
     if (tab) {
       $$('[data-tab]').forEach((t) => t.classList.toggle('on', t === tab));
       $$('.side-pane').forEach((x) => (x.hidden = x.dataset.pane !== tab.dataset.tab));
+      if (tab.dataset.tab === 'script') renderScript();
+      if (tab.dataset.tab === 'media') renderMedia();
     }
+    const ins = e.target.closest('[data-insert]');
+    if (ins) insertBroll(ins.dataset.insert);
+    const tool = e.target.closest('[data-tool]');
+    if (tool) setTool(tool.dataset.tool);
   });
   $('#btnNew').onclick = newProj;
   $('#btnBack').onclick = closeEditor;
@@ -1124,7 +1399,8 @@ async function boot() {
       return;
     }
     $('#chatIn').value = '';
-    sendAi(q, ed.sel && ['text', 'broll', 'zoom'].includes(ed.sel.type) ? ed.sel.id : null);
+    const c = ctxTarget();
+    sendAi(q, c?.target || null, c?.prefix || '', c?.label || '');
   });
   // Phím tắt máy tính (giống phần mềm dựng): Space phát/dừng · ←/→ 1 khung (Shift: 1 giây) · Home/End · S tách · Delete xoá
   // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y hoàn tác/làm lại · + / − phóng timeline · Esc bỏ chọn · Ctrl+S lưu
@@ -1159,6 +1435,9 @@ async function boot() {
       act('split');
     } else if (!mod && (k === '+' || k === '=')) ed.tl.zoom(1.3);
     else if (!mod && (k === '-' || k === '_')) ed.tl.zoom(1 / 1.3);
+    else if (!mod && (k === 'v' || k === 'V')) setTool('select');
+    else if (!mod && (k === 'c' || k === 'C')) setTool('note');
+    else if (k === 'Escape' && ed.tool === 'note') setTool('select');
     else if (k === 'Escape' && ed.sel) select(null);
   });
   document.addEventListener('can-install', showInstall);
@@ -1179,11 +1458,21 @@ async function boot() {
   openEditor(p);
 }
 
+// Ô chat + nhật ký chat: ≥ 1200px ở cột trái (kiểu HyperFrames), 900–1199 trong bảng phải, điện thoại ở đáy màn hình
 function placeChat() {
+  const wide = matchMedia('(min-width: 1200px)').matches;
   const desk = matchMedia('(min-width: 900px)').matches;
   const chat = $('#chat');
-  if (desk && chat.parentElement !== $('#side')) $('#side').appendChild(chat);
-  if (!desk && chat.parentElement !== $('#editor')) $('#editor').appendChild(chat);
+  const log = $('#chatlog');
+  if (wide) {
+    if (log.parentElement !== $('#chatcol')) $('#chatcol').appendChild(log);
+    if (chat.parentElement !== $('#chatcol')) $('#chatcol').appendChild(chat);
+    if (!$('[data-pane="chat"]').hidden) $('#side [data-tab="edit"]')?.click();
+  } else {
+    if (log.parentElement !== $('[data-pane="chat"]')) $('[data-pane="chat"]').appendChild(log);
+    if (desk && chat.parentElement !== $('#side')) $('#side').appendChild(chat);
+    if (!desk && chat.parentElement !== $('#editor')) $('#editor').appendChild(chat);
+  }
 }
 
 function undoRedo(dir) {

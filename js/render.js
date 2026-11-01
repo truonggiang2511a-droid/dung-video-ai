@@ -164,7 +164,8 @@ export function subLines(p) {
     // dòng sắp đầy mà chữ tiếp theo là số kèm đơn vị → sang dòng mới luôn cho số đứng cùng đơn vị
     else if (!glue && cur.length >= 2 && /\d/.test(w.w) && UNIT.test(ws[i + 1]?.w || '') && (text + ' ' + w.w + ' ' + ws[i + 1].w).length > 18) flush();
     cur.push(w);
-    if (/[.,!?…]$/.test(w.w) && !/\d[.,]$/.test(w.w)) flush();
+    // hết câu/cụm (dấu câu) → xuống dòng; trừ số kiểu “3,” mà chữ sau vẫn là số
+    if (/[.,!?…]$/.test(w.w) && !(/^\d+[.,]$/.test(w.w) && /^\d/.test(ws[i + 1]?.w || ''))) flush();
   }
   flush();
   for (let i = 0; i < lines.length - 1; i++) lines[i].e = Math.min(lines[i].e, lines[i + 1].s);

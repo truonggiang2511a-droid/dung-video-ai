@@ -33,6 +33,7 @@ export class Timeline {
           <div class="tl-ruler" title="Bấm hoặc kéo để tua"></div>
           ${ROWS.map((r) => `<div class="tl-row" data-row="${r.key}"></div>`).join('')}
           <div class="tl-ph" aria-hidden="true"><i></i></div>
+          <div class="clip-tools" hidden></div>
         </div>
       </div>
       <div class="tl-head" aria-hidden="true"><i></i></div>
@@ -43,6 +44,7 @@ export class Timeline {
     this.rows = Object.fromEntries(ROWS.map((r) => [r.key, root.querySelector(`.tl-row[data-row="${r.key}"]`)]));
     this.empty = root.querySelector('.tl-empty');
     this.ph = root.querySelector('.tl-ph');
+    this.tools = root.querySelector('.clip-tools');
     root.classList.toggle('left', this.left);
     this.mq.addEventListener?.('change', () => {
       this.left = this.mq.matches;
@@ -56,7 +58,10 @@ export class Timeline {
         this._prog = false;
         return;
       }
-      if (this.left) return; // máy tính: cuộn chỉ để xem, không tua
+      if (this.left) {
+        if (this.sel) this._tools();
+        return; // máy tính: cuộn chỉ để xem, không tua
+      }
       this.cb.onScrub?.(this.scroll.scrollLeft / this.pps);
     });
     this.scroll.addEventListener('wheel', (e) => {
@@ -88,6 +93,7 @@ export class Timeline {
     this.pps = Math.max(12, Math.min(260, this.pps * k));
     this.render(this.p);
     this.setTime(T);
+    this.cb.onZoom?.(this.pps / (this.left ? 70 : 46));
   }
 
   setTime(T) {
@@ -187,6 +193,7 @@ export class Timeline {
 
     if (this.left) this.ph.style.left = this.x(this.T || 0) + 'px';
     this.ph.hidden = !this.left || !p.main;
+    this._tools();
 
     // màn trống
     if (!p.main) {
@@ -195,6 +202,33 @@ export class Timeline {
         <button class="drop main" data-add="main">${svg('M12 5v14M5 12h14', 22)}<b>Thêm video chính</b><small>Video bạn nói trước máy quay (A-roll)</small></button>
         <button class="drop" data-add="broll">${svg('M12 5v14M5 12h14', 22)}<b>Thêm cảnh phụ</b><small>${genreOf(p).broll} (B-roll)</small></button>`;
     } else this.empty.hidden = true;
+  }
+
+  // Thanh công cụ nhỏ nổi trên clip đang chọn (máy tính, kiểu HyperFrames): Nhờ AI · Tách · Xoá
+  _tools() {
+    const t = this.tools;
+    const s = this.sel;
+    const el = s && this.left ? this.clipEl(s.type === 'subs' ? 'subs' : s.type, s.id) : null;
+    if (!el) {
+      t.hidden = true;
+      return;
+    }
+    const ic = (d) => svg(d, 15);
+    const AI = 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z';
+    const b = [];
+    if (s.type !== 'seg') b.push(`<button class="ai" data-act="clipAi" title="Nhờ AI sửa clip này">${ic(AI)}<span>Nhờ AI</span></button>`);
+    if (s.type === 'seg') b.push(`<button data-act="split" title="Tách tại đầu phát (S)">${ic('M12 3v18M7 8l-4 4 4 4M17 8l4 4-4 4')}<span>Tách</span></button>`);
+    if (s.type !== 'subs') b.push(`<button data-act="del" title="Xoá (Delete)">${ic('M4 7h16M10 11v6M14 11v6M5 7l1 13h12l1-13M9 7V4h6v3')}</button>`);
+    t.innerHTML = b.join('');
+    const row = el.parentElement;
+    const first = row.dataset.row === 'texts';
+    // clip rộng hơn vùng nhìn → đặt thanh ở giữa phần đang thấy của clip
+    const vis0 = Math.max(el.offsetLeft, this.scroll.scrollLeft + 20);
+    const vis1 = Math.min(el.offsetLeft + el.offsetWidth, this.scroll.scrollLeft + this.scroll.clientWidth - 20);
+    t.style.left = (vis1 > vis0 ? (vis0 + vis1) / 2 : el.offsetLeft + el.offsetWidth / 2) + 'px';
+    t.style.top = (first ? row.offsetTop + row.offsetHeight + 2 : row.offsetTop + 2) + 'px';
+    t.style.transform = first ? 'translate(-50%,0)' : 'translate(-50%,-100%)';
+    t.hidden = false;
   }
 
   // Cập nhật nhanh một clip khi đang kéo (không dựng lại cả timeline, để giữ thao tác chạm)
@@ -220,6 +254,7 @@ export class Timeline {
 
   // ----- chạm/kéo -----
   _click(e) {
+    if (e.target.closest('.clip-tools')) return; // nút trên thanh nổi do main.js xử lý (data-act)
     const add = e.target.closest('[data-add]');
     if (add) {
       this.cb.onAdd?.(add.dataset.add);

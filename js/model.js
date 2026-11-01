@@ -56,10 +56,25 @@ function cutRange(p, a, b) {
   p.main.segs = out.length ? out : p.main.segs;
 }
 
+// Lấy lại đoạn [a,b] (giây nguồn) đã bị cắt — gộp vào các đoạn giữ lại (theo thứ tự nguồn)
+function uncutRange(p, a, b) {
+  const all = [...p.main.segs, {in: Math.max(0, a), out: Math.min(p.sources[p.main.src]?.duration || b, b)}].sort((x, y) => x.in - y.in);
+  const out = [];
+  for (const s of all) {
+    const last = out[out.length - 1];
+    if (last && s.in <= last.out + 0.02) last.out = Math.max(last.out, s.out);
+    else out.push({in: s.in, out: s.out});
+  }
+  p.main.segs = out;
+}
+
 export function applyOp(p, o) {
   switch (o.op) {
     case 'cut':
       if (p.main) cutRange(p, o.a, o.b);
+      break;
+    case 'uncut':
+      if (p.main) uncutRange(p, o.a, o.b);
       break;
     case 'split': {
       const at = srcAt(p, o.T);
@@ -133,6 +148,8 @@ export function describeOp(p, o) {
       return `Tách clip tại ${tt(o.T)}`;
     case 'deleteSeg':
       return 'Xoá đoạn video';
+    case 'uncut':
+      return 'Khôi phục đoạn lời';
     case 'add':
       if (o.list === 'broll') return `Ghép cảnh “${p.sources[o.item.src]?.name || 'cảnh phụ'}”`;
       if (o.list === 'texts') return `Thêm chữ “${o.item.main}”`;
