@@ -806,27 +806,33 @@ export async function transcribeAll(p, an, onProgress) {
     cuts.push(quietAt(t0 + 22, t0 + 34));
   }
   cuts.push(total);
-  const words = [];
-  let prompt = PROMPTS[p.genre] || PROMPTS.chung;
-  for (let k = 0; k < cuts.length - 1; k++) {
+  // Gửi các đoạn SONG SONG (tối đa 4 cùng lúc) thay vì lần lượt: video 1–2 phút nhanh gấp 2–4 lần.
+  // (Bỏ “20 chữ cuối đoạn trước” làm gợi ý vì đoạn sau không còn chờ đoạn trước; gợi ý theo thể loại vẫn giữ.)
+  const prompt = PROMPTS[p.genre] || PROMPTS.chung;
+  const n = cuts.length - 1;
+  const res = new Array(n);
+  let done = 0;
+  let next = 0;
+  onProgress?.(0);
+  const one = async (k) => {
     const a = cuts[k];
-    const b = cuts[k + 1];
-    onProgress?.(k / (cuts.length - 1));
-    const part = pcm.subarray(Math.floor(a * SR), Math.floor(b * SR));
+    const part = pcm.subarray(Math.floor(a * SR), Math.floor(cuts[k + 1] * SR));
     let r = null;
     for (let tryN = 0; tryN < 3 && !r; tryN++) {
       try {
         r = await api('transcribe', wav16(part), true, '?prompt=' + encodeURIComponent(prompt));
       } catch (e) {
         if (tryN === 2 || /tắt/.test(e.message)) throw e;
-        await new Promise((res) => setTimeout(res, /nhanh/.test(e.message) ? 15000 : 1500));
+        await new Promise((ok) => setTimeout(ok, /nhanh/.test(e.message) ? 15000 : 1500));
       }
     }
-    for (const w of r.words || []) words.push({w: w.w, s: +(w.s + a).toFixed(3), e: +(w.e + a).toFixed(3)});
-    // ngữ cảnh cho đoạn sau: ~20 chữ cuối
-    const tail = (r.words || []).slice(-20).map((x) => x.w).join(' ');
-    if (tail) prompt = tail;
-  }
+    res[k] = (r.words || []).map((w) => ({w: w.w, s: +(w.s + a).toFixed(3), e: +(w.e + a).toFixed(3)}));
+    onProgress?.(++done / n);
+  };
+  await Promise.all(Array.from({length: Math.min(4, n)}, async () => {
+    while (next < n) await one(next++);
+  }));
+  const words = res.flat();
   onProgress?.(1);
   // Whisper hay tách số: “3” + “.800”, “50” + “%” → ghép lại
   const merged = [];
