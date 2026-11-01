@@ -119,8 +119,24 @@ async function buildAudio(p, getBlob, m, D) {
   let sr = 48000;
   let L = null;
   let R = null;
-  if (track && (await track.canDecode())) {
-    const sink = new m.AudioBufferSink(track);
+  if (track) {
+    let sink;
+    if (await track.canDecode()) sink = new m.AudioBufferSink(track);
+    else {
+      // iPhone iOS < 26: không có AudioDecoder → giải mã cả file bằng Web Audio rồi cắt theo đoạn
+      const {decodeWhole} = await import('./media.js');
+      const whole = await decodeWhole(await getBlob(src.fileKey), 48000);
+      sink = {
+        async *buffers(a, b) {
+          const s0 = Math.floor(a * whole.sampleRate);
+          const s1 = Math.min(whole.length, Math.ceil(b * whole.sampleRate));
+          if (s1 <= s0) return;
+          const part = new AudioBuffer({length: s1 - s0, numberOfChannels: whole.numberOfChannels, sampleRate: whole.sampleRate});
+          for (let c = 0; c < whole.numberOfChannels; c++) part.copyToChannel(whole.getChannelData(c).subarray(s0, s1), c);
+          yield {buffer: part, timestamp: s0 / whole.sampleRate};
+        },
+      };
+    }
     const starts = segStarts(p);
     for (let si = 0; si < p.main.segs.length; si++) {
       const seg = p.main.segs[si];

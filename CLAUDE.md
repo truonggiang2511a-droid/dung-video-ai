@@ -30,7 +30,7 @@ Giang cho phép tự bổ sung/sửa file này khi thấy thiếu/sai so với c
 | Bản chạy | `site/` — tạo bằng `bash build.sh` (esbuild, tách gói `engine` nặng chỉ tải khi phân tích âm thanh/xuất) | KHÔNG sửa tay `site/` |
 | Máy chủ | `worker.js` (Cloudflare Worker + assets `./site`), cấu hình `wrangler.toml` | Route: `/api/health`, `/api/transcribe`, `/api/ai` |
 | Lưu trữ | IndexedDB trên máy khách (`js/store.js`): dự án + file video | Video KHÔNG gửi lên máy chủ. Chỉ âm thanh 16 kHz gửi đi chép lời |
-| Bản thử | Netlify `dung-video-ai` (https://dung-video-ai.netlify.app) — chỉ giao diện, KHÔNG có /api → app tự chạy "bộ dựng cơ bản" | Build trên Netlify: `npm ci && bash build.sh`, publish `site` (netlify.toml) |
+| Bản thử | Netlify — chỉ giao diện, KHÔNG có /api → app tự chạy "bộ dựng cơ bản". 1/11: tài khoản Netlify của Giang hết credit (deploy bị bỏ qua) → dùng `npx netlify-cli deploy --allow-anonymous --dir site --prod --no-build` (link tạm, có mật khẩu, mất sau 60 phút nếu không nhận) | netlify.toml: build `npm ci && bash build.sh`, publish `site` |
 
 ### Bản đồ mã nguồn
 | File | Việc |
@@ -97,6 +97,9 @@ Font: `public/fonts/*.woff2` là bản GỘP 3 bộ chữ latin + latin-ext + vi
 - 2026-11-01: Đang kéo clip KHÔNG được dựng lại cả timeline (mất pointer capture) → dùng `timeline.updateClip()`, dựng lại khi thả tay.
 - 2026-11-01: Gộp font @fontsource bằng `fontTools.merge` cần `pip install brotli` để đọc/ghi woff2.
 - 2026-11-01: Không có `/api` (Netlify/tĩnh) → `aiHealth()` trả tắt → `localPlan` (ghép cảnh theo tên file khớp lời / rải đều, zoom ~7 s, chữ số liệu chỉ khi có lời) + `localCommand` (đổi màu, cỡ, font, kiểu, dời, dài/ngắn, xoá, phụ đề, nhạc).
+
+- 2026-11-01: iPhone iOS < 26 KHÔNG có `AudioDecoder` (WebCodecs âm thanh) → Mediabunny `canDecode()` = false. Dự phòng: `decodeWhole()` (Web Audio `decodeAudioData` cả file) cho cả phân tích khoảng lặng lẫn xuất âm thanh. Kiểm bằng `NO_AD=1 node test/flow.cjs` (xoá `window.AudioDecoder`) → vẫn cắt đúng 7 chỗ, file xuất có tiếng.
+- 2026-11-01: GitHub MCP KHÔNG tạo được repo (403 "Resource not accessible by integration") → Giang tạo repo trống `dung-video-ai` trên GitHub rồi Claude đẩy code lên.
 
 ## 6. Công nghệ đã cân nhắc
 | Thứ | Kết luận |

@@ -80,9 +80,11 @@ export async function analyzeAudio(blob, onProgress) {
   const input = new m.Input({source: new m.BlobSource(blob), formats: m.ALL_FORMATS});
   const track = await input.getPrimaryAudioTrack();
   if (!track) return null;
-  if (!(await track.canDecode())) throw new Error('Máy này không giải mã được âm thanh của video');
   const total = await input.computeDuration();
-  const sink = new m.AudioBufferSink(track);
+  // iPhone iOS < 26 chưa có AudioDecoder (WebCodecs) → giải mã cả file bằng Web Audio
+  const sink = (await track.canDecode()) ? new m.AudioBufferSink(track) : {buffers: async function* () {
+    yield {buffer: await decodeWhole(blob, 16000), timestamp: 0};
+  }};
   const win = 0.02;
   const rms = [];
   const pcm16 = [];
@@ -168,6 +170,16 @@ export function findSilences(an, {min = 0.35, keep = 0.1} = {}) {
     i = j;
   }
   return out;
+}
+
+// Giải mã cả file bằng Web Audio (dự phòng cho máy thiếu AudioDecoder)
+export async function decodeWhole(blob, sampleRate) {
+  const ac = new OfflineAudioContext(1, 1, sampleRate);
+  const buf = await blob.arrayBuffer();
+  return await new Promise((res, rej) => {
+    const pr = ac.decodeAudioData(buf, res, rej);
+    if (pr && pr.then) pr.then(res, rej);
+  });
 }
 
 // WAV 16 kHz mono 16-bit để gửi phiên âm

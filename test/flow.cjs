@@ -10,6 +10,7 @@ const M = '/home/claude/testmedia/';
   const logs = [];
   p.on('console', (m) => { if (['error', 'warning'].includes(m.type())) logs.push(m.type() + ': ' + m.text().slice(0, 300)); });
   p.on('pageerror', (e) => logs.push('PAGEERR ' + e.message));
+  if (process.env.NO_AD) await p.addInitScript(() => { delete window.AudioDecoder; window.AudioDecoder = undefined; });
   await p.goto('http://localhost:8790/');
   await p.waitForTimeout(800);
   await p.screenshot({path: 'test/s0-home.png'});
