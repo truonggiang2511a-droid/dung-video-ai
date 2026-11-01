@@ -30,7 +30,8 @@ Giang cho phép tự bổ sung/sửa file này khi thấy thiếu/sai so với c
 | Bản chạy | `site/` — tạo bằng `bash build.sh` (esbuild, tách gói `engine` nặng chỉ tải khi phân tích âm thanh/xuất) | KHÔNG sửa tay `site/` |
 | Máy chủ | `worker.js` (Cloudflare Worker + assets `./site`), cấu hình `wrangler.toml` | Route: `/api/health`, `/api/transcribe`, `/api/ai` |
 | Lưu trữ | IndexedDB trên máy khách (`js/store.js`): dự án + file video | Video KHÔNG gửi lên máy chủ. Chỉ âm thanh 16 kHz gửi đi chép lời |
-| Bản thử | Netlify — chỉ giao diện, KHÔNG có /api → app tự chạy "bộ dựng cơ bản". 1/11: tài khoản Netlify của Giang hết credit (deploy bị bỏ qua) → dùng `npx netlify-cli deploy --allow-anonymous --dir site --prod --no-build` (link tạm, có mật khẩu, mất sau 60 phút nếu không nhận) | netlify.toml: build `npm ci && bash build.sh`, publish `site` |
+| **Bản chạy thật** | Cloudflare Worker `dung-video-ai` → https://dung-video-ai.truonggiang2511a.workers.dev (Workers Builds nối repo, nhánh `main`: build `npm ci && bash build.sh`, deploy `npx wrangler deploy`; push `main` là tự deploy ~1 phút) | Tạo 1/11 10:58 trong cùng tài khoản Cloudflare với Vị Trí Studio (Worker riêng, không đụng nhau) |
+| Bản thử cũ | Netlify — chỉ giao diện, KHÔNG có /api → app tự chạy "bộ dựng cơ bản". 1/11: tài khoản Netlify của Giang hết credit (deploy bị bỏ qua) → dùng `npx netlify-cli deploy --allow-anonymous --dir site --prod --no-build` (link tạm, có mật khẩu, mất sau 60 phút nếu không nhận) | netlify.toml: build `npm ci && bash build.sh`, publish `site` |
 
 ### Bản đồ mã nguồn
 | File | Việc |
@@ -54,6 +55,7 @@ Giang cho phép tự bổ sung/sửa file này khi thấy thiếu/sai so với c
 ```bash
 npm ci && bash build.sh
 python3 -m http.server 8790 --directory site      # mở http://127.0.0.1:8790 (không có /api → chế độ cơ bản)
+URL=https://dung-video-ai.truonggiang2511a.workers.dev/ node test/flow.cjs 390 844   # chạy trên web thật; bỏ URL= để chạy bản cục bộ
 node test/flow.cjs 390 844                         # kiểm thử luồng chính trên khổ điện thoại (cần playwright + file trong /home/claude/testmedia)
 ```
 Font: `public/fonts/*.woff2` là bản GỘP 3 bộ chữ latin + latin-ext + vietnamese từ @fontsource (gộp bằng fontTools — xem nhật ký 1/11).
@@ -83,7 +85,7 @@ Font: `public/fonts/*.woff2` là bản GỘP 3 bộ chữ latin + latin-ext + vi
 ---
 
 ## 4. Việc còn lại (theo thứ tự)
-1. Cloudflare: Giang tạo Worker từ repo này (Workers Builds, build `npm ci && bash build.sh`), gắn binding `AI`, đặt `ANTHROPIC_API_KEY`, `AI_OPEN=on` khi đã có giới hạn lượt.
+1. ~~Tạo Worker Cloudflare~~ (xong 1/11). Còn: đặt `ANTHROPIC_API_KEY` (Secret) + `AI_OPEN=on` khi đã có giới hạn lượt; gọi thật `/api/transcribe` + `/api/ai` 1 lần để kiểm dạng trả về Whisper.
 2. Tài khoản + lượt dùng thử + thanh toán (Supabase + SePay, theo cẩm nang mục 4 Vị Trí Studio); máy chủ kiểm lượt trước khi gọi AI.
 3. Chữ sau đầu người dẫn (tách nền người) — chưa có; hiện chữ nằm phía trên đầu (y 0,12–0,3).
 4. Thêm mẫu 2–5, nhạc nền có sẵn, SFX theo mẫu 1, dựng trên máy chủ cho máy không xuất được.
@@ -100,6 +102,8 @@ Font: `public/fonts/*.woff2` là bản GỘP 3 bộ chữ latin + latin-ext + vi
 
 - 2026-11-01: iPhone iOS < 26 KHÔNG có `AudioDecoder` (WebCodecs âm thanh) → Mediabunny `canDecode()` = false. Dự phòng: `decodeWhole()` (Web Audio `decodeAudioData` cả file) cho cả phân tích khoảng lặng lẫn xuất âm thanh. Kiểm bằng `NO_AD=1 node test/flow.cjs` (xoá `window.AudioDecoder`) → vẫn cắt đúng 7 chỗ, file xuất có tiếng.
 - 2026-11-01: GitHub MCP KHÔNG tạo được repo (403 "Resource not accessible by integration") → Giang tạo repo trống `dung-video-ai` trên GitHub, rồi thêm repo vào GitHub App **Claude** (github.com/apps/claude → Configure → Repository access) mới đẩy được (trước đó push bị 403). Đã đẩy `main` 1/11 10:50.
+
+- 2026-11-01 10:58: Tạo Worker Cloudflare từ repo (Claude bấm trong trình duyệt của app Claude, Giang tự đăng nhập). Build 59 s OK; `/api/health` → `{"ai":false,"stt":false}` (đúng, AI chưa bật); chạy `test/flow.cjs` trên web thật: cắt 7 khoảng lặng, ghép 2 cảnh, xuất 720p h264+aac trong 23 s.
 
 ## 6. Công nghệ đã cân nhắc
 | Thứ | Kết luận |
