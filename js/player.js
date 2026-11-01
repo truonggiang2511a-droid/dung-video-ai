@@ -7,6 +7,7 @@
 import {W, H, drawFrame, duration, srcAt, activeBrolls, segStarts, setFormat} from './render.js';
 import {sfxBuffer} from './sfx.js';
 import {onStickerLoad} from './library.js';
+import {ensureProjectFonts} from './fonts.js';
 
 const engine = () => import('./engine.js');
 const PREVIEW_RATE = 32000;
@@ -123,6 +124,7 @@ export class Player {
   async attach(p, getBlob) {
     this.p = p;
     if (setFormat(p.format)) this._resize();
+    ensureProjectFonts(p).then(() => (this.dirty = true));
     const want = new Set(Object.keys(p.sources));
     for (const id of Object.keys(this.urls)) if (!want.has(id)) this._drop(id);
     for (const [id, src] of Object.entries(p.sources)) {
@@ -458,6 +460,7 @@ export class Player {
   refresh() {
     this.dirty = true;
     if (!this.p) return;
+    ensureProjectFonts(this.p).then(() => (this.dirty = true));
     if (this.T > this.D) this.T = this.D;
     if (this.playing && this.mode === 'wa') {
       if (this._sig() !== this.sig) this._restart();

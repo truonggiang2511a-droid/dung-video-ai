@@ -3,6 +3,7 @@
 import {W, H, FPS, drawFrame, duration, srcAt, activeBrolls, segStarts, setFormat} from './render.js';
 import {sfxBuffer} from './sfx.js';
 import {preloadStickers} from './library.js';
+import {ensureProjectFonts} from './fonts.js';
 
 export class Cancelled extends Error {}
 
@@ -80,6 +81,7 @@ export async function exportVideo(p, getBlob, {res = 1080, onProgress, signal} =
 
   // hình minh hoạ / icon: tải đủ trước khi vẽ (khung nào cũng phải có hình)
   await preloadStickers(p);
+  await ensureProjectFonts(p);
   // âm thanh: ghép lời nói theo các đoạn giữ lại + nhạc nền + hiệu ứng âm thanh
   onProgress?.(0, 'Chuẩn bị âm thanh');
   const audio = await buildAudio(p, getBlob, m, D);
@@ -236,6 +238,7 @@ async function buildAudio(p, getBlob, m, D) {
 export async function recordRealtime(player, {onProgress, signal} = {}) {
   const D = player.D;
   await preloadStickers(player.p);
+  await ensureProjectFonts(player.p);
   const stream = player.canvas.captureStream(FPS);
   // tiếng lấy từ bộ trộn Web Audio của bản xem nhanh (đã cắt liền mạch + nhạc nền)
   try {

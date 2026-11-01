@@ -4,6 +4,7 @@ import {store} from './store.js';
 import {newProject, applyOp, History, find, newText, uid, ITEM_TYPES} from './model.js';
 import {SFX, SFX_MAP, playSfx} from './sfx.js';
 import {MOTIONS, searchLib, loadIndex} from './library.js';
+import {FONT_CATS, ensureFont, ensureProjectFonts} from './fonts.js';
 import {importFile, probeVideo, ensurePlayable, thumbs} from './media.js';
 import {Player} from './player.js';
 import {Timeline} from './timeline.js';
@@ -85,6 +86,7 @@ const ed = {
     ed.tl.render(p);
     ed.tl.setTime(ed.player.T);
     ed.player.dirty = true;
+    ensureProjectFonts(p).then(() => (ed.player.dirty = true));
     updateStage();
     renderBin();
     if (ed.sel && !selItem()) select(null);
@@ -445,7 +447,7 @@ function renderInspector() {
       <label class="fl">Dòng dẫn nhỏ<input data-k="lead" value="${esc(it.lead)}" maxlength="30" placeholder="vd: diện tích"></label>
       <label class="fl">Chữ chính<input data-k="main" value="${esc(it.main)}" maxlength="40"></label>
       <label class="fl">Dòng ký tay<input data-k="sign" value="${esc(it.sign)}" maxlength="40" placeholder="vd: chỉ hôm nay"></label>
-      <div class="fl"><span>Font</span><div class="chips">${Object.entries(FONTS).map(([k, f]) => `<button class="chip-b${it.font === k ? ' on' : ''}" data-set="font" data-v="${k}" style="font-family:${f.family};font-weight:${f.weight}">${f.label}</button>`).join('')}</div></div>
+      <div class="fl"><span>Font <small class="fcount">${Object.keys(FONTS).length} font có dấu</small></span>${fontPicker(it.font)}</div>
       <div class="fl"><span>Màu</span><div class="swatches">${COLORS.map((c) => `<button class="sw${it.color === c.hex ? ' on' : ''}" data-set="color" data-v="${c.hex}" style="background:${c.hex}" aria-label="Màu ${c.name}"></button>`).join('')}</div></div>
       <div class="fl"><span>Kiểu chữ</span><div class="seg">${[['flat', 'Phẳng'], ['3d', 'Nổi 3D'], ['outline', 'Có viền']].map(([k, l]) => `<button class="${it.style === k ? 'on' : ''}" data-set="style" data-v="${k}">${l}</button>`).join('')}</div></div>
       <label class="fl">Cỡ chữ <output>${Math.round((it.size || 1) * 100)}%</output><input type="range" min="0.5" max="1.8" step="0.05" value="${it.size || 1}" data-num="size"></label>
@@ -502,6 +504,7 @@ function renderInspector() {
       <p class="hint kbd-hint">Phím tắt: <kbd>Space</kbd> phát/dừng · <kbd>←</kbd><kbd>→</kbd> từng khung (<kbd>Shift</kbd> 1 giây) · <kbd>S</kbd> tách · <kbd>Delete</kbd> xoá · <kbd>Ctrl</kbd>+<kbd>Z</kbd> hoàn tác · <kbd>+</kbd><kbd>−</kbd> phóng timeline</p>`;
   }
   box.innerHTML = h;
+  if (h.includes('data-fload')) watchFontPreviews();
 }
 function subsPanel() {
   const st = ed.p.subs;
@@ -514,6 +517,22 @@ function subsPanel() {
     <label class="fl">Cỡ chữ <output>${Math.round((st.size || 1) * 100)}%</output><input type="range" min="0.6" max="1.6" step="0.05" value="${st.size || 1}" data-subs="size"></label>
     <label class="fl">Vị trí (cao ↔ thấp)<input type="range" min="0.3" max="0.9" step="0.01" value="${st.y ?? 0.7}" data-subs="y"></label>
     <div class="fl"><span>Màu chữ</span><div class="swatches">${['#ffffff', '#ffc61a', '#2ad46a', '#5fd3ff'].map((c) => `<button class="sw${(st.color || '#ffffff') === c ? ' on' : ''}" data-subs-color="${c}" style="background:${c}" aria-label="Màu ${c}"></button>`).join('')}</div></div>`;
+}
+
+// Bảng chọn font: chia nhóm, mỗi font hiện bằng chính nó (tải khi lướt tới)
+function fontPicker(cur) {
+  const base = Object.entries(FONTS).filter(([, f]) => !f.lib);
+  const groups = [['Mẫu 1', base], ...FONT_CATS.map((c) => [c, Object.entries(FONTS).filter(([, f]) => f.cat === c)])];
+  return `<div class="fpick">${groups
+    .map(([g, list]) => `<b class="fg">${g}</b>${list.map(([k, f]) => `<button class="fopt${(cur || 'anton') === k ? ' on' : ''}" data-set="font" data-v="${k}" data-fload="${f.lib ? k : ''}" style="font-family:${esc(f.family)},sans-serif;font-weight:${f.weight}">${esc(f.label)} <span>Chữ Việt đẹp</span></button>`).join('')}`)
+    .join('')}</div>`;
+}
+let fontIO = null;
+function watchFontPreviews() {
+  if (!('IntersectionObserver' in window)) return $$('[data-fload]').forEach((b) => b.dataset.fload && ensureFont(b.dataset.fload));
+  fontIO = fontIO || new IntersectionObserver((es) => es.forEach((e) => e.isIntersecting && e.target.dataset.fload && (ensureFont(e.target.dataset.fload), fontIO.unobserve(e.target))), {rootMargin: '120px'});
+  $$('[data-fload]').forEach((b) => b.dataset.fload && fontIO.observe(b));
+  $('.fopt.on')?.scrollIntoView({block: 'nearest'});
 }
 
 // ---------- bảng sửa: sự kiện ----------

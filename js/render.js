@@ -4,6 +4,7 @@
 // nên cỡ chữ/icon giữ nguyên) — nơi gọi tự scale ctx. Đổi khổ: setFormat(p.format) trước khi vẽ.
 import {FORMATS} from './templates.js';
 import {stickerImage} from './library.js';
+import {FONT_LIB} from './font-list.js';
 
 export let W = 1080;
 export let H = 1920;
@@ -23,6 +24,8 @@ export const FONTS = {
   oswald: {family: 'Oswald', weight: '700', label: 'Oswald'},
   bvp: {family: 'BVP', weight: '800', label: 'Be Vietnam'},
 };
+// + 63 font kho (tải khi dùng, fonts.js)
+for (const f of FONT_LIB) FONTS[f.key] = {family: `"${f.family}"`, weight: f.weight, label: f.label, cat: f.cat, lib: true};
 
 let fontsReady = null;
 export function loadFonts(base = document.baseURI) {
