@@ -211,12 +211,16 @@ export function drawCover(ctx, fr, scale = 1, dx = 0, dy = 0) {
   }
 }
 
+// 3 kiểu zoom video chính: (mặc định) đẩy vào 0,25 s rồi giữ; 'punch' = zoom giật tức thì (che chỗ cắt, kiểu dựng TikTok/YouTube);
+// 'push' = đẩy máy chậm suốt đoạn (giữ hình không đứng yên khi người nói lâu)
 export function zoomAt(p, T) {
   let z = 1;
   for (const zm of p.zooms || []) {
-    const inn = easeOut((T - zm.start) / 0.25);
-    const out = easeInOut((zm.start + zm.dur - T) / 0.3);
-    const k = Math.min(inn, out);
+    if (T < zm.start || T >= zm.start + zm.dur) continue;
+    let k;
+    if (zm.kind === 'punch') k = 1;
+    else if (zm.kind === 'push') k = easeInOut(clamp((T - zm.start) / zm.dur));
+    else k = Math.min(easeOut((T - zm.start) / 0.25), easeInOut((zm.start + zm.dur - T) / 0.3));
     if (k > 0) z = Math.max(z, 1 + (zm.scale - 1) * k);
   }
   return z;
@@ -527,7 +531,8 @@ export function drawFrame(ctx, p, T, frames, opt = {}) {
 
   // 1. video chính + zoom đẩy máy
   const z = zoomAt(p, T);
-  if (!drawCover(ctx, frames.main, z) && opt.placeholder) {
+  // giữ vùng mặt người nói (~38% chiều cao) đứng yên khi zoom, không phóng vào bụng
+  if (!drawCover(ctx, frames.main, z, 0, H * 0.12 * (z - 1)) && opt.placeholder) {
     ctx.fillStyle = '#1b2029';
     ctx.fillRect(0, 0, W, H);
   }

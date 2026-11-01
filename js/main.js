@@ -459,7 +459,7 @@ function renderInspector() {
       <div class="fl"><span>Đổi sang cảnh khác</span><div class="chips">${others.map((o) => `<button class="chip-b${o.id === it.src ? ' on' : ''}" data-set="src" data-v="${o.id}">${esc(o.name)}</button>`).join('')}</div></div>
       <p class="hint">Kéo clip trên timeline để dời, kéo hai đầu để dài/ngắn.</p>`;
   } else if (s?.type === 'zoom' && it) {
-    h = `<h4>Zoom đẩy máy</h4><label class="fl">Độ phóng <output>${Math.round((it.scale - 1) * 100)}%</output><input type="range" min="1.02" max="1.25" step="0.01" value="${it.scale}" data-num="scale"></label>`;
+    h = `<h4>${it.kind === 'punch' ? 'Zoom giật (che chỗ cắt)' : it.kind === 'push' ? 'Đẩy máy chậm' : 'Zoom đẩy máy'}</h4><label class="fl">Độ phóng <output>${Math.round((it.scale - 1) * 100)}%</output><input type="range" min="1.02" max="1.25" step="0.01" value="${it.scale}" data-num="scale"></label>`;
   } else if (s?.type === 'seg' && it) {
     h = `<h4>Đoạn video chính</h4><p class="hint">Kéo hai đầu đoạn để lấy thêm / bớt hình. Bấm Tách để cắt tại đầu phát.</p>
       <button class="btn ghost wide" data-act="split">${icon(I.split, 17)} Tách tại đầu phát</button>

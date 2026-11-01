@@ -1,5 +1,7 @@
 // Thể loại video + khổ hình. Dùng chung MỘT bộ dựng (render.js); thể loại chỉ đổi lời gợi ý, icon, câu kết, cách AI dựng.
 // Thêm thể loại mới: thêm 1 mục vào GENRES (và mô tả cho AI ở trường `ai`) — không phải sửa bộ vẽ.
+// `edit` = nhịp dựng của bộ dựng chuyên nghiệp (ai.js localPlan): pace = giây giữa 2 lần đổi hình, cover = phần thân video phủ cảnh phụ,
+// base/accent = chuyển cảnh giữa câu / đầu câu ('none' = cắt thẳng), punch = độ zoom giật che chỗ cắt.
 
 export const GENRES = {
   chung: {
@@ -10,6 +12,7 @@ export const GENRES = {
     broll: 'Cảnh minh hoạ, sản phẩm, hậu trường…',
     icons: ['star', 'check', 'fire', 'bulb', 'heart', 'chat', 'thumb', 'clock'],
     ai: 'video ngắn nói trước máy quay (talking head) cho mạng xã hội Việt Nam',
+    edit: {pace: 3.2, cover: 0.4, base: 'none', accent: 'fade', punch: 1.1},
   },
   bds: {
     short: 'BĐS',
@@ -19,6 +22,7 @@ export const GENRES = {
     broll: 'Phòng khách, bếp, mặt tiền…',
     icons: ['house', 'pin', 'ruler', 'tag', 'doc', 'school', 'sofa', 'car', 'tree', 'bed', 'key', 'star'],
     ai: 'video bất động sản cho môi giới Việt Nam (người dẫn đứng nói giới thiệu nhà/đất), số → vàng 3D, giá → đỏ kèm dòng ký tay',
+    edit: {pace: 3.4, cover: 0.5, base: 'fade', accent: 'zoom', punch: 1.08},
   },
   banhang: {
     short: 'Bán hàng',
@@ -28,6 +32,7 @@ export const GENRES = {
     broll: 'Cận cảnh sản phẩm, đóng gói, khách dùng…',
     icons: ['cart', 'tag', 'gift', 'fire', 'check', 'truck', 'star', 'heart'],
     ai: 'video bán hàng / review sản phẩm cho người bán online Việt Nam, nhấn giá, ưu đãi, công dụng (không hứa hẹn quá sự thật)',
+    edit: {pace: 2.6, cover: 0.5, base: 'none', accent: 'zoom', punch: 1.12},
   },
   amthuc: {
     short: 'Ẩm thực',
@@ -37,6 +42,7 @@ export const GENRES = {
     broll: 'Món ăn cận cảnh, bếp, không gian quán…',
     icons: ['food', 'fire', 'star', 'pin', 'clock', 'heart', 'coffee', 'tag'],
     ai: 'video ẩm thực (review quán, giới thiệu món, công thức nấu) cho mạng xã hội Việt Nam',
+    edit: {pace: 3, cover: 0.5, base: 'fade', accent: 'zoom', punch: 1.1},
   },
   kienthuc: {
     short: 'Kiến thức',
@@ -46,6 +52,7 @@ export const GENRES = {
     broll: 'Minh hoạ, màn hình, ví dụ thực tế…',
     icons: ['bulb', 'book', 'check', 'chart', 'clock', 'star', 'chat', 'thumb'],
     ai: 'video chia sẻ kiến thức / hướng dẫn / mẹo cho mạng xã hội Việt Nam, nhấn các bước, con số, ý chính',
+    edit: {pace: 3.6, cover: 0.35, base: 'none', accent: 'fade', punch: 1.1},
   },
   vlog: {
     short: 'Vlog',
@@ -55,6 +62,7 @@ export const GENRES = {
     broll: 'Cảnh đi đường, phong cảnh, khoảnh khắc…',
     icons: ['heart', 'pin', 'camera', 'plane', 'coffee', 'star', 'fire', 'chat'],
     ai: 'vlog đời sống / du lịch cho mạng xã hội Việt Nam, nhịp nhanh, cảm xúc',
+    edit: {pace: 2.6, cover: 0.55, base: 'none', accent: 'slide', punch: 1.12},
   },
 };
 

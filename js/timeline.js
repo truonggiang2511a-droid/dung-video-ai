@@ -153,7 +153,7 @@ export class Timeline {
       ? lines.map((l, i) => clip('subs', 'subs', l.s, l.e - l.s, 'c-sub', `<span>${esc(l.ws.map((w) => w.w).join(' '))}</span>`, '')).join('')
       : p.main && p.transcript ? '' : p.main ? `<div class="tl-hint" style="left:${half}px">Phụ đề sẽ có sau khi AI nghe lời nói</div>` : '';
     // Hiệu ứng
-    this.rows.zooms.innerHTML = (p.zooms || []).map((z) => clip('zoom', z.id, z.start, z.dur, 'c-zoom', '<span>Zoom</span>')).join('');
+    this.rows.zooms.innerHTML = (p.zooms || []).map((z) => clip('zoom', z.id, z.start, z.dur, 'c-zoom', `<span>${z.kind === 'punch' ? 'Zoom giật' : z.kind === 'push' ? 'Đẩy máy' : 'Zoom'}</span>`)).join('');
     // Cảnh phụ
     this.rows.broll.innerHTML =
       (p.broll || [])

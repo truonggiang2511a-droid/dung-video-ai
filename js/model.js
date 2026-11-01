@@ -153,7 +153,7 @@ export function describeOp(p, o) {
     case 'add':
       if (o.list === 'broll') return `Ghép cảnh “${p.sources[o.item.src]?.name || 'cảnh phụ'}”`;
       if (o.list === 'texts') return `Thêm chữ “${o.item.main}”`;
-      if (o.list === 'zooms') return `Đẩy máy zoom ${tt(o.item.start)}`;
+      if (o.list === 'zooms') return o.item.kind === 'punch' ? `Zoom giật che chỗ cắt ${tt(o.item.start)}` : o.item.kind === 'push' ? `Đẩy máy chậm ${tt(o.item.start)}` : `Đẩy máy zoom ${tt(o.item.start)}`;
       return 'Thêm';
     case 'update': {
       const f = find(p, o.id);

@@ -1,6 +1,6 @@
 // AI dựng từ A–Z + sửa theo lời nói. Mọi thay đổi là "op" → con trỏ diễn lại trên timeline rồi mới áp vào dự án.
 import {analyzeAudio, findSilences, levels, wav16} from './media.js';
-import {duration, tlOfSrc, timelineWords, ICONS} from './render.js';
+import {duration, tlOfSrc, timelineWords, segStarts, clamp, ICONS} from './render.js';
 import {applyOp, describeOp, find, newText, uid} from './model.js';
 import {genreOf, formatOf} from './templates.js';
 
@@ -55,7 +55,7 @@ export function sanitizeOps(p, ops, target) {
         const dur = Math.min(+o.item.dur || 3, src.duration);
         out.push({op: 'add', list: 'broll', item: {id: uid('b'), src: src.id, start: +o.item.start || 0, dur, in: Math.max(0, Math.min(+o.item.in || 0, src.duration - dur)), trans: o.item.trans || 'fade', locked: false}});
       } else if (o.list === 'zooms') {
-        out.push({op: 'add', list: 'zooms', item: {id: uid('z'), start: +o.item?.start || 0, dur: +o.item?.dur || 2.5, scale: Math.min(1.25, Math.max(1.02, +o.item?.scale || 1.08))}});
+        out.push({op: 'add', list: 'zooms', item: {id: uid('z'), start: +o.item?.start || 0, dur: +o.item?.dur || 2.5, scale: Math.min(1.25, Math.max(1.02, +o.item?.scale || 1.08)), ...(['punch', 'push'].includes(o.item?.kind) ? {kind: o.item.kind} : {})}});
       }
       continue;
     }
@@ -123,6 +123,10 @@ export function numberLockups(p) {
       out.push(newText(at, {kind: 'price', lead, main: priceText(num, unit[1]), color: '#ff2a2a', icon: icons.includes('tag') ? 'tag' : icons[0], dur: 4}));
     } else if (unit && unit[2] === 'pct') {
       out.push(newText(at, {lead: /giam|sale/.test(prev) ? 'giảm' : '', main: `${num.replace('%', '')}%`, color: '#ffc61a', icon: icons.includes('fire') ? 'fire' : icons[0], dur: 3.5}));
+    } else if (unit && unit[2] === 'area' && next === 'met' && plain(ws[i + 2]?.w || '').replace(/[.,!?]$/, '') !== 'vuong') {
+      // “mặt tiền 5 mét”, “ngang 4 mét” là CHIỀU DÀI, không phải diện tích
+      const lead = /mat tien/.test(prev) ? 'mặt tiền' : /ngang/.test(prev) ? 'ngang' : /dai/.test(prev) ? 'dài' : /rong/.test(prev) ? 'rộng' : /hem|duong/.test(prev) ? 'đường' : '';
+      out.push(newText(at, {lead, main: `${num} MÉT`, color: '#ffc61a', icon: icons.includes('ruler') ? 'ruler' : icons[0], dur: 3.2}));
     } else if (unit && unit[2] === 'area') {
       out.push(newText(at, {lead: 'diện tích', main: `${num} M²`, color: '#ffc61a', icon: icons.includes('ruler') ? 'ruler' : icons[0], dur: 3.5}));
     } else if (g === 'bds' && /^(phong|tang|lau|tret)$/.test(next)) {
@@ -156,43 +160,190 @@ export function numberLockups(p) {
   return keep;
 }
 
+// ---------- Bộ dựng chuyên nghiệp (chạy trên máy, không cần AI máy chủ) ----------
+// Quy tắc dân dựng video ngắn:
+//  • 2–3 giây đầu giữ mặt người nói (hook, zoom chặt), cuối video giữ người nói cho câu kêu gọi
+//  • đổi hình mỗi 2,5–4 giây (nhịp theo thể loại: templates.js `edit`)
+//  • cảnh phụ vào ĐÚNG ĐẦU CỤM LỜI, ưu tiên phủ lên chỗ cắt để che vết cắt; cảnh khớp lời (tên file/nhãn) đặt đúng lúc nhắc tới
+//  • dùng HẾT cảnh khách đưa; cảnh dài cắt thành nhiều cú khác nhau; bỏ 0,3 s đầu/cuối mỗi cảnh (hay rung)
+//  • chuyển cảnh: đầu câu dùng kiểu nhấn của thể loại, giữa câu cắt thẳng / mờ nhẹ
+//  • chỗ cắt lộ trên mặt người nói → zoom giật xen kẽ chặt/rộng; đoạn nói dài không cắt → đẩy máy chậm
+const NAME_JUNK = new Set(['img', 'mov', 'mp4', 'vid', 'video', 'clip', 'canh', 'broll', 'pxl', 'dsc', 'copy', 'final', 'edit']);
+export function brollTokens(src) {
+  return plain(`${src.name || ''} ${src.tag || ''}`)
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length > 1 && !NAME_JUNK.has(t) && !/^\d+$/.test(t));
+}
+
 export function localPlan(p) {
   const D = duration(p);
   const ops = [];
-  const B = Object.values(p.sources).filter((s) => s.kind === 'broll');
+  if (D < 1) return ops;
+  const st = genreOf(p).edit || {pace: 3.2, cover: 0.4, base: 'none', accent: 'fade', punch: 1.1};
   const words = timelineWords(p);
-  const used = [];
-  const body0 = Math.min(3, D * 0.15);
-  const body1 = Math.max(body0 + 2, D - 4.5);
-  const trans = ['fade', 'zoom', 'fade', 'slide'];
-  // ghép cảnh theo tên file khớp lời nói, còn lại rải đều
-  const free = [];
-  B.forEach((s) => {
-    const toks = plain(s.name).split(/[^a-z0-9]+/).filter((x) => x.length > 2);
-    const hit = toks.length ? words.find((w) => w.s > body0 && w.s < body1 && toks.some((t) => plain(w.w).includes(t))) : null;
-    if (hit) used.push({s, at: hit.s});
-    else free.push(s);
+  const cuts = segStarts(p).slice(1).filter((c) => c > 0.2 && c < D - 0.2);
+  const ctaLen = p.cta?.len || 4;
+
+  // cụm lời: tách ở dấu câu, chỗ ngừng > 0,3 s hoặc 9 chữ
+  const phrases = [];
+  let cur = null;
+  words.forEach((w, i) => {
+    const prev = words[i - 1];
+    const brk = !prev || /[.,!?…:;]$/.test(prev.w) || w.s - prev.e > 0.3 || cur.n >= 9;
+    if (brk) {
+      cur = {s: w.s, e: w.e, n: 0, text: ' ', sent: !prev || /[.!?…]$/.test(prev.w) || w.s - prev.e > 0.6};
+      phrases.push(cur);
+    }
+    cur.e = w.e;
+    cur.n++;
+    cur.text += plain(w.w).replace(/[.,!?…:;]/g, '') + ' ';
   });
-  const slots = Math.max(0, Math.floor((body1 - body0) / 6));
-  free.slice(0, slots).forEach((s, i) => used.push({s, at: body0 + ((i + 0.5) * (body1 - body0)) / Math.max(1, Math.min(slots, free.length))}));
-  used.sort((a, b) => a.at - b.at);
-  let last = -9;
-  used.forEach((u, i) => {
-    const dur = Math.min(3.2, u.s.duration);
-    const at = Math.max(u.at, last + 0.5);
-    if (at + dur > body1 + 2) return;
-    last = at + dur;
-    ops.push({op: 'add', list: 'broll', item: {id: uid('b'), src: u.s.id, start: at, dur, in: Math.max(0, u.s.duration / 2 - dur / 2), trans: trans[i % trans.length], locked: false}});
-  });
-  // chữ số liệu từ lời nói
-  const lk = numberLockups(p);
-  lk.forEach((t) => ops.push({op: 'add', list: 'texts', item: t}));
-  // zoom đẩy máy mỗi ~7 giây, tránh lúc đang có cảnh phụ
-  const br = ops.filter((o) => o.list === 'broll').map((o) => o.item);
-  for (let t = 1.2; t < D - 5; t += 7) {
-    if (br.some((b) => t + 2.5 > b.start && t < b.start + b.dur)) continue;
-    ops.push({op: 'add', list: 'zooms', item: {id: uid('z'), start: t, dur: 2.4, scale: 1.08}});
+  const anchors = phrases.length ? phrases.map((x) => x.s) : [0, ...cuts];
+  const stops = phrases.length ? [...phrases.map((x) => x.e), ...phrases.map((x) => x.s)] : [...cuts, D];
+  const sentAt = (t) => {
+    const ph = phrases.find((x) => Math.abs(x.s - t) < 0.06);
+    return ph ? ph.sent : true;
+  };
+
+  // vùng: hook | thân (có cảnh phụ) | đuôi (câu kêu gọi)
+  let b0 = clamp(D * 0.12, 2, 3.2);
+  const second = anchors.find((a) => a >= b0 - 0.6 && a <= 3.6);
+  if (second !== undefined) b0 = Math.max(1.6, second);
+  const b1 = D - ctaLen - 0.4;
+  const Ls = clamp(st.pace * 0.9, 2.2, 3.4);
+  const Lmin = 1.8;
+  const Lmax = 4;
+  const gapMin = 1.2;
+
+  const clips = Object.values(p.sources)
+    .filter((x) => x.kind === 'broll' && x.duration > 0.8)
+    .map((x) => {
+      const usable = Math.max(0.5, x.duration - 0.6);
+      return {x, toks: brollTokens(x), used: 0, nWin: Math.max(1, Math.floor((usable + 0.2) / (Ls + 0.2)))};
+    });
+  const matches = (c, ph) => {
+    if (!c.toks.length) return false;
+    const hit = c.toks.filter((t) => ph.text.includes(' ' + t + ' ')).length;
+    return hit >= Math.min(2, c.toks.length);
+  };
+  const slots = [];
+  // cú cảnh phụ nối liền nhau được (chuỗi cảnh) nhưng tối đa 2 cú / 6,5 s rồi phải về người nói
+  const fits = (s, e, touch = false) => {
+    if (e - s < 1.2 || s < b0 - 0.01 || e > b1 + 0.01) return false;
+    const near = (x, y) => Math.abs(x - y) < 0.05;
+    if (!slots.every((o) => e + gapMin <= o.s || s >= o.e + gapMin || (touch && (near(e, o.s) || near(s, o.e))))) return false;
+    const chain = slots.filter((o) => near(o.e, s) || near(o.s, e));
+    if (!chain.length) return true;
+    const run = chain.reduce((a, o) => a + o.e - o.s, e - s);
+    const linked = chain.some((o) => slots.some((q) => q !== o && (near(q.e, o.s) || near(q.s, o.e))));
+    return run <= 6.5 && !linked && chain.length < 2;
+  };
+  // mép cảnh phụ trùng chỗ cắt (lệch ≤ 0,25 s) thì đặt đúng chỗ cắt → không lộ 2 khung người nói
+  const snapCut = (t) => {
+    const q = cuts.find((c) => Math.abs(c - t) <= 0.25);
+    return q === undefined ? t : q;
+  };
+  const endFor = (s, lim, c) => {
+    const want = s + Ls;
+    const cand = stops.filter((t) => t >= s + Lmin && t <= Math.min(s + Lmax, lim));
+    let e = cand.length ? cand.reduce((a, t) => (Math.abs(t - want) < Math.abs(a - want) ? t : a)) : Math.min(want, lim);
+    if (c) e = Math.min(e, s + c.x.duration - 0.05);
+    return e;
+  };
+
+  if (b1 - b0 >= 2.5 && clips.length) {
+    // A. cảnh khớp lời nói: vào đúng đầu cụm có nhắc tới; 2 cảnh được nhắc liền nhau → nối thành chuỗi
+    const ment = clips
+      .map((c) => ({c, ph: phrases.find((x) => x.s >= b0 - 0.3 && x.s < b1 - 1.2 && matches(c, x))}))
+      .filter((m) => m.ph)
+      .sort((u, v) => u.ph.s - v.ph.s);
+    for (const {c, ph} of ment) {
+      const s0 = snapCut(Math.max(b0, ph.s));
+      const e0 = snapCut(endFor(s0, b1, c));
+      const prev = slots.find((o) => o.s < s0 && o.e > s0 - gapMin);
+      if (prev && s0 - prev.s >= 1.4) prev.e = Math.min(prev.e, s0);
+      if (prev && prev.e > s0) continue;
+      if (fits(s0, e0, !!prev && Math.abs(prev.e - s0) < 0.05)) slots.push({s: s0, e: e0, c, k: c.used++});
+    }
+    // B. còn lại: rải vào khoảng trống lớn nhất, bám đầu cụm, ưu tiên phủ chỗ cắt
+    const target = Math.max(clips.length, Math.round(((b1 - b0) * st.cover) / Ls));
+    const queue = clips.filter((c) => !c.used);
+    for (let r = 1; queue.length + slots.length < target && r < 4; r++) {
+      clips.filter((c) => c.nWin > r && c.used <= r).forEach((c) => queue.length + slots.length < target && queue.push(c));
+    }
+    for (const c of queue) {
+      const occ = slots.map((o) => [o.s - gapMin, o.e + gapMin]).sort((u, v) => u[0] - v[0]);
+      const free = [];
+      let x0 = b0;
+      for (const [u, v] of occ) {
+        if (u > x0) free.push([x0, u]);
+        x0 = Math.max(x0, v);
+      }
+      if (b1 > x0) free.push([x0, b1]);
+      const iv = free.sort((u, v) => v[1] - v[0] - (u[1] - u[0]))[0];
+      if (!iv || iv[1] - iv[0] < Lmin) break;
+      const ideal = (iv[0] + iv[1]) / 2 - Ls / 2;
+      let best = null;
+      for (const a of anchors.filter((t) => t >= iv[0] - 0.01 && t <= iv[1] - Lmin)) {
+        const e = endFor(a, iv[1], c);
+        if (e - a < 1.2) continue;
+        const covers = cuts.some((q) => q > a + 0.3 && q < e - 0.3);
+        const sc = -Math.abs(a - ideal) + (covers ? 0.8 : 0);
+        if (!best || sc > best.sc) best = {s: a, e, sc};
+      }
+      if (!best) {
+        const s1 = clamp(ideal, iv[0], iv[1] - Lmin);
+        best = {s: s1, e: Math.min(s1 + Ls, iv[1], s1 + c.x.duration - 0.05)};
+      }
+      best.s = snapCut(best.s);
+      best.e = snapCut(best.e);
+      if (!fits(best.s, best.e)) continue;
+      slots.push({s: best.s, e: best.e, c, k: c.used++});
+    }
   }
+  slots.sort((u, v) => u.s - v.s);
+  let prevSrc = null;
+  slots.forEach((o, i) => {
+    const dur = +(o.e - o.s).toFixed(2);
+    const d = o.c.x.duration;
+    const span = Math.max(0, d - 0.6 - dur);
+    const inn = d <= dur + 0.6 ? Math.max(0, (d - dur) / 2) : 0.3 + (o.c.nWin > 1 ? (span * (o.k % o.c.nWin)) / (o.c.nWin - 1) : span / 2);
+    const trans = i === 0 || sentAt(o.s) || prevSrc === o.c.x.id ? st.accent : st.base;
+    prevSrc = o.c.x.id;
+    ops.push({op: 'add', list: 'broll', item: {id: uid('b'), src: o.c.x.id, start: +o.s.toFixed(2), dur, in: +Math.min(inn, Math.max(0, d - dur)).toFixed(2), trans, locked: false}});
+  });
+
+  // chữ số liệu từ lời nói
+  numberLockups(p).forEach((t) => ops.push({op: 'add', list: 'texts', item: t}));
+
+  // zoom trên mặt người nói: giật xen kẽ chặt/rộng ở mỗi chỗ cắt lộ ra; hook bắt đầu chặt
+  const speak = [];
+  let x0 = 0;
+  for (const o of slots) {
+    if (o.s > x0) speak.push([x0, o.s, true]);
+    x0 = o.e;
+  }
+  if (D > x0) speak.push([x0, D, false]);
+  let tight = true;
+  const maxStill = st.pace * 1.25;
+  speak.forEach(([a, z]) => {
+    const pts = [a, ...cuts.filter((c) => c > a + 0.5 && c < z - 0.5), z];
+    for (let j = 0; j < pts.length - 1; j++) {
+      if (pts[j + 1] - pts[j] <= maxStill) continue;
+      const mid = (pts[j] + pts[j + 1]) / 2;
+      const cand = anchors.filter((t) => t > pts[j] + 1.2 && t < pts[j + 1] - 1.2);
+      const at = cand.length ? cand.reduce((u, t) => (Math.abs(t - mid) < Math.abs(u - mid) ? t : u)) : pts[j + 1] - pts[j] > maxStill * 1.2 ? mid : null;
+      if (at !== null) pts.splice(j + 1, 0, at), j--;
+    }
+    for (let j = 0; j < pts.length - 1; j++) {
+      const s = pts[j];
+      const e = pts[j + 1];
+      if (tight && e - s >= 0.5) ops.push({op: 'add', list: 'zooms', item: {id: uid('z'), start: +s.toFixed(2), dur: +(e - s).toFixed(2), scale: st.punch, kind: 'punch'}});
+      else if (!tight && e - s >= 3.5 && (j === pts.length - 2)) ops.push({op: 'add', list: 'zooms', item: {id: uid('z'), start: +s.toFixed(2), dur: +(e - s).toFixed(2), scale: 1.05, kind: 'push'}});
+      tight = !tight;
+    }
+  });
+
   if (!p.cta?.on) ops.push({op: 'cta', set: {on: true}});
   return ops;
 }
@@ -294,14 +445,19 @@ export async function animateOps(ed, ops, {fastAfter = 99} = {}) {
   let n = 0;
   for (const o of ops) {
     n++;
-    cur.speed = n > fastAfter ? 3.5 : 1;
-    const text = describeOp(p, o);
+    cur.speed = n > fastAfter ? 2 : 1;
+    const text = describeOp(p, o) + (ops.length > 1 ? ` · ${n}/${ops.length}` : '');
     try {
       await animateOne(ed, o, text);
     } catch (e) {
       applyOp(p, o);
     }
     ed.changed(false);
+    // nháy sáng clip vừa thêm/sửa để mắt khách theo kịp
+    const id = o.item?.id || o.id;
+    const type = o.list === 'texts' ? 'text' : o.list === 'zooms' ? 'zoom' : o.list === 'broll' ? 'broll' : find(p, id)?.list === 'texts' ? 'text' : find(p, id)?.list === 'zooms' ? 'zoom' : 'broll';
+    if (id) tl.clipEl(type, id)?.classList.add('flash');
+    await cur.pause(180);
   }
   cur.say('');
   await cur.pause(250);
@@ -488,6 +644,32 @@ export function wordGapCuts(an, words, have) {
   return out;
 }
 
+// Con trỏ chạy dọc làn Video theo tiến độ nghe / chép lời (k: 0→1). scan(null) để tắt.
+async function startScan(ed) {
+  const {tl, cur} = ed;
+  ed.seek(0);
+  cur.show();
+  const r0 = tl.rowRect('main');
+  await cur.moveTo(Math.max(r0.left + 8, tl.pointAt('main', 0).x + 6), r0.top + r0.height / 2, 500);
+  return (step, text, k) => {
+    if (step === null) {
+      cur.step = '';
+      cur.say('');
+      return;
+    }
+    const r = tl.rowRect('main');
+    const sr = tl.scroll.getBoundingClientRect();
+    const D = duration(ed.p);
+    // quét trên phần làn Video đang thấy (timeline có thể dài hơn màn hình)
+    const x0 = Math.max(sr.left, tl.pointAt('main', 0).x) + 6;
+    const x1 = Math.min(sr.right - 12, tl.pointAt('main', D).x - 6);
+    const x = x0 + clamp(k) * Math.max(0, x1 - x0);
+    cur.step = step;
+    cur.jump(x, r.top + r.height / 2);
+    cur.say(text);
+  };
+}
+
 // ---------- AI dựng từ A–Z ----------
 export async function autoEdit(ed, log) {
   const {p} = ed;
@@ -497,9 +679,14 @@ export async function autoEdit(ed, log) {
   // 1. nghe & tìm khoảng lặng
   log('nghe', 'run', 'Nghe video, tìm khoảng lặng & chỗ nói vấp');
   const blob = await ed.getBlob(src.fileKey);
+  const scan = await startScan(ed);
+  scan('Bước 1/5', 'Nghe video, tìm chỗ im lặng', 0);
   let an = null;
   try {
-    an = await analyzeAudio(blob, (k) => log('nghe', 'run', `Nghe video… ${Math.round(k * 100)}%`));
+    an = await analyzeAudio(blob, (k) => {
+      log('nghe', 'run', `Nghe video… ${Math.round(k * 100)}%`);
+      scan('Bước 1/5', `Nghe video… ${Math.round(k * 100)}%`, k);
+    });
   } catch (e) {
     log('nghe', 'warn', 'Không phân tích được âm thanh: ' + e.message);
   }
@@ -512,7 +699,11 @@ export async function autoEdit(ed, log) {
   } else if (h.stt && an) {
     log('nghe2', 'run', 'Chép lời để làm phụ đề');
     try {
-      words = await transcribeAll(p, an, (k) => log('nghe2', 'run', `Chép lời… ${Math.round(k * 100)}%`));
+      scan('Bước 2/5', 'Chép lời làm phụ đề', 0);
+      words = await transcribeAll(p, an, (k) => {
+        log('nghe2', 'run', `Chép lời… ${Math.round(k * 100)}%`);
+        scan('Bước 2/5', `Chép lời làm phụ đề… ${Math.round(k * 100)}%`, k);
+      });
       if (words.length) log('nghe2', 'ok', `Đã chép ${words.length} chữ`);
       else log('nghe2', 'warn', 'Không nghe rõ lời nói');
     } catch (e) {
@@ -520,6 +711,7 @@ export async function autoEdit(ed, log) {
     }
   } else log('nghe2', 'skip', 'Phụ đề: máy chủ chép lời đang tắt');
 
+  scan(null);
   if (an) {
     src.peaks = an.peaks;
     let sil = findSilences(an);
@@ -530,7 +722,8 @@ export async function autoEdit(ed, log) {
     // 3. cắt — diễn từ cuối lên đầu để vị trí phía trước không xê dịch
     log('cat', 'run', 'Cắt khoảng lặng');
     const cuts = sil.map((s) => ({op: 'cut', a: s.a, b: Math.min(s.b, src.duration + 0.5)})).reverse();
-    await animateOps(ed, cuts, {fastAfter: 5});
+    ed.cur.step = 'Bước 3/5';
+    await animateOps(ed, cuts, {fastAfter: 12});
     log('cat', 'ok', `Đã cắt ${sil.length} chỗ · còn ${duration(p).toFixed(1).replace('.', ',')} giây`);
   } else log('cat', 'skip', 'Bỏ qua bước cắt');
   if (words?.length && words !== p.transcript?.words) {
@@ -560,7 +753,9 @@ export async function autoEdit(ed, log) {
   log('dung', 'run', 'Ghép cảnh phụ, thêm chữ, đẩy máy');
   const order = {broll: 0, texts: 1, zooms: 2};
   ops.sort((a, b) => (order[a.list] ?? 3) - (order[b.list] ?? 3) || (a.item?.start || 0) - (b.item?.start || 0));
-  await animateOps(ed, ops, {fastAfter: 8});
+  ed.cur.step = 'Bước 5/5';
+  await animateOps(ed, ops, {fastAfter: 14});
+  ed.cur.step = '';
   log('dung', 'ok', 'Xong phần dựng');
   p.aiDone = true;
   ed.changed(true);

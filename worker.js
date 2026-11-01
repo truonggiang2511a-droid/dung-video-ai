@@ -100,7 +100,7 @@ Các op được phép:
   y: 0.12–0.3 (phía trên đầu người nói). icon: ${ICON_LIST}|"" — ưu tiên bộ icon của thể loại: ${(g.icons || []).join(', ')}; mỗi cụm một icon đúng ý, không lặp liền nhau.
   Riêng thể loại này: ${GENRE_RULES[key]}
 - {"op":"add","list":"broll","item":{"src","start","dur","in","trans"}} src = id nguồn kind "broll"; dur 2–4 s; in = giây bắt đầu lấy trong nguồn; trans: fade|zoom|slide|none.
-- {"op":"add","list":"zooms","item":{"start","dur","scale"}} zoom đẩy máy lúc nhấn ý, scale 1.05–1.12, dur 2–3 s.
+- {"op":"add","list":"zooms","item":{"start","dur","scale","kind"}} kind: (bỏ trống) = đẩy vào rồi giữ lúc nhấn ý, dur 2–3 s; "punch" = zoom giật tức thì suốt đoạn (đặt từ chỗ cắt này tới chỗ cắt kế, xen kẽ chặt/rộng để che vết cắt lộ trên mặt người nói); "push" = đẩy máy chậm suốt đoạn nói dài không cắt. scale 1.05–1.12.
 - {"op":"update","id","set":{...}} / {"op":"remove","id"} — với texts, broll, zooms đã có.
 - {"op":"subs","set":{"on","size","y","color","style","hl"}} (style: karaoke = chữ đang nói đổi màu | box = hộp màu | pop = bật từng chữ | clean = tối giản; hl = màu nhấn hex) · {"op":"cta","set":{"on","text"}} (câu kết mặc định: "${g.cta || 'THEO DÕI ĐỂ XEM THÊM'}") · {"op":"music","set":{"vol"}}
 

@@ -1,6 +1,7 @@
 // Con trỏ AI: di chuyển, bấm, kéo trên timeline như người dựng thật. Điện thoại hiện ngón tay, máy tính hiện mũi tên.
-const ARROW = '<svg width="30" height="30" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 2.5v17.2l4.6-4.3 3 6.6 2.9-1.3-3-6.5 6.3-.3z" fill="#ffffff" stroke="#0b0d10" stroke-width="1.4" stroke-linejoin="round"/></svg>';
-const FINGER = '<svg width="40" height="40" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11V4.5a1.5 1.5 0 0 1 3 0V10h.5V8.5a1.5 1.5 0 0 1 3 0V10h.5V9.5a1.5 1.5 0 0 1 3 0V16a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-2.7L4.3 15a1.6 1.6 0 0 1 2.4-2L9 15z" fill="#ffe3cc" stroke="#0b0d10" stroke-width="1.1" stroke-linejoin="round"/></svg>';
+// mũi tên xanh chanh + thẻ "AI" kiểu con trỏ cộng tác (Figma) cho dễ thấy trên nền tối
+const ARROW = '<svg width="38" height="38" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 2.5v17.2l4.6-4.3 3 6.6 2.9-1.3-3-6.5 6.3-.3z" fill="#d1fe17" stroke="#0b0d10" stroke-width="1.3" stroke-linejoin="round"/></svg>';
+const FINGER = '<svg width="46" height="46" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11V4.5a1.5 1.5 0 0 1 3 0V10h.5V8.5a1.5 1.5 0 0 1 3 0V10h.5V9.5a1.5 1.5 0 0 1 3 0V16a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-2.7L4.3 15a1.6 1.6 0 0 1 2.4-2L9 15z" fill="#ffe3cc" stroke="#0b0d10" stroke-width="1.1" stroke-linejoin="round"/></svg>';
 
 const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -10,7 +11,8 @@ export class Cursor {
     this.touch = matchMedia('(pointer: coarse)').matches;
     this.el = document.createElement('div');
     this.el.className = 'ai-cursor' + (this.touch ? ' touch' : '');
-    this.el.innerHTML = (this.touch ? FINGER : ARROW) + '<span class="ai-ring"></span>';
+    this.el.innerHTML = (this.touch ? FINGER : ARROW) + '<span class="ai-ring"></span><span class="ai-name">AI</span>';
+    this.step = '';
     this.tip = document.createElement('div');
     this.tip.className = 'ai-tip';
     document.body.append(this.el, this.tip);
@@ -25,7 +27,11 @@ export class Cursor {
     const ox = this.touch ? 10 : 4;
     const oy = this.touch ? 4 : 2;
     this.el.style.transform = `translate(${this.x - ox}px, ${this.y - oy}px)`;
-    this.tip.style.transform = `translate(${Math.min(innerWidth - 250, Math.max(8, this.x - 40))}px, ${this.y + (this.touch ? 40 : 30)}px)`;
+    // điện thoại: chú thích nằm TRÊN ngón tay (ngón tay che phía dưới); máy tính: dưới mũi tên, sát đáy thì lật lên
+    const tw = this.tip.offsetWidth || 260;
+    const below = this.y + 38;
+    const ty = this.touch || below > innerHeight - 56 ? this.y - 52 : below;
+    this.tip.style.transform = `translate(${Math.min(innerWidth - tw - 8, Math.max(8, this.x - 40))}px, ${Math.max(8, ty)}px)`;
   }
   show() {
     this.el.classList.add('on');
@@ -39,7 +45,7 @@ export class Cursor {
       this.tip.classList.remove('on');
       return;
     }
-    this.tip.innerHTML = '<i></i>' + text;
+    this.tip.innerHTML = (this.step ? `<b>${this.step}</b>` : '<i></i>') + text;
     this.tip.classList.add('on');
     this._place();
   }
@@ -112,6 +118,12 @@ export class Cursor {
     });
     onK?.(1);
     await this.press(false);
+  }
+  // đặt ngay (không hoạt ảnh) — dùng khi quét theo tiến độ nghe/chép lời
+  jump(x, y) {
+    this.x = x;
+    this.y = y;
+    this._place();
   }
   pause(ms) {
     return this.skip ? Promise.resolve() : wait(ms / this.speed);
