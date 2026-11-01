@@ -103,5 +103,8 @@ export function rememberChoice(genre, format) {
 export function migrate(p) {
   if (!p.genre) p.genre = /XEM NHÀ/.test(p.cta?.text || '') ? 'bds' : 'chung';
   if (!p.format) p.format = '9:16';
+  if (!p.stickers) p.stickers = [];
+  if (!p.sfx) p.sfx = [];
+  if (!p.look) p.look = {filter: 'none', amt: 0.6, vignette: 0, grain: 0};
   return p;
 }

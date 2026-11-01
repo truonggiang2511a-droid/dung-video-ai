@@ -1,6 +1,8 @@
 // Xuất MP4 ngay trên máy khách: vẽ từng khung bằng render.js → mã hoá WebCodecs → ghép MP4 bằng Mediabunny + AAC WebAssembly.
 // Máy không có bộ mã hoá video (iPhone quá cũ) → quay thời gian thực bằng MediaRecorder.
 import {W, H, FPS, drawFrame, duration, srcAt, activeBrolls, segStarts, setFormat} from './render.js';
+import {sfxBuffer} from './sfx.js';
+import {preloadStickers} from './library.js';
 
 export class Cancelled extends Error {}
 
@@ -76,7 +78,9 @@ export async function exportVideo(p, getBlob, {res = 1080, onProgress, signal} =
   const vs = new m.CanvasSource(canvas, {codec, bitrate: Math.round(w * h * FPS * 0.2), keyFrameInterval: 2});
   out.addVideoTrack(vs, {frameRate: FPS});
 
-  // âm thanh: ghép lời nói theo các đoạn giữ lại + nhạc nền
+  // hình minh hoạ / icon: tải đủ trước khi vẽ (khung nào cũng phải có hình)
+  await preloadStickers(p);
+  // âm thanh: ghép lời nói theo các đoạn giữ lại + nhạc nền + hiệu ứng âm thanh
   onProgress?.(0, 'Chuẩn bị âm thanh');
   const audio = await buildAudio(p, getBlob, m, D);
   let as = null;
@@ -202,7 +206,26 @@ async function buildAudio(p, getBlob, m, D) {
       console.warn('Không ghép được nhạc', e);
     }
   }
+  // hiệu ứng âm thanh (SFX tổng hợp)
+  for (const s of p.sfx || []) {
+    const b = await sfxBuffer(s.sfx, sr);
+    if (!b) continue;
+    const d = b.getChannelData(0);
+    const o = Math.round(s.start * sr);
+    const vol = Math.max(0, Math.min(1.5, s.vol ?? 0.5));
+    for (let j = 0; j < d.length && o + j < L.length; j++) {
+      L[o + j] += d[j] * vol;
+      R[o + j] += d[j] * vol;
+    }
+  }
   const len = Math.ceil(D * sr);
+  // chống vỡ tiếng khi cộng nhiều lớp
+  for (let j = 0; j < len; j++) {
+    if (L[j] > 1) L[j] = 1;
+    else if (L[j] < -1) L[j] = -1;
+    if (R[j] > 1) R[j] = 1;
+    else if (R[j] < -1) R[j] = -1;
+  }
   const buf = new AudioBuffer({length: len, numberOfChannels: 2, sampleRate: sr});
   buf.copyToChannel(L.subarray(0, len), 0);
   buf.copyToChannel(R.subarray(0, len), 1);
@@ -212,6 +235,7 @@ async function buildAudio(p, getBlob, m, D) {
 // Dự phòng: quay lại bản xem nhanh theo thời gian thực
 export async function recordRealtime(player, {onProgress, signal} = {}) {
   const D = player.D;
+  await preloadStickers(player.p);
   const stream = player.canvas.captureStream(FPS);
   // tiếng lấy từ bộ trộn Web Audio của bản xem nhanh (đã cắt liền mạch + nhạc nền)
   try {

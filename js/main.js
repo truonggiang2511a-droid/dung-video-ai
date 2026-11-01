@@ -1,7 +1,9 @@
 // Điều khiển giao diện: màn Dự án + màn Editor (khung xem nhanh, timeline, sửa tay, AI).
 import {loadFonts, duration, COLORS, ICONS, FONTS, W, H, SUB_STYLES, tlOfSrc, srcAt} from './render.js';
 import {store} from './store.js';
-import {newProject, applyOp, History, find, newText, uid} from './model.js';
+import {newProject, applyOp, History, find, newText, uid, ITEM_TYPES} from './model.js';
+import {SFX, SFX_MAP, playSfx} from './sfx.js';
+import {MOTIONS, searchLib, loadIndex} from './library.js';
 import {importFile, probeVideo, ensurePlayable, thumbs} from './media.js';
 import {Player} from './player.js';
 import {Timeline} from './timeline.js';
@@ -102,7 +104,7 @@ function queueSave() {
 function selItem() {
   const s = ed.sel;
   if (!s) return null;
-  if (['text', 'broll', 'zoom'].includes(s.type)) return find(ed.p, s.id)?.item || null;
+  if (ITEM_TYPES.includes(s.type)) return find(ed.p, s.id)?.item || null;
   if (s.type === 'seg') return ed.p.main?.segs[+s.id] || null;
   if (s.type === 'subs') return ed.p.subs;
   if (s.type === 'music') return ed.p.music;
@@ -401,7 +403,7 @@ function select(sel) {
   renderSelBar();
   renderInspector();
   renderCtx();
-  if (sel && ['text', 'broll', 'zoom'].includes(sel.type)) {
+  if (sel && ITEM_TYPES.includes(sel.type)) {
     const it = selItem();
     if (it && (ed.player.T < it.start || ed.player.T > it.start + it.dur)) ed.seek(it.start + Math.min(0.8, it.dur / 2));
   }
@@ -415,12 +417,12 @@ function renderSelBar() {
     return;
   }
   bar.hidden = false;
-  const canAi = ['text', 'broll', 'zoom', 'subs', 'music'].includes(s.type);
+  const canAi = ['text', 'broll', 'zoom', 'sticker', 'subs', 'music'].includes(s.type);
   bar.innerHTML = `
     ${canAi ? `<button class="sb ai" data-act="clipAi">${icon(I.sparkle, 17)}<span>Nhờ AI sửa</span></button>` : ''}
     <button class="sb" data-act="sheet">${icon(I.edit, 17)}<span>Sửa tay</span></button>
     ${s.type === 'seg' ? `<button class="sb" data-act="split">${icon(I.split, 17)}<span>Tách</span></button>` : ''}
-    ${['text', 'broll', 'zoom', 'seg', 'music'].includes(s.type) ? `<button class="sb" data-act="del">${icon(I.trash, 17)}<span>Xoá</span></button>` : ''}`;
+    ${['text', 'broll', 'zoom', 'seg', 'music', 'sticker', 'sfx'].includes(s.type) ? `<button class="sb" data-act="del">${icon(I.trash, 17)}<span>Xoá</span></button>` : ''}`;
 }
 
 const TRANS = [
@@ -459,6 +461,19 @@ function renderInspector() {
       <label class="fl">Lấy đoạn nào của cảnh <output>${it.in.toFixed(1).replace('.', ',')} s</output><input type="range" min="0" max="${Math.max(0, (src?.duration || 0) - it.dur).toFixed(2)}" step="0.1" value="${it.in}" data-num="in"></label>
       <div class="fl"><span>Đổi sang cảnh khác</span><div class="chips">${others.map((o) => `<button class="chip-b${o.id === it.src ? ' on' : ''}" data-set="src" data-v="${o.id}">${esc(o.name)}</button>`).join('')}</div></div>
       <p class="hint">Kéo clip trên timeline để dời, kéo hai đầu để dài/ngắn.</p>`;
+  } else if (s?.type === 'sticker' && it) {
+    h = `<h4>${it.kind === 'icon' ? 'Icon động' : 'Hình minh hoạ'}${it.label ? ' · ' + esc(it.label) : ''}</h4>
+      <div class="stk-prev${it.kind === 'icon' ? ' ic' : ''}" style="${it.kind === 'icon' ? `--c:${it.color || '#2f8cff'}` : ''}"><img src="lib/${it.kind === 'icon' ? 'i' : 'e'}/${esc(it.key)}.svg" alt=""><button class="btn ghost sm" data-act="libReplace">Đổi hình khác</button></div>
+      <div class="fl"><span>Chuyển động</span><div class="chips">${MOTIONS.map(([k, l]) => `<button class="chip-b${(it.motion || 'pop') === k ? ' on' : ''}" data-set="motion" data-v="${k}">${l}</button>`).join('')}</div></div>
+      <label class="fl">Cỡ <output>${Math.round((it.size || 1) * 100)}%</output><input type="range" min="0.4" max="2.2" step="0.05" value="${it.size || 1}" data-num="size"></label>
+      ${it.kind === 'icon' ? `<div class="fl"><span>Màu nền icon</span><div class="swatches">${COLORS.map((c) => `<button class="sw${it.color === c.hex ? ' on' : ''}" data-set="color" data-v="${c.hex}" style="background:${c.hex}" aria-label="Màu ${c.name}"></button>`).join('')}</div></div>` : ''}
+      <p class="hint">Kéo hình trên khung xem để đổi vị trí. Kéo hai đầu clip trên timeline để đổi lúc hiện / ẩn.</p>`;
+  } else if (s?.type === 'sfx' && it) {
+    h = `<h4>Âm thanh · ${esc(it.name || it.sfx)}</h4>
+      <button class="btn ghost wide" data-playsfx="${esc(it.sfx)}">${icon(I.play, 15)} Nghe thử</button>
+      <label class="fl">Âm lượng <output>${Math.round((it.vol ?? 0.5) * 100)}%</output><input type="range" min="0.05" max="1.2" step="0.05" value="${it.vol ?? 0.5}" data-num="vol"></label>
+      <div class="fl"><span>Đổi âm khác</span><div class="chips">${SFX.map((x) => `<button class="chip-b${it.sfx === x.key ? ' on' : ''}" data-set="sfx" data-v="${x.key}">${x.name}</button>`).join('')}</div></div>
+      <p class="hint">Kéo clip trên timeline để dời âm thanh tới đúng lúc.</p>`;
   } else if (s?.type === 'zoom' && it) {
     h = `<h4>${it.kind === 'punch' ? 'Zoom giật (che chỗ cắt)' : it.kind === 'push' ? 'Đẩy máy chậm' : 'Zoom đẩy máy'}</h4><label class="fl">Độ phóng <output>${Math.round((it.scale - 1) * 100)}%</output><input type="range" min="1.02" max="1.25" step="0.01" value="${it.scale}" data-num="scale"></label>`;
   } else if (s?.type === 'seg' && it) {
@@ -548,6 +563,8 @@ function bindInspector() {
     if (g) return setGenre(g.dataset.genre);
     const fm = e.target.closest('[data-format]');
     if (fm) return setFormatOf(fm.dataset.format);
+    const ps = e.target.closest('[data-playsfx]');
+    if (ps) return playSfx(ps.dataset.playsfx, selItem()?.vol ?? 0.6);
     const b = e.target.closest('[data-set],[data-subs-color],[data-subs-style],[data-subs-hl]');
     if (!b) return;
     if (b.dataset.subsColor) {
@@ -571,6 +588,11 @@ function bindInspector() {
         it.src = src.id;
         it.dur = Math.min(it.dur, src.duration);
         it.in = Math.max(0, Math.min(it.in, src.duration - it.dur));
+      } else if (k === 'sfx') {
+        const d = SFX_MAP[b.dataset.v];
+        if (!d) return;
+        Object.assign(it, {sfx: d.key, name: d.name, dur: d.len});
+        playSfx(d.key, it.vol ?? 0.5);
       } else it[k] = b.dataset.v;
     });
   });
@@ -670,6 +692,19 @@ async function act(a, el) {
     case 'undoMsg':
       el.disabled = true;
       undoRedo(-1);
+      return;
+    case 'libReplace': {
+      const it = selItem();
+      if (!it || ed.sel?.type !== 'sticker') return;
+      ed.libReplace = it.id;
+      ed.libTab = it.kind === 'icon' ? 'icon' : 'emoji';
+      $('#side [data-tab="media"]')?.click();
+      renderMedia();
+      return;
+    }
+    case 'libCancel':
+      ed.libReplace = null;
+      renderMedia();
       return;
     case 'home':
       return closeEditor();
@@ -775,6 +810,7 @@ const CLIP_HINTS = {
   text: ['Đổi sang màu vàng', 'Chữ to hơn', 'Dời lên trên', 'Kiểu có viền', 'Hiện dài thêm 1 giây'],
   broll: ['Dài thêm 1 giây', 'Chuyển cảnh trượt', 'Ngắn lại 1 giây', 'Xoá cảnh này'],
   zoom: ['Xoá hiệu ứng này'],
+  sticker: ['To hơn', 'Dời lên trên', 'Hiện dài thêm 1 giây', 'Xoá hình này'],
   subs: ['Phụ đề to hơn', 'Dời phụ đề lên trên', 'Tắt phụ đề'],
   music: ['Nhạc nhỏ lại', 'Nhạc to hơn', 'Bỏ nhạc'],
 };
@@ -783,7 +819,7 @@ function openClipAi() {
   if (!s) return;
   const d = $('#clipAi');
   d.hidden = false;
-  d.innerHTML = `<form class="dlg-card"><h3>${icon(I.sparkle, 18)} Nhờ AI sửa ${s.type === 'text' ? 'cụm chữ' : s.type === 'broll' ? 'cảnh này' : s.type === 'subs' ? 'phụ đề' : s.type === 'music' ? 'nhạc' : 'hiệu ứng'}</h3>
+  d.innerHTML = `<form class="dlg-card"><h3>${icon(I.sparkle, 18)} Nhờ AI sửa ${s.type === 'text' ? 'cụm chữ' : s.type === 'broll' ? 'cảnh này' : s.type === 'sticker' ? 'hình này' : s.type === 'subs' ? 'phụ đề' : s.type === 'music' ? 'nhạc' : 'hiệu ứng'}</h3>
     <label class="fl"><span>Bạn muốn sửa thế nào?</span><textarea rows="2" name="q" placeholder="vd: đổi sang màu vàng, to hơn một chút"></textarea></label>
     <div class="chips">${(CLIP_HINTS[s.type] || []).map((x) => `<button type="button" class="chip-b" data-q="${esc(x)}">${esc(x)}</button>`).join('')}</div>
     <div class="dlg-act"><button type="button" class="btn ghost" data-close>Huỷ</button><button class="btn primary">${icon(I.send, 16)} Gửi cho AI</button></div></form>`;
@@ -847,6 +883,14 @@ function ctxTarget() {
     return it ? {target: s.id, label: `Cảnh phụ ${p.sources[it.src]?.name || ''}`, prefix: ''} : null;
   }
   if (s.type === 'zoom') return {target: s.id, label: 'Hiệu ứng zoom', prefix: ''};
+  if (s.type === 'sticker') {
+    const it = find(p, s.id)?.item;
+    return it ? {target: s.id, label: `Hình ${it.label || ''}`, prefix: ''} : null;
+  }
+  if (s.type === 'sfx') {
+    const it = find(p, s.id)?.item;
+    return it ? {target: s.id, label: `Âm thanh ${it.name || it.sfx}`, prefix: ''} : null;
+  }
   if (s.type === 'subs') return {target: null, label: 'Phụ đề', prefix: 'phụ đề '};
   if (s.type === 'music') return {target: null, label: 'Nhạc nền', prefix: 'nhạc '};
   if (s.type === 'seg') return {target: null, label: `Đoạn video ${+s.id + 1}`, prefix: ''};
@@ -938,10 +982,31 @@ function scriptRange() {
 }
 
 // ---------- BẢNG PHẢI: KHO (mọi file của dự án) ----------
+// ---------- KHO: video của khách + kho hình / icon / âm thanh / chữ mẫu / hiệu ứng / font ----------
+const LIB_TABS = [
+  ['video', 'Video'],
+  ['emoji', 'Hình'],
+  ['icon', 'Icon'],
+  ['sfx', 'Âm thanh'],
+];
 function renderMedia() {
   const box = $('#media');
   if (!box || $('[data-pane="media"]').hidden) return;
   const p = ed.p;
+  const tab = ed.libTab || 'video';
+  const head = `<div class="lib-tabs" role="tablist">${LIB_TABS.map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-libtab="${k}">${l}</button>`).join('')}</div>${ed.libReplace ? `<p class="lib-note">Chọn hình để thay cho hình đang chọn · <button class="lnk" data-act="libCancel">Huỷ</button></p>` : ''}`;
+  if (tab === 'emoji' || tab === 'icon') {
+    box.innerHTML = `${head}<input class="inp lib-q" id="libQ" type="search" placeholder="${tab === 'emoji' ? 'Tìm: nhà, tiền, ngon, tim, cười…' : 'Tìm: nhà, giỏ hàng, đồng hồ, biểu đồ…'}" value="${esc(ed.libQ || '')}" autocomplete="off">
+      <div class="lib-groups" id="libGroups"></div><div class="lib-grid${tab === 'icon' ? ' ic' : ''}" id="libGrid"></div>
+      <p class="hint lib-lic">${tab === 'emoji' ? 'Hình Fluent Emoji (Microsoft, giấy phép MIT)' : 'Icon Lucide (giấy phép ISC)'} — dùng thương mại thoải mái.</p>`;
+    fillLib();
+    return;
+  }
+  if (tab === 'sfx') {
+    box.innerHTML = `${head}<p class="hint" style="margin:2px 0 10px">Bấm ▶ để nghe, bấm + để chèn tại đầu phát. Âm thanh tự tạo trong app — không lo bản quyền.</p>
+      <div class="sfx-list">${SFX.map((x) => `<div class="sfx-i"><button class="icon-btn" data-playsfx2="${x.key}" aria-label="Nghe ${esc(x.name)}">${icon(I.play, 15)}</button><b>${esc(x.name)}</b><small>${x.len.toFixed(1).replace('.', ',')} s</small><button class="tag" data-addsfx="${x.key}">+ Chèn</button></div>`).join('')}</div>`;
+    return;
+  }
   const all = Object.values(p.sources);
   const used = new Set(p.broll.map((b) => b.src));
   const item = (s) => {
@@ -953,9 +1018,53 @@ function renderMedia() {
   };
   const group = (title, list, act, label) => `<h5>${title}</h5><div class="mlist">${list.map(item).join('') || '<p class="hint">Chưa có.</p>'}</div>${act ? `<button class="btn ghost wide" data-act="${act}" style="margin:-8px 0 16px">${icon(I.plus, 16)} ${label}</button>` : ''}`;
   box.innerHTML =
+    head +
     group('Video chính', all.filter((s) => s.kind === 'main' && p.main?.src === s.id), p.main ? 'replaceMain' : 'addMain', p.main ? 'Thay video chính' : 'Thêm video chính') +
     group('Cảnh phụ', all.filter((s) => s.kind === 'broll'), 'addBroll', 'Thêm cảnh phụ') +
     group('Nhạc nền', all.filter((s) => s.kind === 'music'), 'addMusic', p.music ? 'Đổi bài nhạc' : 'Thêm nhạc nền');
+}
+// lưới hình / icon: tìm theo nhãn tiếng Việt, lọc theo nhóm
+async function fillLib() {
+  const kind = ed.libTab;
+  const grid = $('#libGrid');
+  if (!grid) return;
+  const {groups} = await loadIndex(kind);
+  const g = ed.libGroup?.[kind] ?? -1;
+  const gb = $('#libGroups');
+  if (gb) gb.innerHTML = [[-1, 'Tất cả'], ...groups.map((x, i) => [i, x]).filter(([, x]) => x)].map(([i, x]) => `<button class="chip-b${g === i ? ' on' : ''}" data-libgroup="${i}">${esc(x)}</button>`).join('');
+  const list = await searchLib(kind, ed.libQ || '', g, 300);
+  if (ed.libTab !== kind || !$('#libGrid')) return;
+  const dir = kind === 'icon' ? 'i' : 'e';
+  grid.innerHTML = list.length
+    ? list.map((x) => `<button class="lib-it" data-libadd="${x.key}" data-label="${esc(x.label)}" title="${esc(x.label)}"><img src="lib/${dir}/${x.key}.svg" alt="${esc(x.label)}" loading="lazy" width="48" height="48"></button>`).join('')
+    : '<p class="hint">Không tìm thấy — thử từ khác (vd: “nhà”, “tiền”, “tim”).</p>';
+}
+function insertSticker(kind, key, label) {
+  const p = ed.p;
+  if (!p.main) return toast('Thêm video chính trước');
+  if (ed.libReplace) {
+    const f = find(p, ed.libReplace);
+    ed.libReplace = null;
+    if (f) {
+      manual(() => Object.assign(f.item, {kind, key, label}));
+      select({type: 'sticker', id: f.item.id});
+      return;
+    }
+  }
+  const D = duration(p);
+  const it = {id: uid('s'), kind, key, label, start: Math.max(0, Math.min(ed.player.T, D - 2.5)), dur: Math.min(2.5, D), x: 0.78, y: 0.3, size: 1, motion: kind === 'icon' ? 'pop' : 'bounce', locked: true};
+  if (kind === 'icon') it.color = '#2f8cff';
+  manual(() => p.stickers.push(it), {lock: false});
+  select({type: 'sticker', id: it.id});
+}
+function insertSfx(key) {
+  const p = ed.p;
+  const d = SFX_MAP[key];
+  if (!p.main || !d) return toast('Thêm video chính trước');
+  const it = {id: uid('a'), sfx: key, name: d.name, start: Math.max(0, Math.min(ed.player.T, duration(p) - 0.2)), dur: d.len, vol: 0.6, locked: true};
+  manual(() => p.sfx.push(it), {lock: false});
+  select({type: 'sfx', id: it.id});
+  playSfx(key, 0.6);
 }
 // Nhãn cảnh phụ: khách gắn tay (ưu tiên hơn AI đoán, AI không ghi đè)
 async function tagSource(srcId) {
@@ -1205,17 +1314,18 @@ function bindStageDrag() {
       return;
     }
     const pt = ed.player.toComp(e.clientX, e.clientY);
-    const id = ed.player.hit(pt.x, pt.y);
+    const box = ed.player.hitBox(pt.x, pt.y);
+    const id = box?.id;
     if (!id) {
-      if (ed.sel?.type === 'text') select(null);
+      if (ed.sel?.type === 'text' || ed.sel?.type === 'sticker') select(null);
       return;
     }
     const it = find(ed.p, id)?.item;
     if (!it) return;
-    if (ed.sel?.id !== id) select({type: 'text', id});
+    if (ed.sel?.id !== id) select({type: box.type || 'text', id});
     ed.player.pause();
     cv.setPointerCapture(e.pointerId);
-    drag = {id, x0: pt.x, y0: pt.y, ix: it.x, iy: it.y, moved: false};
+    drag = {id, x0: pt.x, y0: pt.y, ix: it.x ?? (box.type === 'sticker' ? 0.78 : 0.5), iy: it.y ?? (box.type === 'sticker' ? 0.3 : 0.2), moved: false};
   });
   cv.addEventListener('pointermove', (e) => {
     if (!drag) return;
@@ -1409,10 +1519,34 @@ async function boot() {
     if (ins) insertBroll(ins.dataset.insert);
     const tg = e.target.closest('[data-tagsrc]');
     if (tg) tagSource(tg.dataset.tagsrc);
+    const lt = e.target.closest('[data-libtab]');
+    if (lt) {
+      ed.libTab = lt.dataset.libtab;
+      renderMedia();
+    }
+    const lg = e.target.closest('[data-libgroup]');
+    if (lg) {
+      ed.libGroup = {...(ed.libGroup || {}), [ed.libTab]: +lg.dataset.libgroup};
+      fillLib();
+    }
+    const la = e.target.closest('[data-libadd]');
+    if (la) insertSticker(ed.libTab === 'icon' ? 'icon' : 'emoji', la.dataset.libadd, la.dataset.label);
+    const ps2 = e.target.closest('[data-playsfx2]');
+    if (ps2) playSfx(ps2.dataset.playsfx2, 0.7);
+    const as = e.target.closest('[data-addsfx]');
+    if (as) insertSfx(as.dataset.addsfx);
     const chip = e.target.closest('[data-tagchip]');
     if (chip && $('#tagIn')) $('#tagIn').value = chip.dataset.tagchip;
     const tool = e.target.closest('[data-tool]');
     if (tool) setTool(tool.dataset.tool);
+  });
+  // tìm trong kho hình / icon (gõ tới đâu lọc tới đó)
+  let libT = null;
+  document.addEventListener('input', (e) => {
+    if (e.target.id !== 'libQ') return;
+    ed.libQ = e.target.value;
+    clearTimeout(libT);
+    libT = setTimeout(fillLib, 160);
   });
   $('#btnNew').onclick = newProj;
   $('#btnBack').onclick = closeEditor;

@@ -4,7 +4,11 @@ import {duration, srcAt} from './render.js';
 import {GENRES, lastChoice} from './templates.js';
 
 export const uid = (p = 'i') => p + Math.random().toString(36).slice(2, 9);
-export const LISTS = ['broll', 'texts', 'zooms'];
+export const LISTS = ['broll', 'texts', 'zooms', 'stickers', 'sfx'];
+// loại clip trên timeline ↔ danh sách trong dự án
+export const TYPE_OF = {broll: 'broll', texts: 'text', zooms: 'zoom', stickers: 'sticker', sfx: 'sfx'};
+export const LIST_OF = {broll: 'broll', text: 'texts', zoom: 'zooms', sticker: 'stickers', sfx: 'sfx'};
+export const ITEM_TYPES = Object.keys(LIST_OF);
 
 export function newProject(name, opt = {}) {
   const pick = {...lastChoice(), ...opt};
@@ -22,6 +26,9 @@ export function newProject(name, opt = {}) {
     broll: [],
     texts: [],
     zooms: [],
+    stickers: [], // hình minh hoạ / icon động: {id, kind:'emoji'|'icon', key, start, dur, x, y, size, motion, color}
+    sfx: [], // hiệu ứng âm thanh: {id, sfx, start, dur, vol}
+    look: {filter: 'none', amt: 0.6, vignette: 0, grain: 0}, // màu & lớp phủ toàn video
     subs: {on: true, y: 0.7, size: 1, color: '#ffffff', style: 'karaoke', hl: '#ffd21f'},
     cta: {on: true, text: GENRES[genre].cta, len: 4},
     music: null, // {src, vol}
@@ -115,6 +122,9 @@ export function applyOp(p, o) {
     case 'music':
       p.music = o.set ? Object.assign(p.music || {}, o.set) : null;
       break;
+    case 'look':
+      p.look = Object.assign(p.look || {filter: 'none', amt: 0.6, vignette: 0, grain: 0}, o.set);
+      break;
     case 'transcript':
       p.transcript = o.value;
       break;
@@ -153,6 +163,8 @@ export function describeOp(p, o) {
     case 'add':
       if (o.list === 'broll') return `Ghép cảnh “${p.sources[o.item.src]?.name || 'cảnh phụ'}”`;
       if (o.list === 'texts') return `Thêm chữ “${o.item.main}”`;
+      if (o.list === 'stickers') return o.item.kind === 'icon' ? `Thêm icon động ${tt(o.item.start)}` : `Thêm hình minh hoạ ${tt(o.item.start)}`;
+      if (o.list === 'sfx') return `Thêm âm thanh “${o.item.name || o.item.sfx}” ${tt(o.item.start)}`;
       if (o.list === 'zooms') return o.item.kind === 'punch' ? `Zoom giật che chỗ cắt ${tt(o.item.start)}` : o.item.kind === 'push' ? `Đẩy máy chậm ${tt(o.item.start)}` : `Đẩy máy zoom ${tt(o.item.start)}`;
       return 'Thêm';
     case 'update': {
@@ -174,6 +186,8 @@ export function describeOp(p, o) {
       return o.set ? 'Chỉnh nhạc nền' : 'Bỏ nhạc nền';
     case 'cta':
       return 'Đoạn kết kêu gọi nhắn tin';
+    case 'look':
+      return o.set.filter ? 'Đổi màu video' : 'Chỉnh hiệu ứng toàn video';
     default:
       return '';
   }

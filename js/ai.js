@@ -1,8 +1,10 @@
 // AI dựng từ A–Z + sửa theo lời nói. Mọi thay đổi là "op" → con trỏ diễn lại trên timeline rồi mới áp vào dự án.
 import {analyzeAudio, findSilences, levels, wav16, thumbs} from './media.js';
 import {duration, tlOfSrc, timelineWords, segStarts, clamp, ICONS} from './render.js';
-import {applyOp, describeOp, find, newText, uid} from './model.js';
+import {applyOp, describeOp, find, newText, uid, TYPE_OF} from './model.js';
 import {genreOf, formatOf} from './templates.js';
+import {SFX_MAP} from './sfx.js';
+import {MOTIONS, stickerForPhrase} from './library.js';
 
 // ---------- Gọi máy chủ ----------
 let health = null;
@@ -36,7 +38,7 @@ export const plain = (s) =>
     .replace(/đ/g, 'd');
 
 // ---------- Kiểm tra op do AI trả về ----------
-const OPS = new Set(['cut', 'split', 'add', 'update', 'remove', 'subs', 'cta', 'music']);
+const OPS = new Set(['cut', 'split', 'add', 'update', 'remove', 'subs', 'cta', 'music', 'look']);
 const TEXT_KEYS = ['start', 'dur', 'lead', 'main', 'sign', 'font', 'color', 'style', 'size', 'x', 'y', 'icon', 'kind'];
 const BROLL_KEYS = ['start', 'dur', 'in', 'trans', 'src'];
 export function sanitizeOps(p, ops, target) {
@@ -56,6 +58,12 @@ export function sanitizeOps(p, ops, target) {
         out.push({op: 'add', list: 'broll', item: {id: uid('b'), src: src.id, start: +o.item.start || 0, dur, in: Math.max(0, Math.min(+o.item.in || 0, src.duration - dur)), trans: o.item.trans || 'fade', locked: false}});
       } else if (o.list === 'zooms') {
         out.push({op: 'add', list: 'zooms', item: {id: uid('z'), start: +o.item?.start || 0, dur: +o.item?.dur || 2.5, scale: Math.min(1.25, Math.max(1.02, +o.item?.scale || 1.08)), ...(['punch', 'push'].includes(o.item?.kind) ? {kind: o.item.kind} : {})}});
+      } else if (o.list === 'stickers' && /^[a-z0-9-]{2,60}$/.test(o.item?.key || '')) {
+        const it = o.item;
+        out.push({op: 'add', list: 'stickers', item: {id: uid('s'), kind: it.kind === 'icon' ? 'icon' : 'emoji', key: it.key, label: String(it.label || '').slice(0, 30), start: +it.start || 0, dur: Math.min(6, +it.dur || 2.5), x: clamp(+it.x || 0.78, 0.1, 0.9), y: clamp(+it.y || 0.4, 0.1, 0.9), size: clamp(+it.size || 1, 0.4, 2.2), motion: MOTIONS.some(([k]) => k === it.motion) ? it.motion : 'pop', ...(it.kind === 'icon' ? {color: /^#[0-9a-f]{6}$/i.test(it.color || '') ? it.color : '#2f8cff'} : {}), locked: false}});
+      } else if (o.list === 'sfx' && SFX_MAP[o.item?.sfx]) {
+        const d = SFX_MAP[o.item.sfx];
+        out.push({op: 'add', list: 'sfx', item: {id: uid('a'), sfx: d.key, name: d.name, start: Math.max(0, +o.item.start || 0), dur: d.len, vol: clamp(+o.item.vol || 0.5, 0.05, 1.2), locked: false}});
       }
       continue;
     }
@@ -65,7 +73,7 @@ export function sanitizeOps(p, ops, target) {
       // Chỗ khách đã sửa tay (khoá) thì AI không đụng, trừ khi khách đang nhờ sửa đúng chỗ đó
       if (f.item.locked && o.id !== target) continue;
       if (o.op === 'update') {
-        const keys = f.list === 'texts' ? TEXT_KEYS : f.list === 'broll' ? BROLL_KEYS : ['start', 'dur', 'scale'];
+        const keys = f.list === 'texts' ? TEXT_KEYS : f.list === 'broll' ? BROLL_KEYS : f.list === 'stickers' ? ['start', 'dur', 'x', 'y', 'size', 'motion', 'color'] : f.list === 'sfx' ? ['start', 'vol'] : ['start', 'dur', 'scale'];
         const set = {};
         for (const k of keys) if (o.set?.[k] !== undefined) set[k] = o.set[k];
         if (Object.keys(set).length) out.push({op: 'update', id: o.id, set});
@@ -74,7 +82,7 @@ export function sanitizeOps(p, ops, target) {
     }
     if (o.op === 'cut' && isFinite(o.a) && isFinite(o.b) && o.b > o.a) out.push({op: 'cut', a: +o.a, b: +o.b});
     else if (o.op === 'split' && isFinite(o.T)) out.push(o);
-    else if (['subs', 'cta', 'music'].includes(o.op)) out.push(o);
+    else if (['subs', 'cta', 'music', 'look'].includes(o.op)) out.push(o);
   }
   return out;
 }
@@ -363,6 +371,40 @@ export function localPlan(p) {
     }
   });
 
+  // hình minh hoạ đúng lời nói (vd “giá” → túi tiền, “ngon” → mặt thưởng thức): tối đa 1 hình / 4,5 s, né cụm chữ
+  const lks = ops.filter((o) => o.list === 'texts').map((o) => o.item);
+  const stks = [];
+  let lastKey = '';
+  let lastT = -9;
+  let side = 0;
+  for (const ph of phrases) {
+    if (ph.s < 0.6 || ph.s > D - ctaLen - 0.8 || ph.s - lastT < 4.5) continue;
+    const m = stickerForPhrase(ph.text);
+    if (!m || m.key === lastKey) continue;
+    const first = m.w.split(' ')[0];
+    const w = words.find((x) => x.s >= ph.s - 0.01 && x.s <= ph.e + 0.01 && plain(x.w).replace(/[^a-z0-9]/g, '') === first);
+    const at = w ? w.s : ph.s;
+    const busyText = lks.some((t) => at < t.start + t.dur && at + 2.4 > t.start);
+    const label = w ? words.slice(words.indexOf(w), words.indexOf(w) + m.w.split(' ').length).map((x) => x.w.replace(/[.,!?…:;]$/, '')).join(' ').toLowerCase() : m.w;
+    const it = {id: uid('s'), kind: 'emoji', key: m.key, label, start: +at.toFixed(2), dur: +clamp(ph.e - at + 0.9, 1.8, 3).toFixed(2), x: side++ % 2 ? 0.2 : 0.8, y: busyText ? 0.52 : 0.42, size: 0.9, motion: ['bounce', 'pop', 'wiggle', 'float'][stks.length % 4], locked: false};
+    stks.push(it);
+    ops.push({op: 'add', list: 'stickers', item: it});
+    lastKey = m.key;
+    lastT = at;
+  }
+
+  // hiệu ứng âm thanh: vút khi chuyển cảnh nhấn, “ka-ching” khi hiện giá, bụp khi hiện số, bong bóng khi hiện hình, thông báo ở câu kết
+  const sfxAt = [];
+  const sfx = (key, t, vol) => {
+    if (t < 0 || t > D - 0.1 || sfxAt.some((x) => Math.abs(x - t) < 0.35)) return;
+    sfxAt.push(t);
+    ops.push({op: 'add', list: 'sfx', item: {id: uid('a'), sfx: key, name: SFX_MAP[key].name, start: +t.toFixed(2), dur: SFX_MAP[key].len, vol, locked: false}});
+  };
+  for (const o of ops.filter((x) => x.list === 'broll')) if (o.item.trans === 'zoom' || o.item.trans === 'slide') sfx(o.item.trans === 'slide' ? 'whip' : 'whoosh', Math.max(0, o.item.start - (o.item.trans === 'slide' ? 0.1 : 0.3)), 0.4);
+  for (const t of lks) sfx(t.kind === 'price' ? 'cash' : 'pop', t.start + (t.kind === 'price' ? 0.05 : 0.1), t.kind === 'price' ? 0.45 : 0.4);
+  for (const s of stks) sfx('bubble', s.start, 0.3);
+  sfx('notify', Math.max(0, D - ctaLen + 0.1), 0.45);
+
   if (!p.cta?.on) ops.push({op: 'cta', set: {on: true}});
   return ops;
 }
@@ -474,7 +516,7 @@ export async function animateOps(ed, ops, {fastAfter = 99} = {}) {
     ed.changed(false);
     // nháy sáng clip vừa thêm/sửa để mắt khách theo kịp
     const id = o.item?.id || o.id;
-    const type = o.list === 'texts' ? 'text' : o.list === 'zooms' ? 'zoom' : o.list === 'broll' ? 'broll' : find(p, id)?.list === 'texts' ? 'text' : find(p, id)?.list === 'zooms' ? 'zoom' : 'broll';
+    const type = TYPE_OF[o.list || find(p, id)?.list] || 'broll';
     if (id) tl.clipEl(type, id)?.classList.add('flash');
     await cur.pause(180);
   }
@@ -501,7 +543,7 @@ async function animateOne(ed, o, text) {
     return;
   }
   if (o.op === 'add') {
-    const row = o.list === 'texts' ? 'texts' : o.list === 'zooms' ? 'zooms' : 'broll';
+    const row = {texts: 'texts', zooms: 'zooms', broll: 'broll', stickers: 'stickers', sfx: 'sfx'}[o.list] || 'broll';
     const T = o.item.start;
     await go(T + 0.3);
     if (o.list === 'broll') {
@@ -532,7 +574,7 @@ async function animateOne(ed, o, text) {
       await cur.click();
     }
     applyOp(p, o);
-    if (o.list === 'texts') {
+    if (o.list === 'texts' || o.list === 'stickers') {
       ed.changed(false);
       ed.seek(T + 0.9);
       await cur.pause(700);
@@ -842,7 +884,7 @@ export async function autoEdit(ed, log) {
 
   // 5. diễn từng thao tác
   log('dung', 'run', 'Ghép cảnh phụ, thêm chữ, đẩy máy');
-  const order = {broll: 0, texts: 1, zooms: 2};
+  const order = {broll: 0, texts: 1, stickers: 2, zooms: 3, sfx: 4};
   ops.sort((a, b) => (order[a.list] ?? 3) - (order[b.list] ?? 3) || (a.item?.start || 0) - (b.item?.start || 0));
   ed.cur.step = 'Bước 5/5';
   await animateOps(ed, ops, {fastAfter: 14});

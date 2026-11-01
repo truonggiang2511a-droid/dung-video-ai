@@ -43,6 +43,8 @@ const M = '/home/claude/testmedia/';
       broll: pp.broll.map((x) => ({name: pp.sources[x.src].name, s: x.start, e: +(x.start + x.dur).toFixed(2), in: x.in, trans: x.trans})),
       zooms: pp.zooms.map((z) => `${z.kind || 'ramp'} ${z.start}–${+(z.start + z.dur).toFixed(2)} ×${z.scale}`),
       texts: pp.texts.map((t) => `${t.start} ${t.main}`),
+      stickers: (pp.stickers || []).map((t) => `${t.start} ${t.key} (${t.label}) ${t.motion}`),
+      sfx: (pp.sfx || []).map((t) => `${t.start} ${t.sfx}`),
     };
   });
   // phân tích: khoảng không đổi hình dài nhất (người nói không zoom, không cảnh phụ)
@@ -54,7 +56,34 @@ const M = '/home/claude/testmedia/';
   const zs = r.zooms.map((z) => z.split(' ')[1].split('–').map(Number));
   const shown = r.cuts.filter((c) => !r.broll.some((x) => c > x.s - 0.15 && c < x.e + 0.15)).filter((c) => !zs.some(([a, b]) => Math.abs(a - c) < 0.06 || Math.abs(b - c) < 0.06)).length;
   console.log(JSON.stringify(r, null, 1));
-  console.log(`THỂ LOẠI ${genre} · D ${r.D}s · cảnh phụ ${r.broll.length} cú / ${usedClips} cảnh · chỗ cắt ${r.cuts.length} (che bằng cảnh phụ ${hidden}, lộ mà không có zoom giật ${shown}) · zoom ${r.zooms.length} · đoạn đứng hình lâu nhất ${still.toFixed(2)}s · lỗi ${errs.length ? errs : 0}`);
-  await p.evaluate(() => window.__dv.seek(0.5));
+  console.log(`THỂ LOẠI ${genre} · D ${r.D}s · cảnh phụ ${r.broll.length} cú / ${usedClips} cảnh · chỗ cắt ${r.cuts.length} (che bằng cảnh phụ ${hidden}, lộ mà không có zoom giật ${shown}) · zoom ${r.zooms.length} · hình ${r.stickers.length} · âm thanh ${r.sfx.length} · đoạn đứng hình lâu nhất ${still.toFixed(2)}s · lỗi ${errs.length ? errs : 0}`);
+  if (process.env.SHOT) {
+    // ảnh khung có hình minh hoạ / chữ số liệu
+    for (const t of String(process.env.SHOT).split(',')) {
+      await p.evaluate((T) => window.__dv.seek(T), +t);
+      await p.waitForTimeout(900);
+      await p.locator('#cv').screenshot({path: `test/plan-${t}.png`});
+    }
+  }
+  if (process.env.EXPORT) {
+    await p.click('#btnExport');
+    await p.waitForTimeout(300);
+    await p.click('#dlg [data-v="1"]');
+    await p.waitForSelector('#xres');
+    await p.click('#xres [data-r="720"]');
+    await p.click('#exp [data-x="go"]');
+    const t0 = Date.now();
+    await p.waitForSelector('.xvid, .err', {timeout: 240000});
+    console.log('EXPORT_SEC', (Date.now() - t0) / 1000, (await p.locator('.err').count()) ? await p.locator('.err').innerText() : 'ok');
+    const b64 = await p.evaluate(async () => {
+      const u = document.querySelector('.xvid')?.src;
+      if (!u) return '';
+      const a = new Uint8Array(await (await fetch(u)).arrayBuffer());
+      let s = '';
+      for (let i = 0; i < a.length; i += 32768) s += String.fromCharCode(...a.subarray(i, i + 32768));
+      return btoa(s);
+    });
+    if (b64) fs.writeFileSync('test/plan-out.mp4', Buffer.from(b64, 'base64'));
+  }
   await b.close();
 })();

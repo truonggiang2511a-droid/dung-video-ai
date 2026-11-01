@@ -5,6 +5,8 @@
 //  - Video chưa kịp ra hình thì GIỮ khung cuối (không bao giờ vẽ khung xám), cảnh phụ được tua sẵn trước 2 giây
 //  - Chưa giải mã xong tiếng / máy không cho Web Audio → dùng tiếng của thẻ video, đồng hồ dừng chờ khi video đang tua (không nhảy cóc lời)
 import {W, H, drawFrame, duration, srcAt, activeBrolls, segStarts, setFormat} from './render.js';
+import {sfxBuffer} from './sfx.js';
+import {onStickerLoad} from './library.js';
 
 const engine = () => import('./engine.js');
 const PREVIEW_RATE = 32000;
@@ -73,6 +75,8 @@ export class Player {
     this.ctx = canvas.getContext('2d');
     this.holder = holder; // div ẩn chứa các thẻ video
     this.p = null;
+    this.sfxBufs = {}; // key SFX → AudioBuffer đã dựng
+    onStickerLoad(() => (this.dirty = true));
     this.urls = {};
     this.els = {}; // cảnh phụ + nhạc (thẻ dự phòng); els[mainId] = thẻ video chính đầu tiên
     this.mains = [];
@@ -360,12 +364,33 @@ export class Player {
       this.nodes.push(node, g);
       this.musicGain = g;
     }
+    // hiệu ứng âm thanh (SFX)
+    for (const s of p.sfx || []) {
+      const b = this.sfxBufs[s.sfx];
+      if (b === undefined) {
+        this.sfxBufs[s.sfx] = null;
+        sfxBuffer(s.sfx, ac.sampleRate).then((buf) => {
+          this.sfxBufs[s.sfx] = buf || 'fail';
+          if (this.playing && this.mode === 'wa' && s.start > this.T + 0.15) this._restart();
+        });
+        continue;
+      }
+      if (!b || b === 'fail' || s.start + b.duration <= T0) continue;
+      const off = Math.max(0, T0 - s.start);
+      const node = ac.createBufferSource();
+      node.buffer = b;
+      const g = ac.createGain();
+      g.gain.value = Math.max(0, Math.min(1.5, s.vol ?? 0.5));
+      node.connect(g).connect(this.master);
+      node.start(a0 + Math.max(0, s.start - T0), off);
+      this.nodes.push(node, g);
+    }
     this.sig = this._sig();
   }
 
   _sig() {
     const p = this.p;
-    return JSON.stringify([p.main?.src, p.main?.segs, p.music?.src]);
+    return JSON.stringify([p.main?.src, p.main?.segs, p.music?.src, (p.sfx || []).map((s) => [s.sfx, s.start, s.vol])]);
   }
 
   _latency() {
@@ -673,6 +698,13 @@ export class Player {
   toComp(clientX, clientY) {
     const r = this.canvas.getBoundingClientRect();
     return {x: ((clientX - r.left) / r.width) * W, y: ((clientY - r.top) / r.height) * H};
+  }
+  hitBox(x, y) {
+    for (let i = this.boxes.length - 1; i >= 0; i--) {
+      const b = this.boxes[i];
+      if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return b;
+    }
+    return null;
   }
   hit(x, y) {
     for (let i = this.boxes.length - 1; i >= 0; i--) {

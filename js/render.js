@@ -3,6 +3,7 @@
 // Toạ độ theo khung gốc của khổ hình đang dùng (9:16 = 1080 x 1920, 16:9 = 1920 x 1080…; cạnh ngắn luôn 1080
 // nên cỡ chữ/icon giữ nguyên) — nơi gọi tự scale ctx. Đổi khổ: setFormat(p.format) trước khi vẽ.
 import {FORMATS} from './templates.js';
+import {stickerImage} from './library.js';
 
 export let W = 1080;
 export let H = 1920;
@@ -325,7 +326,7 @@ function drawLockup(ctx, it, t, boxes) {
     ctx.restore();
   }
   ctx.restore();
-  boxes.push({id: it.id, x: cx - mw / 2 - 20, y: cy - size * 0.95, w: mw + 40, h: size * 1.9});
+  boxes.push({id: it.id, type: 'text', x: cx - mw / 2 - 20, y: cy - size * 0.95, w: mw + 40, h: size * 1.9});
 
   // tầng 3: chữ ký tay
   if (it.sign) {
@@ -362,6 +363,82 @@ function drawLockup(ctx, it, t, boxes) {
     ctx.restore();
   }
   ctx.restore();
+}
+
+// ---------- Hình minh hoạ / icon động ----------
+// kind 'emoji' = hình Fluent Emoji màu; 'icon' = icon Lucide trắng trên huy hiệu tròn màu (it.color)
+function drawSticker(ctx, it, t, boxes) {
+  const out = clamp((it.dur - t) / 0.25);
+  if (out <= 0) return;
+  const img = stickerImage(it);
+  const base = Math.min(W, H) * 0.24 * (it.size || 1);
+  let cx = (it.x ?? 0.78) * W;
+  let cy = (it.y ?? 0.3) * H;
+  let s = 1;
+  let rot = 0;
+  let alpha = 1;
+  const inP = spring(t, 10, 150);
+  switch (it.motion || 'pop') {
+    case 'bounce':
+      s = inP;
+      cy -= Math.abs(Math.sin(t * 4.2)) * base * 0.12 * clamp(t / 0.4);
+      break;
+    case 'float':
+      s = easeOut(t / 0.35);
+      alpha = clamp(t / 0.3);
+      cy += Math.sin(t * 2.2) * base * 0.06;
+      break;
+    case 'wiggle':
+      s = inP;
+      rot = Math.sin(t * 9) * 0.14 * clamp(t / 0.3);
+      break;
+    case 'pulse':
+      s = inP * (1 + Math.sin(t * 6.3) * 0.06);
+      break;
+    case 'spin':
+      s = easeOut(t / 0.45);
+      rot = (1 - easeOut(t / 0.45)) * Math.PI * 2;
+      break;
+    case 'drop':
+      cy -= (1 - spring(t, 8, 120)) * H * 0.4;
+      alpha = clamp(t / 0.12);
+      break;
+    case 'slide':
+      cx += (1 - easeOut(t / 0.4)) * W * 0.6 * ((it.x ?? 0.78) < 0.5 ? -1 : 1);
+      break;
+    default: // pop
+      s = inP;
+      rot = (1 - clamp(inP)) * -0.4;
+  }
+  s *= 1 - (1 - out) * 0.4;
+  if (s <= 0.01) return;
+  ctx.save();
+  ctx.globalAlpha = clamp(alpha) * out;
+  ctx.translate(cx, cy);
+  ctx.rotate(rot);
+  ctx.scale(s, s);
+  if (it.kind === 'icon') {
+    const r = base * 0.5;
+    ctx.shadowColor = 'rgba(0,0,0,0.45)';
+    ctx.shadowBlur = 24;
+    ctx.shadowOffsetY = 8;
+    ctx.fillStyle = it.color || '#2f8cff';
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.lineWidth = r * 0.08;
+    ctx.strokeStyle = 'rgba(255,255,255,0.92)';
+    ctx.stroke();
+    if (img) ctx.drawImage(img, -r * 0.6, -r * 0.6, r * 1.2, r * 1.2);
+  } else if (img) {
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = 22;
+    ctx.shadowOffsetY = 8;
+    ctx.drawImage(img, -base / 2, -base / 2, base, base);
+  }
+  ctx.restore();
+  boxes.push({id: it.id, type: 'sticker', x: cx - base / 2, y: cy - base / 2, w: base, h: base});
 }
 
 // ---------- Phụ đề bật từng từ ----------
@@ -568,6 +645,12 @@ export function drawFrame(ctx, p, T, frames, opt = {}) {
     if (T < it.start || T >= it.start + it.dur) continue;
     lockActive = true;
     drawLockup(ctx, it, T - it.start, boxes);
+  }
+
+  // 3b. hình minh hoạ / icon động
+  for (const it of p.stickers || []) {
+    if (T < it.start || T >= it.start + it.dur) continue;
+    drawSticker(ctx, it, T - it.start, boxes);
   }
 
   // 4. phụ đề

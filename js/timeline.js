@@ -4,11 +4,13 @@ import {genreOf} from './templates.js';
 
 const ROWS = [
   {key: 'texts', label: 'Chữ', icon: 'M4 7V4h16v3M9 20h6M12 4v16'},
+  {key: 'stickers', label: 'Hình', icon: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM8.5 14.5s1.3 2 3.5 2 3.5-2 3.5-2M9 9.5h.01M15 9.5h.01'},
   {key: 'subs', label: 'Phụ đề', icon: 'M3 5h18v14H3zM7 13h4M13 13h4M7 16h10'},
   {key: 'zooms', label: 'Hiệu ứng', icon: 'M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM21 21l-4.3-4.3M11 8v6M8 11h6'},
   {key: 'broll', label: 'Cảnh phụ', icon: 'M3 5h18v14H3zM3 9h18M8 5v4M16 5v4'},
   {key: 'main', label: 'Video', icon: 'M3 6h13v12H3zM16 10l5-3v10l-5-3'},
   {key: 'music', label: 'Nhạc', icon: 'M9 18V5l12-2v13M9 18a3 3 0 1 1-3-3 3 3 0 0 1 3 3zM21 16a3 3 0 1 1-3-3 3 3 0 0 1 3 3z'},
+  {key: 'sfx', label: 'Âm thanh', icon: 'M11 5L6 9H2v6h4l5 4V5zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14'},
 ];
 
 const svg = (d, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
@@ -152,6 +154,12 @@ export class Timeline {
     this.rows.subs.innerHTML = lines.length
       ? lines.map((l, i) => clip('subs', 'subs', l.s, l.e - l.s, 'c-sub', `<span>${esc(l.ws.map((w) => w.w).join(' '))}</span>`, '')).join('')
       : p.main && p.transcript ? '' : p.main ? `<div class="tl-hint" style="left:${half}px">Phụ đề sẽ có sau khi AI nghe lời nói</div>` : '';
+    // Hình minh hoạ / icon động
+    this.rows.stickers.innerHTML = (p.stickers || [])
+      .map((s) => clip('sticker', s.id, s.start, s.dur, 'c-sticker', `<img src="lib/${s.kind === 'icon' ? 'i' : 'e'}/${esc(s.key)}.svg" alt="" loading="lazy"><span>${esc(s.label || '')}</span>`, s.kind === 'icon' ? `--c:${s.color || '#2f8cff'}` : ''))
+      .join('');
+    // Âm thanh (SFX)
+    this.rows.sfx.innerHTML = (p.sfx || []).map((s) => clip('sfx', s.id, s.start, Math.max(s.dur, 0.5), 'c-sfx', `<span>♪ ${esc(s.name || s.sfx)}</span>`)).join('');
     // Hiệu ứng
     this.rows.zooms.innerHTML = (p.zooms || []).map((z) => clip('zoom', z.id, z.start, z.dur, 'c-zoom', `<span>${z.kind === 'punch' ? 'Zoom giật' : z.kind === 'push' ? 'Đẩy máy' : 'Zoom'}</span>`)).join('');
     // Cảnh phụ
@@ -300,8 +308,9 @@ export class Timeline {
       return;
     }
     const c = e.target.closest('.clip.sel');
-    if (!c || !['text', 'broll', 'zoom', 'seg'].includes(c.dataset.type)) return;
-    const h = e.target.dataset.h;
+    if (!c || !['text', 'broll', 'zoom', 'seg', 'sticker', 'sfx'].includes(c.dataset.type)) return;
+    let h = e.target.dataset.h;
+    if (c.dataset.type === 'sfx') h = undefined; // âm thanh có độ dài cố định: chỉ dời
     if (c.dataset.type === 'seg' && !h) return;
     e.preventDefault();
     c.setPointerCapture(e.pointerId);
