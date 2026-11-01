@@ -240,6 +240,211 @@ function fontStr(key, size) {
   return `${f.weight} ${Math.round(size)}px ${f.family}, sans-serif`;
 }
 
+// ---------- Kiểu chữ (mẫu chữ) & chuyển động chữ ----------
+export const TEXT_STYLES = [
+  ['3d', 'Nổi 3D'],
+  ['flat', 'Phẳng'],
+  ['outline', 'Viền trắng'],
+  ['stroke2', 'Viền đôi'],
+  ['shadow', 'Bóng dài'],
+  ['box', 'Hộp màu'],
+  ['highlight', 'Bút dạ'],
+  ['neon', 'Neon'],
+  ['gradient', 'Chuyển màu'],
+  ['tape', 'Nhãn dán'],
+  ['bubble', 'Bong bóng thoại'],
+];
+// Mẫu chữ có sẵn (kho “Chữ mẫu”): kiểu + chuyển động + font + màu. Font là khoá trong kho font (font-list.js).
+export const TEXT_PRESETS = [
+  {name: 'Giá sốc', main: '3,8 TỶ', lead: 'giá chỉ', sign: 'có thương lượng', style: '3d', motion: 'stamp', font: 'anton', color: '#ff2a2a', kind: 'price'},
+  {name: 'Tiêu đề mở đầu', main: 'BẠN CÓ BIẾT?', style: 'box', motion: 'pop', font: 'bevietnampro900', color: '#ffc61a'},
+  {name: 'Nhấn mạnh', main: 'QUAN TRỌNG', style: 'highlight', motion: 'slide', font: 'montserrat900', color: '#ff5fb8'},
+  {name: 'Giảm giá', main: 'GIẢM 50%', lead: 'hôm nay', style: 'gradient', motion: 'zoom', font: 'paytoneone400', color: '#ff8a1f'},
+  {name: 'Neon', main: 'MỞ CỬA 24/7', style: 'neon', motion: 'glitch', font: 'bungee400', color: '#2f8cff'},
+  {name: 'Nhãn dán', main: 'MỚI VỀ', style: 'tape', motion: 'bounce', font: 'bangers400', color: '#ffc61a'},
+  {name: 'Lời thoại', main: 'Chốt đơn nha!', style: 'bubble', motion: 'pop', font: 'baloo2800', color: '#ff2a2a'},
+  {name: 'Bước làm', main: 'BƯỚC 1', lead: 'mẹo hay', style: 'stroke2', motion: 'slide', font: 'kanit800', color: '#2ad46a'},
+  {name: 'Viết tay', main: 'Ngon quên lối về', style: 'flat', motion: 'type', font: 'dancingscript700', color: '#ffffff'},
+  {name: 'Sang trọng', main: 'Biệt thự ven sông', style: 'flat', motion: 'rise', font: 'playfairdisplay900', color: '#f5d68a'},
+  {name: 'Sóng vui', main: 'SIÊU NGON', style: 'stroke2', motion: 'wave', font: 'grandstander900', color: '#ffc61a'},
+  {name: 'Cảnh báo', main: 'SAI LẦM', lead: 'đừng mắc', style: 'box', motion: 'glitch', font: 'anton', color: '#ff2a2a'},
+  {name: 'Bóng dài', main: 'HOT TREND', style: 'shadow', motion: 'flip', font: 'bungee400', color: '#ffc61a'},
+  {name: 'Giãn chữ', main: 'SẮP RA MẮT', style: 'outline', motion: 'spread', font: 'unbounded800', color: '#9a6bff'},
+  {name: 'Tên người nói', main: 'TÊN CỦA BẠN', lead: 'chuyên viên tư vấn', style: 'box', motion: 'slide', font: 'bevietnampro900', color: '#ffffff', size: 0.55, y: 0.8},
+  {name: 'Số liệu', main: '+250%', lead: 'doanh thu', style: 'gradient', motion: 'bounce', font: 'unbounded800', color: '#2ad46a'},
+  {name: 'Câu hỏi', main: 'Có nên mua?', style: 'bubble', motion: 'bounce', font: 'pattaya400', color: '#2f8cff'},
+  {name: 'Miễn phí', main: 'FREESHIP', style: 'stroke2', motion: 'zoom', font: 'bungee400', color: '#ff5fb8'},
+];
+export const TEXT_MOTIONS = [
+  ['pop', 'Bật lớn'],
+  ['zoom', 'Phóng ra'],
+  ['stamp', 'Đóng dấu'],
+  ['slide', 'Trượt vào'],
+  ['rise', 'Trồi lên'],
+  ['bounce', 'Rơi nảy'],
+  ['type', 'Gõ chữ'],
+  ['wave', 'Sóng'],
+  ['flip', 'Lật'],
+  ['glitch', 'Nhiễu'],
+  ['spread', 'Giãn chữ'],
+];
+function lum(hex) {
+  const n = parseInt(String(hex || '#ffffff').slice(1), 16);
+  return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+}
+function shiftHue(hex, k = 0.55) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  return `rgb(${Math.round(r + (255 - r) * k)},${Math.round(g * (1 - k * 0.3))},${Math.round(b + (255 - b) * k)})`;
+}
+// Vẽ chữ theo kiểu tại (x, y) — textAlign do nơi gọi đặt
+function paintText(ctx, s, x, y, {style, color, size}) {
+  if (!s) return;
+  ctx.lineJoin = 'round';
+  if (style === '3d') {
+    const dk = darken(color);
+    const depth = Math.max(6, Math.round(size / 11));
+    ctx.fillStyle = dk;
+    for (let i = depth; i >= 1; i--) ctx.fillText(s, x, y + i * 1.6);
+    ctx.shadowColor = 'rgba(0,0,0,0.45)';
+    ctx.shadowBlur = 26;
+    ctx.shadowOffsetY = depth * 1.6 + 6;
+    ctx.fillStyle = color;
+    ctx.fillText(s, x, y);
+    ctx.shadowColor = 'transparent';
+  } else if (style === 'outline') {
+    ctx.lineWidth = size * 0.09;
+    ctx.strokeStyle = '#ffffff';
+    ctx.strokeText(s, x, y);
+    ctx.fillStyle = color;
+    ctx.fillText(s, x, y);
+  } else if (style === 'stroke2') {
+    ctx.lineWidth = size * 0.2;
+    ctx.strokeStyle = darken(color, 0.3);
+    ctx.strokeText(s, x, y);
+    ctx.lineWidth = size * 0.1;
+    ctx.strokeStyle = '#ffffff';
+    ctx.strokeText(s, x, y);
+    ctx.fillStyle = color;
+    ctx.fillText(s, x, y);
+  } else if (style === 'shadow') {
+    const dk = darken(color, 0.28);
+    const depth = Math.max(8, Math.round(size / 7));
+    ctx.fillStyle = dk;
+    for (let i = depth; i >= 1; i--) ctx.fillText(s, x + i * 1.3, y + i * 1.3);
+    ctx.lineWidth = size * 0.05;
+    ctx.strokeStyle = '#ffffff';
+    ctx.strokeText(s, x, y);
+    ctx.fillStyle = color;
+    ctx.fillText(s, x, y);
+  } else if (style === 'neon') {
+    ctx.shadowColor = color;
+    ctx.fillStyle = color;
+    ctx.shadowBlur = size * 0.45;
+    ctx.fillText(s, x, y);
+    ctx.shadowBlur = size * 0.2;
+    ctx.fillText(s, x, y);
+    ctx.shadowBlur = size * 0.06;
+    ctx.fillStyle = '#ffffff';
+    ctx.globalAlpha *= 0.9;
+    ctx.fillText(s, x, y);
+    ctx.globalAlpha /= 0.9;
+    ctx.shadowColor = 'transparent';
+  } else if (style === 'gradient') {
+    const g = ctx.createLinearGradient(0, y - size * 0.5, 0, y + size * 0.5);
+    g.addColorStop(0, shiftHue(color, 0.65));
+    g.addColorStop(0.5, color);
+    g.addColorStop(1, darken(color, 0.7));
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 20;
+    ctx.shadowOffsetY = 6;
+    ctx.lineWidth = size * 0.07;
+    ctx.strokeStyle = '#ffffff';
+    ctx.strokeText(s, x, y);
+    ctx.shadowColor = 'transparent';
+    ctx.fillStyle = g;
+    ctx.fillText(s, x, y);
+  } else if (style === 'highlight') {
+    ctx.lineWidth = size * 0.08;
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+    ctx.strokeText(s, x, y);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(s, x, y);
+  } else {
+    // flat / box / tape / bubble: chữ phẳng (nền khối vẽ riêng)
+    if (style === 'flat') {
+      ctx.shadowColor = 'rgba(0,0,0,0.5)';
+      ctx.shadowBlur = 22;
+      ctx.shadowOffsetY = 6;
+    }
+    ctx.fillStyle = color;
+    ctx.fillText(s, x, y);
+    ctx.shadowColor = 'transparent';
+  }
+}
+// Nền khối sau chữ: hộp màu, nhãn dán, bong bóng thoại, vệt bút dạ (mọc ra theo thời gian)
+function textBlock(ctx, style, color, w, size, t) {
+  if (!['box', 'tape', 'bubble', 'highlight'].includes(style)) return;
+  const k = easeOut((t - 0.05) / 0.3);
+  if (k <= 0) return;
+  const px = size * 0.32;
+  const h = size * 1.12;
+  ctx.save();
+  if (style === 'box') {
+    ctx.shadowColor = 'rgba(0,0,0,0.4)';
+    ctx.shadowBlur = 24;
+    ctx.shadowOffsetY = 8;
+    ctx.fillStyle = color;
+    roundRect(ctx, -w / 2 - px, -h / 2, (w + px * 2) * k, h, size * 0.18);
+    ctx.fill();
+  } else if (style === 'tape') {
+    ctx.rotate(-0.045);
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = 16;
+    ctx.shadowOffsetY = 6;
+    ctx.fillStyle = color;
+    const x0 = -w / 2 - px;
+    const x1 = x0 + (w + px * 2) * k;
+    ctx.beginPath();
+    ctx.moveTo(x0, -h / 2);
+    ctx.lineTo(x1, -h / 2);
+    for (let i = 0; i <= 6; i++) ctx.lineTo(x1 + (i % 2 ? -size * 0.07 : 0), -h / 2 + (h * i) / 6);
+    ctx.lineTo(x0, h / 2);
+    for (let i = 6; i >= 0; i--) ctx.lineTo(x0 + (i % 2 ? size * 0.07 : 0), -h / 2 + (h * i) / 6);
+    ctx.closePath();
+    ctx.fill();
+  } else if (style === 'bubble') {
+    ctx.globalAlpha *= clamp(k * 1.5);
+    ctx.scale(0.6 + 0.4 * k, 0.6 + 0.4 * k);
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = 22;
+    ctx.shadowOffsetY = 8;
+    ctx.fillStyle = '#ffffff';
+    roundRect(ctx, -w / 2 - px, -h / 2 - size * 0.08, w + px * 2, h + size * 0.16, size * 0.42);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-w / 2 + size * 0.2, h / 2);
+    ctx.lineTo(-w / 2 - size * 0.05, h / 2 + size * 0.42);
+    ctx.lineTo(-w / 2 + size * 0.62, h / 2);
+    ctx.closePath();
+    ctx.fill();
+  } else if (style === 'highlight') {
+    ctx.fillStyle = color;
+    ctx.globalAlpha *= 0.92;
+    ctx.beginPath();
+    const x0 = -w / 2 - size * 0.15;
+    ctx.moveTo(x0, size * -0.02);
+    ctx.lineTo(x0 + (w + size * 0.3) * k, size * -0.08);
+    ctx.lineTo(x0 + (w + size * 0.3) * k + size * 0.05, size * 0.46);
+    ctx.lineTo(x0 - size * 0.04, size * 0.5);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawLockup(ctx, it, t, boxes) {
   const dur = it.dur;
   const out = clamp((dur - t) / 0.3);
@@ -267,11 +472,11 @@ function drawLockup(ctx, it, t, boxes) {
     ctx.shadowBlur = 14;
     ctx.shadowOffsetY = 3;
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(it.lead.toUpperCase(), cx, cy - size * 0.62);
+    ctx.fillText(it.lead.toUpperCase(), cx, cy - size * (['box', 'tape', 'bubble'].includes(it.style) ? 0.82 : 0.62));
     ctx.restore();
   }
 
-  // tầng 2: từ khoá chính
+  // tầng 2: từ khoá chính — kiểu chữ (TEXT_STYLES) × chuyển động (TEXT_MOTIONS)
   ctx.font = fontStr(it.font, size);
   let mw = ctx.measureText(it.main || '').width;
   if (mw > W * 0.9) {
@@ -279,41 +484,111 @@ function drawLockup(ctx, it, t, boxes) {
     ctx.font = fontStr(it.font, size);
     mw = ctx.measureText(it.main || '').width;
   }
-  const sc = 1.5 - 0.5 * mainP;
-  ctx.save();
-  ctx.globalAlpha = out * clamp(mainP * 1.3);
-  ctx.translate(cx, cy);
-  ctx.scale(sc, sc);
   const style = it.style || '3d';
-  if (style === '3d') {
-    const dk = darken(color);
-    const depth = Math.max(6, Math.round(size / 11));
-    ctx.fillStyle = dk;
-    for (let i = depth; i >= 1; i--) ctx.fillText(it.main, 0, i * 1.6);
-    ctx.shadowColor = 'rgba(0,0,0,0.45)';
-    ctx.shadowBlur = 26;
-    ctx.shadowOffsetY = depth * 1.6 + 6;
-    ctx.fillStyle = color;
-    ctx.fillText(it.main, 0, 0);
-    ctx.shadowColor = 'transparent';
-  } else if (style === 'outline') {
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = size * 0.09;
-    ctx.strokeStyle = '#ffffff';
-    ctx.strokeText(it.main, 0, 0);
-    ctx.fillStyle = color;
-    ctx.fillText(it.main, 0, 0);
-  } else {
-    ctx.shadowColor = 'rgba(0,0,0,0.5)';
-    ctx.shadowBlur = 22;
-    ctx.shadowOffsetY = 6;
-    ctx.fillStyle = color;
-    ctx.fillText(it.main, 0, 0);
-    ctx.shadowColor = 'transparent';
+  const motion = it.motion || 'pop';
+  const txt = it.main || '';
+  const tm = t - 0.13;
+  let sc = 1;
+  let sy = 1;
+  let dx = 0;
+  let dy = 0;
+  let a = 1;
+  let rot = 0;
+  let spread = 0;
+  let shown = txt.length;
+  switch (motion) {
+    case 'zoom': {
+      const k = spring(tm, 9, 160);
+      sc = Math.max(0, k);
+      a = clamp(k * 2);
+      break;
+    }
+    case 'stamp': {
+      const k = clamp(tm / 0.16);
+      sc = 3 - 2 * k * k;
+      a = tm > 0 ? clamp(k * 3) : 0;
+      const after = tm - 0.16;
+      if (after > 0 && after < 0.3) dx = Math.sin(after * 90) * size * 0.05 * (1 - after / 0.3);
+      break;
+    }
+    case 'slide':
+      dx = (1 - easeOut(tm / 0.38)) * -W * 0.7;
+      a = clamp(tm / 0.15);
+      break;
+    case 'rise':
+      dy = (1 - easeOut(tm / 0.42)) * size * 1.05;
+      break;
+    case 'bounce':
+      dy = -(1 - spring(tm, 7, 130)) * H * 0.22;
+      a = clamp(tm / 0.08);
+      break;
+    case 'flip':
+      sy = spring(tm, 10, 170);
+      a = clamp(tm / 0.1);
+      break;
+    case 'spread':
+      spread = (1 - easeOut(tm / 0.5)) * size * 0.45;
+      a = clamp(tm / 0.3);
+      break;
+    case 'type':
+      shown = Math.max(0, Math.min(txt.length, Math.floor(tm / 0.055)));
+      break;
+    case 'wave':
+      sc = 1.3 - 0.3 * spring(tm, 11, 140);
+      a = clamp(tm * 4);
+      break;
+    case 'glitch':
+      a = clamp(tm / 0.05);
+      break;
+    default: {
+      // pop (mẫu 1)
+      sc = 1.5 - 0.5 * mainP;
+      a = clamp(mainP * 1.3);
+    }
   }
-  // vệt sáng lướt qua chữ
+  const perChar = motion === 'type' || motion === 'wave' || spread > 0.5;
+  const fullW = mw + spread * Math.max(0, txt.length - 1);
+  ctx.save();
+  ctx.globalAlpha = out * clamp(a);
+  ctx.translate(cx + dx, cy + dy);
+  if (motion === 'rise') {
+    ctx.beginPath();
+    ctx.rect(-W, -size * 0.62, W * 2, size * 1.25);
+    ctx.clip();
+  }
+  ctx.rotate(rot);
+  ctx.scale(sc, sc * sy);
+  // nền khối (hộp / nhãn dán / bong bóng thoại / bút dạ)
+  textBlock(ctx, style, color, fullW, size, t);
+  const ink = style === 'box' || style === 'tape' ? (lum(color) > 0.6 ? '#111111' : '#ffffff') : style === 'bubble' ? (lum(color) > 0.75 ? '#1a1a1a' : color) : color;
+  if (motion === 'glitch' && tm < 0.55) {
+    const j = Math.sin(t * 70) * size * 0.06 * (1 - tm / 0.55);
+    ctx.save();
+    ctx.globalAlpha *= 0.85;
+    paintText(ctx, txt, -j, 0, {style: 'flat', color: '#00e5ff', size});
+    paintText(ctx, txt, j, Math.cos(t * 50) * size * 0.03, {style: 'flat', color: '#ff2a6d', size});
+    ctx.restore();
+  }
+  if (perChar) {
+    // từng chữ cái: gõ chữ / sóng / giãn chữ
+    let x = -fullW / 2;
+    ctx.textAlign = 'left';
+    for (let i = 0; i < shown; i++) {
+      const ch = txt[i];
+      const cw = ctx.measureText(ch).width;
+      const wy = motion === 'wave' ? Math.sin(t * 6 + i * 0.55) * size * 0.08 : 0;
+      paintText(ctx, ch, x, wy, {style, color: ink, size});
+      x += cw + spread;
+    }
+    if (motion === 'type' && (shown < txt.length || Math.floor(t * 2.4) % 2 === 0) && t < it.dur - 0.3) {
+      ctx.fillStyle = ink;
+      ctx.fillRect(x + size * 0.04, -size * 0.42, size * 0.07, size * 0.84);
+    }
+    ctx.textAlign = 'center';
+  } else paintText(ctx, txt, 0, 0, {style, color: ink, size});
+  // vệt sáng lướt qua chữ (kiểu nổi / phẳng / viền / chuyển màu)
   const sw = (t - 0.55) / 0.8;
-  if (sw > 0 && sw < 1) {
+  if (sw > 0 && sw < 1 && ['3d', 'flat', 'outline', 'gradient', 'stroke2'].includes(style) && !perChar) {
     ctx.save();
     const bx = -mw / 2 - 80 + (mw + 160) * sw;
     ctx.beginPath();
@@ -325,11 +600,11 @@ function drawLockup(ctx, it, t, boxes) {
     ctx.clip();
     ctx.globalAlpha = 0.75 * out;
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(it.main, 0, 0);
+    ctx.fillText(txt, 0, 0);
     ctx.restore();
   }
   ctx.restore();
-  boxes.push({id: it.id, type: 'text', x: cx - mw / 2 - 20, y: cy - size * 0.95, w: mw + 40, h: size * 1.9});
+  boxes.push({id: it.id, type: 'text', x: cx - fullW / 2 - 20, y: cy - size * 0.95, w: fullW + 40, h: size * 1.9});
 
   // tầng 3: chữ ký tay
   if (it.sign) {

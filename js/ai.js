@@ -39,7 +39,7 @@ export const plain = (s) =>
 
 // ---------- Kiểm tra op do AI trả về ----------
 const OPS = new Set(['cut', 'split', 'add', 'update', 'remove', 'subs', 'cta', 'music', 'look']);
-const TEXT_KEYS = ['start', 'dur', 'lead', 'main', 'sign', 'font', 'color', 'style', 'size', 'x', 'y', 'icon', 'kind'];
+const TEXT_KEYS = ['start', 'dur', 'lead', 'main', 'sign', 'font', 'color', 'style', 'size', 'x', 'y', 'icon', 'kind', 'motion'];
 const BROLL_KEYS = ['start', 'dur', 'in', 'trans', 'src'];
 export function sanitizeOps(p, ops, target) {
   const out = [];
@@ -341,7 +341,11 @@ export function localPlan(p) {
   });
 
   // chữ số liệu từ lời nói
-  numberLockups(p).forEach((t) => ops.push({op: 'add', list: 'texts', item: t}));
+  numberLockups(p).forEach((t, i) => {
+    // chuyển động theo ý: giá → đóng dấu, diện tích/chiều dài → phóng ra, “3 bước/5 mẹo” → trượt vào, còn lại xen kẽ bật/nảy
+    t.motion = t.kind === 'price' ? 'stamp' : /M²|MÉT/.test(t.main) ? 'zoom' : /BƯỚC|MẸO|CÁCH|LÝ DO|ĐIỀU/.test(t.main) ? 'slide' : i % 2 ? 'bounce' : 'pop';
+    ops.push({op: 'add', list: 'texts', item: t});
+  });
 
   // zoom trên mặt người nói: giật xen kẽ chặt/rộng ở mỗi chỗ cắt lộ ra; hook bắt đầu chặt
   const speak = [];

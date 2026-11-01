@@ -453,7 +453,7 @@ kbd{display:inline-block;min-width:18px;padding:0 5px;margin:0 1px;border:1px so
 /* kho tài nguyên */
 .lib-tabs{display:flex;gap:4px;padding:3px;margin:0 0 12px;background:var(--well);border-radius:11px;overflow-x:auto;scrollbar-width:none}
 .lib-tabs::-webkit-scrollbar{display:none}
-.lib-tabs button{flex:1 0 auto;height:32px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:var(--mu);font:700 12.5px/1 inherit;white-space:nowrap}
+.lib-tabs button{flex:1 0 auto;height:32px;padding:0 9px;border:0;border-radius:8px;background:transparent;color:var(--mu);font:700 12.5px/1 inherit;white-space:nowrap}
 .lib-tabs button.on{background:var(--card3);color:var(--tx)}
 .lib-q{margin-bottom:8px}
 .lib-groups{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:6px;scrollbar-width:none}
@@ -479,3 +479,8 @@ kbd{display:inline-block;min-width:18px;padding:0 5px;margin:0 1px;border:1px so
 .fopt span{font-size:13px;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fopt:hover{background:rgba(255,255,255,.04)}
 .fopt.on{border-color:var(--accbd);background:var(--accbg);color:var(--acc)}
+.tp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.tp-it{display:flex;flex-direction:column;gap:4px;padding:4px;border:1px solid transparent;border-radius:12px;background:rgba(255,255,255,.03);color:var(--tx2);cursor:pointer;text-align:left}
+.tp-it:hover{border-color:var(--accbd);background:var(--accbg);color:var(--acc)}
+.tp-it canvas{width:100%;height:auto;aspect-ratio:240/132;border-radius:9px;background:#000}
+.tp-it small{font-size:12px;font-weight:700;padding:0 4px 2px}

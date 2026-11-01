@@ -1,5 +1,5 @@
 // Điều khiển giao diện: màn Dự án + màn Editor (khung xem nhanh, timeline, sửa tay, AI).
-import {loadFonts, duration, COLORS, ICONS, FONTS, W, H, SUB_STYLES, tlOfSrc, srcAt} from './render.js';
+import {loadFonts, duration, COLORS, ICONS, FONTS, W, H, SUB_STYLES, TEXT_STYLES, TEXT_MOTIONS, TEXT_PRESETS, tlOfSrc, srcAt, drawFrame, setFormat} from './render.js';
 import {store} from './store.js';
 import {newProject, applyOp, History, find, newText, uid, ITEM_TYPES} from './model.js';
 import {SFX, SFX_MAP, playSfx} from './sfx.js';
@@ -449,7 +449,8 @@ function renderInspector() {
       <label class="fl">Dòng ký tay<input data-k="sign" value="${esc(it.sign)}" maxlength="40" placeholder="vd: chỉ hôm nay"></label>
       <div class="fl"><span>Font <small class="fcount">${Object.keys(FONTS).length} font có dấu</small></span>${fontPicker(it.font)}</div>
       <div class="fl"><span>Màu</span><div class="swatches">${COLORS.map((c) => `<button class="sw${it.color === c.hex ? ' on' : ''}" data-set="color" data-v="${c.hex}" style="background:${c.hex}" aria-label="Màu ${c.name}"></button>`).join('')}</div></div>
-      <div class="fl"><span>Kiểu chữ</span><div class="seg">${[['flat', 'Phẳng'], ['3d', 'Nổi 3D'], ['outline', 'Có viền']].map(([k, l]) => `<button class="${it.style === k ? 'on' : ''}" data-set="style" data-v="${k}">${l}</button>`).join('')}</div></div>
+      <div class="fl"><span>Kiểu chữ</span><div class="chips">${TEXT_STYLES.map(([k, l]) => `<button class="chip-b${(it.style || '3d') === k ? ' on' : ''}" data-set="style" data-v="${k}">${l}</button>`).join('')}</div></div>
+      <div class="fl"><span>Chuyển động chữ</span><div class="chips">${TEXT_MOTIONS.map(([k, l]) => `<button class="chip-b${(it.motion || 'pop') === k ? ' on' : ''}" data-set="motion" data-v="${k}">${l}</button>`).join('')}</div></div>
       <label class="fl">Cỡ chữ <output>${Math.round((it.size || 1) * 100)}%</output><input type="range" min="0.5" max="1.8" step="0.05" value="${it.size || 1}" data-num="size"></label>
       <div class="fl"><span>Icon động</span><div class="chips">${[['', 'Không'], ...Object.entries(ICONS).map(([k, v]) => [k, v.label])].map(([k, l]) => `<button class="chip-b${(it.icon || '') === k ? ' on' : ''}" data-set="icon" data-v="${k}">${l}</button>`).join('')}</div></div>
       <p class="hint">Kéo chữ trên khung xem để đổi vị trí. Kéo hai đầu clip trên timeline để đổi lúc hiện / ẩn.</p>`;
@@ -1004,6 +1005,7 @@ function scriptRange() {
 // ---------- KHO: video của khách + kho hình / icon / âm thanh / chữ mẫu / hiệu ứng / font ----------
 const LIB_TABS = [
   ['video', 'Video'],
+  ['text', 'Chữ mẫu'],
   ['emoji', 'Hình'],
   ['icon', 'Icon'],
   ['sfx', 'Âm thanh'],
@@ -1019,6 +1021,12 @@ function renderMedia() {
       <div class="lib-groups" id="libGroups"></div><div class="lib-grid${tab === 'icon' ? ' ic' : ''}" id="libGrid"></div>
       <p class="hint lib-lic">${tab === 'emoji' ? 'Hình Fluent Emoji (Microsoft, giấy phép MIT)' : 'Icon Lucide (giấy phép ISC)'} — dùng thương mại thoải mái.</p>`;
     fillLib();
+    return;
+  }
+  if (tab === 'text') {
+    box.innerHTML = `${head}<p class="hint" style="margin:2px 0 10px">Bấm để chèn tại đầu phát, rồi sửa chữ ở bảng Chỉnh sửa. ${TEXT_STYLES.length} kiểu chữ × ${TEXT_MOTIONS.length} chuyển động × ${Object.keys(FONTS).length} font.</p>
+      <div class="tp-grid">${TEXT_PRESETS.map((pr, i) => `<button class="tp-it" data-preset="${i}"><canvas width="240" height="132" data-tp="${i}"></canvas><small>${esc(pr.name)}</small></button>`).join('')}</div>`;
+    drawPresetThumbs();
     return;
   }
   if (tab === 'sfx') {
@@ -1057,6 +1065,34 @@ async function fillLib() {
   grid.innerHTML = list.length
     ? list.map((x) => `<button class="lib-it" data-libadd="${x.key}" data-label="${esc(x.label)}" title="${esc(x.label)}"><img src="lib/${dir}/${x.key}.svg" alt="${esc(x.label)}" loading="lazy" width="48" height="48"></button>`).join('')
     : '<p class="hint">Không tìm thấy — thử từ khác (vd: “nhà”, “tiền”, “tim”).</p>';
+}
+// ảnh xem trước mẫu chữ: vẽ bằng chính bộ dựng khung hình (giống hệt trên video)
+function drawPresetThumbs() {
+  for (const c of $$('canvas[data-tp]')) {
+    const pr = TEXT_PRESETS[+c.dataset.tp];
+    const go = () => {
+      const g = c.getContext('2d');
+      const s = 0.2;
+      g.setTransform(s, 0, 0, s, 120 - (s * W) / 2, 66 - s * H * 0.5);
+      const fake = {main: {src: 'x', segs: [{in: 0, out: 10}]}, sources: {x: {duration: 10}}, texts: [{...newText(0, pr), id: 'tp', x: 0.5, y: 0.5, size: Math.min(1, pr.size || 1) * 1.15, dur: 9}], broll: [], zooms: [], stickers: [], sfx: [], subs: {on: false}, cta: {on: false}};
+      drawFrame(g, fake, pr.motion === 'type' ? 2.5 : 1.8, {main: null});
+    };
+    go();
+    ensureFont(pr.font).then(go);
+  }
+}
+function insertPreset(i) {
+  const p = ed.p;
+  const pr = TEXT_PRESETS[i];
+  if (!p.main || !pr) return toast('Thêm video chính trước');
+  const D = duration(p);
+  const it = newText(Math.max(0, Math.min(ed.player.T, D - 3)), {...pr, locked: true});
+  delete it.name;
+  it.dur = Math.min(3.5, D);
+  manual(() => p.texts.push(it), {lock: false});
+  select({type: 'text', id: it.id});
+  if (matchMedia('(min-width: 900px)').matches) $('#side [data-tab="edit"]')?.click();
+  setTimeout(() => $('#insp [data-k="main"]')?.select(), 60);
 }
 function insertSticker(kind, key, label) {
   const p = ed.p;
@@ -1496,6 +1532,7 @@ async function boot() {
   ed.tl = new Timeline($('#tl'), tlCb);
   ed.cur = new Cursor();
   window.__dv = ed; // để kiểm thử (xem CLAUDE.md)
+  window.__render = {drawFrame, TEXT_STYLES, TEXT_MOTIONS, setFormat};
   bindInspector();
   bindStageDrag();
   bindDrop();
@@ -1554,6 +1591,8 @@ async function boot() {
     if (ps2) playSfx(ps2.dataset.playsfx2, 0.7);
     const as = e.target.closest('[data-addsfx]');
     if (as) insertSfx(as.dataset.addsfx);
+    const tp = e.target.closest('[data-preset]');
+    if (tp) insertPreset(+tp.dataset.preset);
     const chip = e.target.closest('[data-tagchip]');
     if (chip && $('#tagIn')) $('#tagIn').value = chip.dataset.tagchip;
     const tool = e.target.closest('[data-tool]');
