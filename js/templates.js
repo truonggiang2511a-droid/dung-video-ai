@@ -13,6 +13,7 @@ export const GENRES = {
     icons: ['star', 'check', 'fire', 'bulb', 'heart', 'chat', 'thumb', 'clock'],
     ai: 'video ngắn nói trước máy quay (talking head) cho mạng xã hội Việt Nam',
     edit: {pace: 3.2, cover: 0.4, base: 'none', accent: 'fade', punch: 1.1},
+    tags: ['Cận cảnh sản phẩm', 'Hậu trường', 'Màn hình', 'Ngoài trời', 'Văn phòng', 'Khách hàng'],
   },
   bds: {
     short: 'BĐS',
@@ -23,6 +24,7 @@ export const GENRES = {
     icons: ['house', 'pin', 'ruler', 'tag', 'doc', 'school', 'sofa', 'car', 'tree', 'bed', 'key', 'star'],
     ai: 'video bất động sản cho môi giới Việt Nam (người dẫn đứng nói giới thiệu nhà/đất), số → vàng 3D, giá → đỏ kèm dòng ký tay',
     edit: {pace: 3.4, cover: 0.5, base: 'fade', accent: 'zoom', punch: 1.08},
+    tags: ['Mặt tiền', 'Phòng khách', 'Phòng ngủ', 'Bếp', 'Nhà vệ sinh', 'Sân thượng', 'Ban công', 'Cầu thang', 'Hẻm trước nhà', 'Đường lớn', 'Sổ hồng', 'Tiện ích xung quanh'],
   },
   banhang: {
     short: 'Bán hàng',
@@ -33,6 +35,7 @@ export const GENRES = {
     icons: ['cart', 'tag', 'gift', 'fire', 'check', 'truck', 'star', 'heart'],
     ai: 'video bán hàng / review sản phẩm cho người bán online Việt Nam, nhấn giá, ưu đãi, công dụng (không hứa hẹn quá sự thật)',
     edit: {pace: 2.6, cover: 0.5, base: 'none', accent: 'zoom', punch: 1.12},
+    tags: ['Cận cảnh sản phẩm', 'Đóng gói', 'Khách dùng thử', 'Chi tiết', 'Giao hàng', 'Bảng giá', 'Trước sau'],
   },
   amthuc: {
     short: 'Ẩm thực',
@@ -43,6 +46,7 @@ export const GENRES = {
     icons: ['food', 'fire', 'star', 'pin', 'clock', 'heart', 'coffee', 'tag'],
     ai: 'video ẩm thực (review quán, giới thiệu món, công thức nấu) cho mạng xã hội Việt Nam',
     edit: {pace: 3, cover: 0.5, base: 'fade', accent: 'zoom', punch: 1.1},
+    tags: ['Món ăn cận cảnh', 'Bếp nấu', 'Không gian quán', 'Thực đơn', 'Khách ăn', 'Nguyên liệu', 'Đồ uống'],
   },
   kienthuc: {
     short: 'Kiến thức',
@@ -53,6 +57,7 @@ export const GENRES = {
     icons: ['bulb', 'book', 'check', 'chart', 'clock', 'star', 'chat', 'thumb'],
     ai: 'video chia sẻ kiến thức / hướng dẫn / mẹo cho mạng xã hội Việt Nam, nhấn các bước, con số, ý chính',
     edit: {pace: 3.6, cover: 0.35, base: 'none', accent: 'fade', punch: 1.1},
+    tags: ['Màn hình', 'Minh hoạ', 'Ví dụ thực tế', 'Sách vở', 'Biểu đồ', 'Ghi chú'],
   },
   vlog: {
     short: 'Vlog',
@@ -63,6 +68,7 @@ export const GENRES = {
     icons: ['heart', 'pin', 'camera', 'plane', 'coffee', 'star', 'fire', 'chat'],
     ai: 'vlog đời sống / du lịch cho mạng xã hội Việt Nam, nhịp nhanh, cảm xúc',
     edit: {pace: 2.6, cover: 0.55, base: 'none', accent: 'slide', punch: 1.12},
+    tags: ['Đường phố', 'Phong cảnh', 'Đồ ăn', 'Bạn bè', 'Khách sạn', 'Xe cộ', 'Biển', 'Núi'],
   },
 };
 

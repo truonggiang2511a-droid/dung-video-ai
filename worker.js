@@ -1,7 +1,9 @@
 // Máy chủ Cloudflare Worker: phục vụ giao diện (thư mục site/) + 2 route AI.
 //  POST /api/transcribe  (audio/wav 16 kHz mono) → Workers AI Whisper → {words:[{w,s,e}]}
 //  POST /api/ai          ({mode:'plan'|'edit', ...}) → Claude → {note|reply, ops:[...]}
-//  GET  /api/health      → {ai, stt}
+//  POST /api/vision     ({genre, items:[{id, img:'data:image/jpeg;base64,…'}]}) → Workers AI Llama 4 Scout xem cảnh phụ → {tags:{id:{nhan, tu_khoa}}}
+//  GET  /api/health      → {ai, stt, vision}
+// AI nhìn cảnh phụ (/api/vision, ~0,0003 USD/cảnh, dùng chung 10.000 neuron/ngày miễn phí với Whisper) BẬT sẵn từ 1/11; tắt khẩn cấp: VISION_OFF = "on".
 // Claude (/api/ai) chỉ chạy khi AI_OPEN = "on" (Cloudflare → Settings → Variables). Chưa có tài khoản/lượt dùng thì để tắt.
 // Chép lời (/api/transcribe, Whisper ~0,0005 USD/phút, 10.000 neuron/ngày miễn phí ≈ 214 phút) BẬT sẵn từ 1/11;
 // tắt khẩn cấp: đặt biến STT_OFF = "on" trong Cloudflare (wrangler.toml có keep_vars nên deploy không xoá).
@@ -14,8 +16,17 @@ export default {
     const url = new URL(req.url);
     const open = env.AI_OPEN === 'on';
     const stt = env.STT_OFF !== 'on' && !!env.AI;
+    const vision = env.VISION_OFF !== 'on' && !!env.AI;
     try {
-      if (url.pathname === '/api/health') return json({ai: open && !!(env.ANTHROPIC_API_KEY || env.GEMINI_API_KEY), stt});
+      if (url.pathname === '/api/health') return json({ai: open && !!(env.ANTHROPIC_API_KEY || env.GEMINI_API_KEY), stt, vision});
+      if (url.pathname === '/api/vision' && req.method === 'POST') {
+        if (!vision) return json({error: 'AI nhìn cảnh đang tắt'}, 503);
+        if (env.STT_LIMIT) {
+          const {success} = await env.STT_LIMIT.limit({key: 'v:' + (req.headers.get('cf-connecting-ip') || 'x')});
+          if (!success) return json({error: 'Gửi quá nhanh — thử lại sau 1 phút'}, 429);
+        }
+        return json(await see(await req.json(), env));
+      }
       if (url.pathname === '/api/transcribe' && req.method === 'POST') {
         if (!stt) return json({error: 'Chép lời đang tắt'}, 503);
         if (env.STT_LIMIT) {
@@ -75,6 +86,49 @@ async function transcribe(req, env, url) {
   return {words: words.filter((w) => w.w && isFinite(w.s) && isFinite(w.e)), text: r.text || '', dropped, info: r.transcription_info || null};
 }
 
+// ---------- AI nhìn cảnh phụ ----------
+// Mỗi cảnh: 1 ảnh ghép 3 khung (đầu · giữa · cuối) ≤ ~150 KB. Trả nhãn tiếng Việt + từ khoá người nói hay dùng khi nhắc tới cảnh đó.
+const VISION_MODEL = '@cf/meta/llama-4-scout-17b-16e-instruct';
+const VISION_SCHEMA = {
+  type: 'object',
+  properties: {nhan: {type: 'string'}, tu_khoa: {type: 'array', items: {type: 'string'}}},
+  required: ['nhan', 'tu_khoa'],
+};
+async function see(body, env) {
+  const items = (Array.isArray(body.items) ? body.items : []).slice(0, 8);
+  const genre = String(body.genre || '').slice(0, 160);
+  const tags = {};
+  await Promise.all(
+    items.map(async (it) => {
+      const img = String(it.img || '');
+      if (!/^data:image\/(jpeg|png|webp);base64,/.test(img) || img.length > 220000) return;
+      const prompt = `Ảnh này ghép 3 khung hình (đầu, giữa, cuối) của MỘT cảnh quay phụ (B-roll) trong ${genre || 'video ngắn mạng xã hội Việt Nam'}.
+Trả JSON: {"nhan": "tên cảnh 1–4 chữ tiếng Việt có dấu, cụ thể (vd: phòng khách, bếp, mặt tiền nhà, phòng ngủ, nhà vệ sinh, sân thượng, hẻm trước nhà, bát phở cận cảnh, đóng gói sản phẩm, màn hình điện thoại)", "tu_khoa": ["5–8 từ/cụm từ tiếng Việt có dấu mà người nói hay dùng khi nhắc tới thứ trong cảnh này, ưu tiên cụm 2 chữ cụ thể (vd: phòng khách, sofa, bếp, tủ lạnh, bồn rửa), KHÔNG dùng từ chung chung như nhà, đẹp, rộng, cái này"]}`;
+      try {
+        const r = await env.AI.run(VISION_MODEL, {
+          messages: [{role: 'user', content: [{type: 'text', text: prompt}, {type: 'image_url', image_url: {url: img}}]}],
+          response_format: {type: 'json_schema', json_schema: VISION_SCHEMA},
+          max_tokens: 160,
+          temperature: 0.2,
+        });
+        let o = r.response;
+        if (typeof o === 'string') {
+          const m = o.match(/\{[\s\S]*\}/);
+          o = m ? JSON.parse(m[0]) : null;
+        }
+        if (!o || typeof o !== 'object') return;
+        const clean = (x) => String(x || '').toLowerCase().replace(/[^\p{L}\p{N} ]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 30);
+        const nhan = clean(o.nhan);
+        const tu = [...new Set((Array.isArray(o.tu_khoa) ? o.tu_khoa : []).map(clean).filter((x) => x.length > 1))].slice(0, 10);
+        if (nhan) tags[String(it.id).slice(0, 40)] = {nhan, tu_khoa: tu};
+      } catch (e) {
+        tags[String(it.id).slice(0, 40)] = {error: String(e.message || e).slice(0, 120)};
+      }
+    }),
+  );
+  return {tags};
+}
+
 // ---------- Claude dựng / sửa ----------
 const ICON_LIST = 'house|pin|ruler|tag|doc|school|sofa|car|tree|star|bed|key|heart|fire|check|bulb|chat|thumb|clock|cart|gift|truck|food|coffee|book|chart|camera|plane';
 const GENRE_RULES = {
@@ -107,7 +161,7 @@ Các op được phép:
 LUẬT BẮT BUỘC:
 1. KHÔNG bịa số liệu. Số/giá trên hình phải đúng lời người nói trong words. Không viết "rẻ nhất", "tốt nhất" nếu người nói không nói. Không đưa số điện thoại lên hình.
 2. Cụm chữ xuất hiện đúng lúc người nói nói từ khoá đó (start ≈ thời điểm từ), giữ tới ~1 s sau lời, tối thiểu 3 s, không chồng nhau.
-3. Video 60 s: 6–8 cụm chữ, 6–8 zoom. B-roll phủ đúng câu có liên quan (đối chiếu tên nguồn với lời nói), tổng ~1/3 thân video, không phủ 3 s đầu và 4 s cuối, không đè lúc đang có cụm chữ.
+3. Video 60 s: 6–8 cụm chữ, 6–8 zoom. B-roll phủ đúng câu có liên quan (đối chiếu tag/keywords/tên nguồn với lời nói), tổng ~1/3 thân video, không phủ 3 s đầu và 4 s cuối, không đè lúc đang có cụm chữ.
 4. Mục có "locked": true là khách đã sửa tay — KHÔNG update/remove trừ khi khách nhờ sửa đúng mục đó (target).
 5. Chế độ "edit": chỉ làm đúng điều khách yêu cầu, ít op nhất; "reply" nói rõ đã sửa gì. Không hiểu thì ops rỗng và hỏi lại trong reply.
 Chỉ trả JSON, không giải thích thêm.`;

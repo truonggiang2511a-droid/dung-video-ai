@@ -453,6 +453,7 @@ function renderInspector() {
     const src = p.sources[it.src];
     const others = Object.values(p.sources).filter((x) => x.kind === 'broll');
     h = `<h4>Cảnh phụ · ${esc(src?.name)}</h4>
+      <div class="fl"><span>Cảnh này là</span><button class="mtag${src?.tag ? '' : ' none'}" data-tagsrc="${src?.id}">${src?.tag ? `${esc(src.tag)}${src.tagBy === 'ai' ? ' · AI đoán' : ''}` : 'Đặt nhãn cảnh'}</button></div>
       ${it.locked ? `<p class="lockn">${icon(I.lock, 15)} Bạn đã sửa tay — AI sẽ không ghi đè chỗ này.</p>` : ''}
       <div class="fl"><span>Chuyển cảnh</span><div class="seg">${TRANS.map(([k, l]) => `<button class="${(it.trans || 'fade') === k ? 'on' : ''}" data-set="trans" data-v="${k}">${l}</button>`).join('')}</div></div>
       <label class="fl">Lấy đoạn nào của cảnh <output>${it.in.toFixed(1).replace('.', ',')} s</output><input type="range" min="0" max="${Math.max(0, (src?.duration || 0) - it.dur).toFixed(2)}" step="0.1" value="${it.in}" data-num="in"></label>
@@ -947,13 +948,42 @@ function renderMedia() {
     const th = s.thumbs?.[0] ? `style="background-image:url(${s.thumbs[0]})"` : '';
     const isMain = p.main?.src === s.id;
     const tag = s.kind === 'broll' ? (used.has(s.id) ? '<span class="tag dim">Đã dùng</span>' : `<button class="tag" data-insert="${s.id}" title="Chèn tại đầu phát">+ Chèn</button>`) : isMain ? '<span class="tag">Đang dùng</span>' : s.kind === 'music' && p.music?.src === s.id ? '<span class="tag">Đang dùng</span>' : '';
-    return `<div class="mi"><i ${th}>${s.kind === 'music' ? icon(I.music, 20) : ''}</i><div><b>${esc(s.name)}</b><small>${fmt(s.duration)}${s.w ? ` · ${s.w}×${s.h}` : ''}</small></div>${tag}</div>`;
+    const lab = s.kind === 'broll' ? `<button class="mtag${s.tag ? '' : ' none'}" data-tagsrc="${s.id}" title="Cho AI biết cảnh này là gì để đặt đúng lúc nói">${s.tag ? `${esc(s.tag)}${s.tagBy === 'ai' ? ' · AI đoán' : ''}` : 'Đặt nhãn cảnh'}</button>` : '';
+    return `<div class="mi"><i ${th}>${s.kind === 'music' ? icon(I.music, 20) : ''}</i><div><b>${esc(s.name)}</b><small>${fmt(s.duration)}${s.w ? ` · ${s.w}×${s.h}` : ''}</small>${lab}</div>${tag}</div>`;
   };
   const group = (title, list, act, label) => `<h5>${title}</h5><div class="mlist">${list.map(item).join('') || '<p class="hint">Chưa có.</p>'}</div>${act ? `<button class="btn ghost wide" data-act="${act}" style="margin:-8px 0 16px">${icon(I.plus, 16)} ${label}</button>` : ''}`;
   box.innerHTML =
     group('Video chính', all.filter((s) => s.kind === 'main' && p.main?.src === s.id), p.main ? 'replaceMain' : 'addMain', p.main ? 'Thay video chính' : 'Thêm video chính') +
     group('Cảnh phụ', all.filter((s) => s.kind === 'broll'), 'addBroll', 'Thêm cảnh phụ') +
     group('Nhạc nền', all.filter((s) => s.kind === 'music'), 'addMusic', p.music ? 'Đổi bài nhạc' : 'Thêm nhạc nền');
+}
+// Nhãn cảnh phụ: khách gắn tay (ưu tiên hơn AI đoán, AI không ghi đè)
+async function tagSource(srcId) {
+  const p = ed.p;
+  const s = p.sources[srcId];
+  if (!s) return;
+  const sug = genreOf(p).tags || [];
+  const ok = await dialog({
+    title: 'Cảnh này là gì?',
+    body: `<p class="hint" style="margin:0 0 10px">AI dựa vào nhãn để đặt cảnh “${esc(s.name)}” đúng lúc bạn nói tới.${s.tagBy === 'ai' ? ` AI đang đoán: <b>${esc(s.tag)}</b>.` : ''}</p>
+      <input id="tagIn" class="inp" maxlength="30" value="${esc(s.tag || '')}" placeholder="Ví dụ: phòng khách, món phở, đóng gói…">
+      <div class="chips" style="margin-top:10px">${sug.map((t) => `<button type="button" class="chip-b" data-tagchip="${esc(t)}">${esc(t)}</button>`).join('')}</div>`,
+    ok: 'Lưu nhãn',
+  });
+  if (!ok) return;
+  const v = ($('#tagIn')?.value || '').trim().slice(0, 30);
+  if (!v) {
+    delete s.tag;
+    delete s.keywords;
+    delete s.tagBy;
+  } else {
+    if (s.tagBy === 'ai' && v.toLowerCase() !== String(s.tag || '').toLowerCase()) s.keywords = [];
+    s.tag = v.toLowerCase();
+    s.tagBy = 'user';
+  }
+  ed.changed(true);
+  renderMedia();
+  toast(v ? `Đã đặt nhãn “${esc(v)}” — bấm Dựng lại để AI xếp lại cảnh.` : 'Đã bỏ nhãn.');
 }
 function insertBroll(srcId) {
   const p = ed.p;
@@ -1377,6 +1407,10 @@ async function boot() {
     }
     const ins = e.target.closest('[data-insert]');
     if (ins) insertBroll(ins.dataset.insert);
+    const tg = e.target.closest('[data-tagsrc]');
+    if (tg) tagSource(tg.dataset.tagsrc);
+    const chip = e.target.closest('[data-tagchip]');
+    if (chip && $('#tagIn')) $('#tagIn').value = chip.dataset.tagchip;
     const tool = e.target.closest('[data-tool]');
     if (tool) setTool(tool.dataset.tool);
   });

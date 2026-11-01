@@ -1,5 +1,5 @@
 // AI dựng từ A–Z + sửa theo lời nói. Mọi thay đổi là "op" → con trỏ diễn lại trên timeline rồi mới áp vào dự án.
-import {analyzeAudio, findSilences, levels, wav16} from './media.js';
+import {analyzeAudio, findSilences, levels, wav16, thumbs} from './media.js';
 import {duration, tlOfSrc, timelineWords, segStarts, clamp, ICONS} from './render.js';
 import {applyOp, describeOp, find, newText, uid} from './model.js';
 import {genreOf, formatOf} from './templates.js';
@@ -10,9 +10,9 @@ export async function aiHealth() {
   if (health) return health;
   try {
     const r = await fetch('api/health', {cache: 'no-store'});
-    health = r.ok ? await r.json() : {ai: false, stt: false};
+    health = r.ok ? await r.json() : {ai: false, stt: false, vision: false};
   } catch (e) {
-    health = {ai: false, stt: false};
+    health = {ai: false, stt: false, vision: false};
   }
   return health;
 }
@@ -169,11 +169,25 @@ export function numberLockups(p) {
 //  • chuyển cảnh: đầu câu dùng kiểu nhấn của thể loại, giữa câu cắt thẳng / mờ nhẹ
 //  • chỗ cắt lộ trên mặt người nói → zoom giật xen kẽ chặt/rộng; đoạn nói dài không cắt → đẩy máy chậm
 const NAME_JUNK = new Set(['img', 'mov', 'mp4', 'vid', 'video', 'clip', 'canh', 'broll', 'pxl', 'dsc', 'copy', 'final', 'edit']);
-export function brollTokens(src) {
-  return plain(`${src.name || ''} ${src.tag || ''}`)
-    .split(/[^a-z0-9]+/)
-    .filter((t) => t.length > 1 && !NAME_JUNK.has(t) && !/^\d+$/.test(t));
+// từ quá chung — nói gì cũng có, không dùng để khớp cảnh
+const GENERIC = new Set(['nha', 'can', 'cai', 'day', 'nay', 'dep', 'rong', 'lon', 'nho', 'moi', 'tot', 'rat', 'qua', 'lam', 'con', 'mot', 'hai', 'cua', 'cho', 'nguoi', 'minh', 'ban']);
+// Từ khoá của 1 cảnh phụ: nhãn (khách gắn hoặc AI nhìn), từ khoá AI, tên file (cả cụm + cụm 2 chữ liền)
+export function brollKeys(src) {
+  const ks = [];
+  const add = (x, w) => {
+    const k = plain(x).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (k.length < 2 || NAME_JUNK.has(k) || /^\d+$/.test(k) || ks.some((o) => o.k === k)) return;
+    if (!k.includes(' ') && (k.length < 3 || GENERIC.has(k))) return;
+    ks.push({k, w});
+  };
+  if (src.tag) add(src.tag, src.tagBy === 'user' ? 3 : 2);
+  (src.keywords || []).forEach((x) => add(x, 1));
+  const nm = plain(src.name || '').replace(/\.[a-z0-9]{2,4}$/, '').split(/[^a-z0-9]+/).filter((t) => t && !NAME_JUNK.has(t) && !/^\d+$/.test(t));
+  if (nm.length) add(nm.join(' '), 2);
+  for (let i = 0; i < nm.length - 1; i++) add(nm[i] + ' ' + nm[i + 1], 1);
+  return ks;
 }
+export const brollTokens = (src) => brollKeys(src).map((x) => x.k);
 
 export function localPlan(p) {
   const D = duration(p);
@@ -219,13 +233,9 @@ export function localPlan(p) {
     .filter((x) => x.kind === 'broll' && x.duration > 0.8)
     .map((x) => {
       const usable = Math.max(0.5, x.duration - 0.6);
-      return {x, toks: brollTokens(x), used: 0, nWin: Math.max(1, Math.floor((usable + 0.2) / (Ls + 0.2)))};
+      return {x, keys: brollKeys(x), used: 0, nWin: Math.max(1, Math.floor((usable + 0.2) / (Ls + 0.2)))};
     });
-  const matches = (c, ph) => {
-    if (!c.toks.length) return false;
-    const hit = c.toks.filter((t) => ph.text.includes(' ' + t + ' ')).length;
-    return hit >= Math.min(2, c.toks.length);
-  };
+  const score = (c, ph) => c.keys.reduce((a, {k, w}) => a + (ph.text.includes(' ' + k + ' ') ? w : 0), 0);
   const slots = [];
   // cú cảnh phụ nối liền nhau được (chuỗi cảnh) nhưng tối đa 2 cú / 6,5 s rồi phải về người nói
   const fits = (s, e, touch = false) => {
@@ -254,7 +264,16 @@ export function localPlan(p) {
   if (b1 - b0 >= 2.5 && clips.length) {
     // A. cảnh khớp lời nói: vào đúng đầu cụm có nhắc tới; 2 cảnh được nhắc liền nhau → nối thành chuỗi
     const ment = clips
-      .map((c) => ({c, ph: phrases.find((x) => x.s >= b0 - 0.3 && x.s < b1 - 1.2 && matches(c, x))}))
+      .map((c) => {
+        let ph = null;
+        let best = 0;
+        for (const x of phrases) {
+          if (x.s < b0 - 0.3 || x.s >= b1 - 1.2) continue;
+          const sc = score(c, x);
+          if (sc > best) (best = sc), (ph = x);
+        }
+        return {c, ph};
+      })
       .filter((m) => m.ph)
       .sort((u, v) => u.ph.s - v.ph.s);
     for (const {c, ph} of ment) {
@@ -428,10 +447,10 @@ function compact(p) {
     format: p.format || '9:16',
     duration: r2(duration(p)),
     words: timelineWords(p).map((w) => [w.w, r2(w.s), r2(w.e)]),
-    sources: Object.values(p.sources).map((s) => ({id: s.id, kind: s.kind, name: s.name, duration: r2(s.duration)})),
+    sources: Object.values(p.sources).map((s) => ({id: s.id, kind: s.kind, name: s.name, duration: r2(s.duration), ...(s.tag ? {tag: s.tag, keywords: s.keywords || []} : {})})),
     texts: p.texts.map((t) => ({id: t.id, start: r2(t.start), dur: r2(t.dur), lead: t.lead, main: t.main, sign: t.sign, color: t.color, font: t.font, style: t.style, size: t.size, y: r2(t.y), icon: t.icon, kind: t.kind, locked: !!t.locked})),
     broll: p.broll.map((b) => ({id: b.id, src: b.src, start: r2(b.start), dur: r2(b.dur), trans: b.trans, locked: !!b.locked})),
-    zooms: p.zooms.map((z) => ({id: z.id, start: r2(z.start), dur: r2(z.dur), scale: z.scale})),
+    zooms: p.zooms.map((z) => ({id: z.id, start: r2(z.start), dur: r2(z.dur), scale: z.scale, kind: z.kind})),
     subs: p.subs,
     cta: p.cta,
     music: p.music ? {vol: p.music.vol} : null,
@@ -645,6 +664,63 @@ export function wordGapCuts(an, words, have) {
   return out;
 }
 
+// ---------- AI nhìn cảnh phụ: 1 ảnh ghép 3 khung / cảnh → nhãn tiếng Việt + từ khoá ----------
+async function contactSheet(blob) {
+  const fr = await thumbs(blob, 3, 300);
+  const imgs = await Promise.all(fr.map((u) => new Promise((r) => {
+    const im = new Image();
+    im.onload = () => r(im);
+    im.onerror = () => r(null);
+    im.src = u;
+  })));
+  const ok = imgs.filter(Boolean);
+  if (!ok.length) return null;
+  const c = document.createElement('canvas');
+  c.height = 300;
+  c.width = ok.reduce((a, im) => a + im.width + 6, -6);
+  const g = c.getContext('2d');
+  g.fillStyle = '#000';
+  g.fillRect(0, 0, c.width, c.height);
+  let x = 0;
+  for (const im of ok) g.drawImage(im, x, 0), (x += im.width + 6);
+  return c.toDataURL('image/jpeg', 0.72);
+}
+export async function tagBrolls(ed, onEach) {
+  const {p} = ed;
+  const h = await aiHealth();
+  const todo = Object.values(p.sources).filter((s) => s.kind === 'broll' && !s.tagBy);
+  if (!h.vision || !todo.length) return 0;
+  let n = 0;
+  for (let i = 0; i < todo.length; i += 4) {
+    const batch = todo.slice(i, i + 4);
+    const items = [];
+    for (const s of batch) {
+      onEach?.(s, null);
+      try {
+        const img = await contactSheet(await ed.getBlob(s.fileKey));
+        if (img) items.push({id: s.id, img});
+      } catch (e) {}
+    }
+    if (!items.length) continue;
+    let r = null;
+    try {
+      r = await api('vision', {genre: genreOf(p).ai, items});
+    } catch (e) {
+      break;
+    }
+    for (const s of batch) {
+      const t = r?.tags?.[s.id];
+      if (!t?.nhan) continue;
+      s.tag = t.nhan;
+      s.keywords = t.tu_khoa || [];
+      s.tagBy = 'ai';
+      n++;
+      onEach?.(s, t.nhan);
+    }
+  }
+  return n;
+}
+
 // Con trỏ chạy dọc làn Video theo tiến độ nghe / chép lời (k: 0→1). scan(null) để tắt.
 async function startScan(ed) {
   const {tl, cur} = ed;
@@ -733,7 +809,21 @@ export async function autoEdit(ed, log) {
     ed.changed(false);
   }
 
-  // 4. lên kế hoạch dựng
+  // 4. AI nhìn cảnh phụ (chỉ cảnh chưa có nhãn; khách gắn tay thì giữ nguyên) rồi lên kế hoạch dựng
+  if (Object.values(p.sources).some((s) => s.kind === 'broll' && !s.tagBy) && (await aiHealth()).vision) {
+    log('ke', 'run', 'AI xem cảnh phụ để đặt đúng chỗ');
+    const {tl, cur} = ed;
+    cur.show();
+    cur.step = 'Bước 4/5';
+    const got = await tagBrolls(ed, async (s, nhan) => {
+      const el = document.querySelector(`.bin-item[data-src="${s.id}"]`);
+      const r = (el && el.offsetParent ? el : tl.rowRect('broll') && document.querySelector('.tl-label[data-row="broll"]'))?.getBoundingClientRect();
+      if (r) cur.jump(r.left + r.width / 2, r.top + r.height / 2);
+      cur.say(nhan ? `Cảnh “${s.name}” là: ${nhan}` : `Đang xem cảnh “${s.name}”…`);
+    });
+    if (got) log('ke', 'ok', `AI đã nhận ra ${got} cảnh phụ`);
+    cur.say('');
+  }
   log('ke', 'run', 'Lên kịch bản dựng: cảnh phụ, chữ, hiệu ứng');
   let ops = null;
   if (h.ai) {
