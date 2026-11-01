@@ -1,12 +1,17 @@
 // Mô hình dự án + các "thao tác" (op). Cả AI lẫn khách sửa tay đều đi qua applyOp,
 // nhờ vậy con trỏ diễn lại được, hoàn tác được, và AI không ghi đè chỗ khách đã khoá.
 import {duration, srcAt} from './render.js';
+import {GENRES, lastChoice} from './templates.js';
 
 export const uid = (p = 'i') => p + Math.random().toString(36).slice(2, 9);
 export const LISTS = ['broll', 'texts', 'zooms'];
 
-export function newProject(name) {
+export function newProject(name, opt = {}) {
+  const pick = {...lastChoice(), ...opt};
+  const genre = GENRES[pick.genre] ? pick.genre : 'chung';
   return {
+    genre,
+    format: pick.format || '9:16',
     id: uid('p'),
     name: name || 'Dự án ' + new Date().toLocaleDateString('vi-VN'),
     created: Date.now(),
@@ -18,7 +23,7 @@ export function newProject(name) {
     texts: [],
     zooms: [],
     subs: {on: true, y: 0.7, size: 1, color: '#ffffff'},
-    cta: {on: true, text: 'NHẮN TIN XEM NHÀ NGAY', len: 4},
+    cta: {on: true, text: GENRES[genre].cta, len: 4},
     music: null, // {src, vol}
     transcript: null, // {words:[{w,s,e}]} theo giây nguồn
     aiDone: false,

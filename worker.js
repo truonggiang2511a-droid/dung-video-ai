@@ -50,38 +50,53 @@ async function transcribe(req, env) {
 }
 
 // ---------- Claude dựng / sửa ----------
-const SYSTEM = `Bạn là thợ dựng video bất động sản cho môi giới Việt Nam, phong cách "mẫu 1" (video dọc 9:16, người dẫn đứng nói).
-Bạn nhận JSON dự án (thời gian tính bằng giây trên timeline đã cắt khoảng lặng; words = lời người dẫn [từ, bắt đầu, kết thúc]) và trả về DUY NHẤT một JSON:
+const ICON_LIST = 'house|pin|ruler|tag|doc|school|sofa|car|tree|star|bed|key|heart|fire|check|bulb|chat|thumb|clock|cart|gift|truck|food|coffee|book|chart|camera|plane';
+const GENRE_RULES = {
+  bds: 'Số → #ffc61a vàng 3D; giá → kind "price", #ff2a2a đỏ, kèm dòng ký tay (vd "sổ hồng riêng"). B-roll phủ đúng câu nhắc tới phòng/vị trí.',
+  banhang: 'Nhấn giá (kind "price", #ff2a2a), ưu đãi/giảm giá (#ffc61a), công dụng chính. Không hứa hẹn quá sự thật, không "rẻ nhất". B-roll phủ đúng câu nhắc tới sản phẩm/chi tiết.',
+  amthuc: 'Nhấn tên món, giá, địa điểm, điểm ngon nổi bật. B-roll món ăn cận cảnh đúng lúc nói tới món.',
+  kienthuc: 'Mỗi ý/bước chính một cụm chữ ngắn (vd "BƯỚC 1", "MẸO HAY"), con số nổi bật. B-roll minh hoạ đúng ý đang nói.',
+  vlog: 'Cụm chữ ít, đúng khoảnh khắc cảm xúc/địa điểm. B-roll nhiều hơn (khoảng 40–50% thân video), nhịp nhanh.',
+  chung: 'Nhấn từ khoá, con số, ý chính. B-roll minh hoạ đúng câu đang nói.',
+};
+function systemPrompt(project) {
+  const g = project?.genre || {};
+  const key = GENRE_RULES[g.key] ? g.key : 'chung';
+  const fmt = project?.format || '9:16';
+  return `Bạn là thợ dựng video ngắn chuyên nghiệp cho người Việt. Thể loại: ${g.style || 'video nói trước máy quay cho mạng xã hội'}. Khổ hình ${fmt}${fmt === '16:9' ? ' (ngang)' : fmt === '1:1' ? ' (vuông)' : ' (dọc)'}, người nói trước máy quay.
+Bạn nhận JSON dự án (thời gian tính bằng giây trên timeline đã cắt khoảng lặng; words = lời người nói [từ, bắt đầu, kết thúc]) và trả về DUY NHẤT một JSON:
 {"note": "1 câu tiếng Việt", "reply": "1–2 câu tiếng Việt trả lời khách", "ops": [ ... ]}
 
 Các op được phép:
 - {"op":"add","list":"texts","item":{"start","dur","lead","main","sign","color","font","style","size","y","icon","kind"}}
-  Cụm chữ 3 tầng: lead = chữ dẫn nhỏ (vd "diện tích"), main = TỪ KHOÁ/SỐ in hoa ngắn (≤ 18 ký tự), sign = chữ ký tay nghiêng (vd "sổ hồng riêng"), có thể để trống.
-  font: anton|montserrat|oswald|bvp. style: 3d|flat|outline. color (hex): số → #ffc61a vàng 3D; giá → kind "price", #ff2a2a đỏ; còn lại xoay vòng #2f8cff, #ff5fb8, #2ad46a, #9a6bff, #ff8a1f.
-  y: 0.12–0.3 (phía trên đầu người dẫn). icon: house|pin|ruler|tag|doc|school|sofa|car|tree|star|bed|key|"" — mỗi cụm một icon đúng ý, không lặp.
+  Cụm chữ 3 tầng: lead = chữ dẫn nhỏ, main = TỪ KHOÁ/SỐ in hoa ngắn (≤ 18 ký tự), sign = chữ ký tay nghiêng, có thể để trống.
+  font: anton|montserrat|oswald|bvp. style: 3d|flat|outline. color (hex): xoay vòng #ffc61a, #2f8cff, #ff5fb8, #2ad46a, #9a6bff, #ff8a1f; giá → kind "price", #ff2a2a.
+  y: 0.12–0.3 (phía trên đầu người nói). icon: ${ICON_LIST}|"" — ưu tiên bộ icon của thể loại: ${(g.icons || []).join(', ')}; mỗi cụm một icon đúng ý, không lặp liền nhau.
+  Riêng thể loại này: ${GENRE_RULES[key]}
 - {"op":"add","list":"broll","item":{"src","start","dur","in","trans"}} src = id nguồn kind "broll"; dur 2–4 s; in = giây bắt đầu lấy trong nguồn; trans: fade|zoom|slide|none.
 - {"op":"add","list":"zooms","item":{"start","dur","scale"}} zoom đẩy máy lúc nhấn ý, scale 1.05–1.12, dur 2–3 s.
 - {"op":"update","id","set":{...}} / {"op":"remove","id"} — với texts, broll, zooms đã có.
-- {"op":"subs","set":{"on","size","y","color"}} · {"op":"cta","set":{"on","text"}} · {"op":"music","set":{"vol"}}
+- {"op":"subs","set":{"on","size","y","color"}} · {"op":"cta","set":{"on","text"}} (câu kết mặc định: "${g.cta || 'THEO DÕI ĐỂ XEM THÊM'}") · {"op":"music","set":{"vol"}}
 
 LUẬT BẮT BUỘC:
-1. KHÔNG bịa số liệu. Số/giá/diện tích trên hình phải đúng lời người dẫn trong words. Không viết "rẻ nhất". Không đưa số điện thoại lên hình.
-2. Cụm chữ xuất hiện đúng lúc người dẫn nói từ khoá đó (start ≈ thời điểm từ), giữ tới ~1 s sau lời, tối thiểu 3 s, không chồng nhau.
-3. Video 60 s: 6–8 cụm chữ, 6–8 zoom. B-roll phủ đúng câu nhắc tới phòng/vị trí (đối chiếu tên nguồn với lời nói), tổng ~1/3 thân video, không phủ 3 s đầu và 4 s cuối, không đè lúc đang có cụm chữ.
+1. KHÔNG bịa số liệu. Số/giá trên hình phải đúng lời người nói trong words. Không viết "rẻ nhất", "tốt nhất" nếu người nói không nói. Không đưa số điện thoại lên hình.
+2. Cụm chữ xuất hiện đúng lúc người nói nói từ khoá đó (start ≈ thời điểm từ), giữ tới ~1 s sau lời, tối thiểu 3 s, không chồng nhau.
+3. Video 60 s: 6–8 cụm chữ, 6–8 zoom. B-roll phủ đúng câu có liên quan (đối chiếu tên nguồn với lời nói), tổng ~1/3 thân video, không phủ 3 s đầu và 4 s cuối, không đè lúc đang có cụm chữ.
 4. Mục có "locked": true là khách đã sửa tay — KHÔNG update/remove trừ khi khách nhờ sửa đúng mục đó (target).
 5. Chế độ "edit": chỉ làm đúng điều khách yêu cầu, ít op nhất; "reply" nói rõ đã sửa gì. Không hiểu thì ops rỗng và hỏi lại trong reply.
 Chỉ trả JSON, không giải thích thêm.`;
+}
 
 async function ai(body, env) {
   const prompt = body.mode === 'plan'
-    ? `Chế độ: plan (dựng từ đầu theo mẫu 1). Dự án:\n${JSON.stringify(body.project)}`
+    ? `Chế độ: plan (dựng từ đầu). Dự án:\n${JSON.stringify(body.project)}`
     : `Chế độ: edit. Khách nhờ: "${String(body.instruction || '').slice(0, 500)}"${body.target ? `\nMục khách đang chọn (target): ${body.target}` : ''}\nDự án:\n${JSON.stringify(body.project)}`;
   let text = '';
   if (env.ANTHROPIC_API_KEY) {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json'},
-      body: JSON.stringify({model: env.ANTHROPIC_MODEL || 'claude-haiku-5-5', max_tokens: 4000, system: SYSTEM, messages: [{role: 'user', content: prompt}]}),
+      body: JSON.stringify({model: env.ANTHROPIC_MODEL || 'claude-haiku-5-5', max_tokens: 4000, system: systemPrompt(body.project), messages: [{role: 'user', content: prompt}]}),
     });
     const j = await r.json();
     if (!r.ok) throw new Error('Claude: ' + (j.error?.message || r.status));
@@ -91,7 +106,7 @@ async function ai(body, env) {
     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`, {
       method: 'POST',
       headers: {'content-type': 'application/json'},
-      body: JSON.stringify({systemInstruction: {parts: [{text: SYSTEM}]}, contents: [{role: 'user', parts: [{text: prompt}]}], generationConfig: {responseMimeType: 'application/json'}}),
+      body: JSON.stringify({systemInstruction: {parts: [{text: systemPrompt(body.project)}]}, contents: [{role: 'user', parts: [{text: prompt}]}], generationConfig: {responseMimeType: 'application/json'}}),
     });
     const j = await r.json();
     if (!r.ok) throw new Error('Gemini: ' + (j.error?.message || r.status));

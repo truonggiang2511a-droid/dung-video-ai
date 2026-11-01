@@ -8,6 +8,7 @@ import {Timeline} from './timeline.js';
 import {Cursor} from './cursor.js';
 import {autoEdit, askAi, aiHealth} from './ai.js';
 import {installCard, canExport} from './install.js';
+import {GENRES, FORMATS, genreOf, migrate, rememberChoice} from './templates.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -122,7 +123,7 @@ async function renderHome() {
     box.innerHTML = `<div class="empty-home">
       <div class="eh-art" aria-hidden="true"><i></i><i></i><i></i></div>
       <h3>Chưa có video nào</h3>
-      <p>Tải video bạn đứng nói và vài cảnh nhà lên timeline — AI cắt, ghép, thêm chữ từ A–Z. Bạn xem bản nháp, ưng rồi mới xuất.</p>
+      <p>Tải video bạn nói trước máy quay và vài cảnh phụ lên timeline — AI cắt, ghép, thêm chữ từ A–Z. Bạn xem bản nháp, ưng rồi mới xuất.</p>
     </div>`;
     return;
   }
@@ -151,6 +152,7 @@ async function newProj() {
 
 // ---------- MỞ EDITOR ----------
 async function openEditor(p) {
+  migrate(p);
   p._rev = 1;
   ed.p = p;
   ed.sel = null;
@@ -188,6 +190,7 @@ async function closeEditor() {
 let aiSteps = null;
 function updateStage() {
   const p = ed.p;
+  $('#fmtLabel').textContent = `${GENRES[p.genre]?.label || 'Chung'} · ${p.format || '9:16'}`;
   const D = p.main ? duration(p) : 0;
   $('#tDur').textContent = fmt(D);
   const ai = $('#btnAi');
@@ -433,7 +436,7 @@ function renderInspector() {
       ${it.locked ? `<p class="lockn">${icon(I.lock, 15)} Bạn đã sửa tay — AI sẽ không ghi đè chỗ này.</p>` : ''}
       <label class="fl">Dòng dẫn nhỏ<input data-k="lead" value="${esc(it.lead)}" maxlength="30" placeholder="vd: diện tích"></label>
       <label class="fl">Chữ chính<input data-k="main" value="${esc(it.main)}" maxlength="40"></label>
-      <label class="fl">Dòng ký tay<input data-k="sign" value="${esc(it.sign)}" maxlength="40" placeholder="vd: sổ hồng riêng"></label>
+      <label class="fl">Dòng ký tay<input data-k="sign" value="${esc(it.sign)}" maxlength="40" placeholder="vd: chỉ hôm nay"></label>
       <div class="fl"><span>Font</span><div class="chips">${Object.entries(FONTS).map(([k, f]) => `<button class="chip-b${it.font === k ? ' on' : ''}" data-set="font" data-v="${k}" style="font-family:${f.family};font-weight:${f.weight}">${f.label}</button>`).join('')}</div></div>
       <div class="fl"><span>Màu</span><div class="swatches">${COLORS.map((c) => `<button class="sw${it.color === c.hex ? ' on' : ''}" data-set="color" data-v="${c.hex}" style="background:${c.hex}" aria-label="Màu ${c.name}"></button>`).join('')}</div></div>
       <div class="fl"><span>Kiểu chữ</span><div class="seg">${[['flat', 'Phẳng'], ['3d', 'Nổi 3D'], ['outline', 'Có viền']].map(([k, l]) => `<button class="${it.style === k ? 'on' : ''}" data-set="style" data-v="${k}">${l}</button>`).join('')}</div></div>
@@ -469,9 +472,12 @@ function renderInspector() {
         <button class="qa" data-act="addMusic">${icon(I.music)}<span>${p.music ? 'Đổi nhạc' : 'Thêm nhạc'}</span></button>
         <button class="qa" data-act="subs">${icon(I.sub)}<span>Phụ đề</span></button>
       </div>
-      <label class="fl tog"><input type="checkbox" data-cta="on" ${p.cta?.on ? 'checked' : ''}> Đoạn kết “nhắn tin xem nhà”</label>
-      ${p.cta?.on ? `<label class="fl">Chữ đoạn kết<input data-cta="text" value="${esc(p.cta.text)}" maxlength="30"></label>` : ''}
-      <p class="hint">Chạm vào một clip trên timeline để sửa, hoặc nhắn AI ở ô bên dưới.</p>`;
+      <div class="fl"><span>Thể loại video <small class="muted">— AI dựng theo kiểu này</small></span><div class="chips">${Object.entries(GENRES).map(([k, g]) => `<button class="chip-b${p.genre === k ? ' on' : ''}" data-genre="${k}" title="${esc(g.desc)}">${g.label}</button>`).join('')}</div></div>
+      <div class="fl"><span>Khổ hình</span><div class="fmts">${Object.entries(FORMATS).map(([k, f]) => `<button class="fmt${p.format === k ? ' on' : ''}" data-format="${k}" title="${esc(f.note)}"><i style="aspect-ratio:${f.w}/${f.h}"></i><b>${k}</b><small>${esc(f.note.split(',')[0])}</small></button>`).join('')}</div></div>
+      <label class="fl tog"><input type="checkbox" data-cta="on" ${p.cta?.on ? 'checked' : ''}> Đoạn kết kêu gọi (4 giây cuối)</label>
+      ${p.cta?.on ? `<label class="fl">Chữ đoạn kết<input data-cta="text" value="${esc(p.cta.text)}" maxlength="30" placeholder="${esc(genreOf(p).cta)}"></label>` : ''}
+      <p class="hint">Chạm vào một clip trên timeline để sửa, hoặc nhắn AI ở ô bên dưới.</p>
+      <p class="hint kbd-hint">Phím tắt: <kbd>Space</kbd> phát/dừng · <kbd>←</kbd><kbd>→</kbd> từng khung (<kbd>Shift</kbd> 1 giây) · <kbd>S</kbd> tách · <kbd>Delete</kbd> xoá · <kbd>Ctrl</kbd>+<kbd>Z</kbd> hoàn tác · <kbd>+</kbd><kbd>−</kbd> phóng timeline</p>`;
   }
   box.innerHTML = h;
 }
@@ -528,6 +534,10 @@ function bindInspector() {
   });
   box.addEventListener('change', () => (pushed = false));
   box.addEventListener('click', (e) => {
+    const g = e.target.closest('[data-genre]');
+    if (g) return setGenre(g.dataset.genre);
+    const fm = e.target.closest('[data-format]');
+    if (fm) return setFormatOf(fm.dataset.format);
     const b = e.target.closest('[data-set],[data-subs-color]');
     if (!b) return;
     if (b.dataset.subsColor) {
@@ -546,6 +556,27 @@ function bindInspector() {
       } else it[k] = b.dataset.v;
     });
   });
+}
+
+// Đổi thể loại: câu kết mặc định đổi theo (nếu khách chưa tự sửa câu kết)
+function setGenre(k) {
+  const p = ed.p;
+  if (!GENRES[k] || p.genre === k) return;
+  const wasDefault = !p.cta?.text || Object.values(GENRES).some((g) => g.cta === p.cta.text);
+  manual(() => {
+    p.genre = k;
+    if (wasDefault) p.cta.text = GENRES[k].cta;
+  }, {lock: false});
+  rememberChoice(k, null);
+  toast(`Thể loại: ${GENRES[k].label}${p.aiDone ? ' — bấm Dựng lại để AI dựng theo kiểu mới' : ''}`);
+}
+// Đổi khổ hình: chữ/phụ đề giữ vị trí tương đối, video tự phủ kín khung
+function setFormatOf(k) {
+  const p = ed.p;
+  if (!FORMATS[k] || p.format === k) return;
+  manual(() => (p.format = k), {lock: false});
+  ed.player.setFormat(k);
+  rememberChoice(null, k);
 }
 
 // ---------- hành động ----------
@@ -569,6 +600,10 @@ async function act(a, el) {
     }
     case 'subs':
       select({type: 'subs', id: 'subs'});
+      openSheet(true);
+      return;
+    case 'project':
+      select(null);
       openSheet(true);
       return;
     case 'split':
@@ -1008,7 +1043,7 @@ async function boot() {
   store.persist();
   await loadFonts();
   ed.player = new Player($('#cv'), $('#vids'));
-  ed.player.setScale(matchMedia('(min-width: 900px)').matches ? 720 : 540);
+  ed.player.setScale(matchMedia('(min-width: 900px)').matches ? 1280 : 960);
   ed.player.onTime = (T) => {
     if (ed.player.playing || ed.tl.left) ed.tl.setTime(T);
     updateTime();
@@ -1080,14 +1115,40 @@ async function boot() {
     $('#chatIn').value = '';
     sendAi(q, ed.sel && ['text', 'broll', 'zoom'].includes(ed.sel.type) ? ed.sel.id : null);
   });
+  // Phím tắt máy tính (giống phần mềm dựng): Space phát/dừng · ←/→ 1 khung (Shift: 1 giây) · Home/End · S tách · Delete xoá
+  // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y hoàn tác/làm lại · + / − phóng timeline · Esc bỏ chọn · Ctrl+S lưu
   document.addEventListener('keydown', (e) => {
-    if (!ed.p || $('#editor').hidden || /INPUT|TEXTAREA/.test(document.activeElement?.tagName)) return;
+    if (!ed.p || $('#editor').hidden || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName) || !$('#dlg')?.hidden) return;
+    const mod = e.ctrlKey || e.metaKey;
+    const k = e.key;
     if (e.code === 'Space') {
       e.preventDefault();
       ed.player.toggle();
-    } else if ((e.key === 'Delete' || e.key === 'Backspace') && ed.sel) act('del');
-    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') undoRedo(e.shiftKey ? 1 : -1);
-    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') undoRedo(1);
+    } else if ((k === 'Delete' || k === 'Backspace') && ed.sel) {
+      e.preventDefault();
+      act('del');
+    } else if (mod && k.toLowerCase() === 'z') {
+      e.preventDefault();
+      undoRedo(e.shiftKey ? 1 : -1);
+    } else if (mod && k.toLowerCase() === 'y') {
+      e.preventDefault();
+      undoRedo(1);
+    } else if (mod && k.toLowerCase() === 's') {
+      e.preventDefault();
+      store.saveProject(ed.p).then(() => toast('Đã lưu dự án.'));
+    } else if (!mod && (k === 'ArrowLeft' || k === 'ArrowRight') && ed.p.main) {
+      e.preventDefault();
+      if (ed.player.playing) ed.player.pause();
+      ed.seek(ed.player.T + (k === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 1 : 1 / 30));
+    } else if (!mod && (k === 'Home' || k === 'End') && ed.p.main) {
+      e.preventDefault();
+      ed.seek(k === 'Home' ? 0 : ed.player.D);
+    } else if (!mod && (k === 's' || k === 'S') && ed.p.main && !ed.busy) {
+      e.preventDefault();
+      act('split');
+    } else if (!mod && (k === '+' || k === '=')) ed.tl.zoom(1.3);
+    else if (!mod && (k === '-' || k === '_')) ed.tl.zoom(1 / 1.3);
+    else if (k === 'Escape' && ed.sel) select(null);
   });
   document.addEventListener('can-install', showInstall);
   showInstall();

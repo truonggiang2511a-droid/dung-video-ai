@@ -8,8 +8,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Dựng Video AI">
-<meta name="description" content="Tải video lên timeline, AI dựng video bất động sản từ A–Z: cắt khoảng lặng, ghép cảnh, thêm chữ, phụ đề. Xem bản nháp, ưng rồi mới xuất.">
-<title>Dựng Video AI — dựng video bất động sản từ A–Z</title>
+<meta name="description" content="Tải video lên timeline, AI dựng từ A–Z: cắt khoảng lặng, ghép cảnh, thêm chữ, phụ đề, hiệu ứng. Video dọc, ngang, vuông cho TikTok, Reels, YouTube. Xem bản nháp trước, ưng rồi mới xuất.">
+<title>Dựng Video AI — AI dựng video ngắn từ A–Z</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
@@ -18,11 +18,11 @@
 <body>
 <main id="home" class="screen">
   <header class="h-top">
-    <div class="brand"><span class="logo" aria-hidden="true"></span><div><b>Dựng Video AI</b><small>cho môi giới bất động sản</small></div></div>
+    <div class="brand"><span class="logo" aria-hidden="true"></span><div><b>Dựng Video AI</b><small>dựng video ngắn cho mọi người</small></div></div>
   </header>
   <section class="h-hero">
     <h1>Tải video lên — AI dựng từ A đến Z</h1>
-    <p>Cắt khoảng lặng, ghép cảnh nhà, thêm chữ, phụ đề và hiệu ứng. Bạn xem bản nháp, ưng rồi mới xuất.</p>
+    <p>Cắt khoảng lặng, ghép cảnh, thêm chữ, phụ đề và hiệu ứng — bán hàng, ẩm thực, kiến thức, bất động sản, vlog. Bạn xem bản nháp, ưng rồi mới xuất.</p>
     <button id="btnNew" class="btn primary big"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg> Dự án mới</button>
   </section>
   <h2 class="h-sub">Dự án gần đây</h2>
@@ -49,6 +49,7 @@
         <button id="btnPlay" class="play" aria-label="Phát"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg></button>
         <span class="time"><b id="tNow">0:00</b> / <span id="tDur">0:00</span></span>
         <span class="sp"></span>
+        <button class="chip-set" data-act="project" aria-label="Cài đặt video: thể loại, khổ hình, đoạn kết"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span id="fmtLabel">9:16</span></button>
         <button class="icon-btn" data-act="tlOut" aria-label="Thu nhỏ timeline"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM21 21l-4.3-4.3M8 11h6"/></svg></button>
         <button class="icon-btn" data-act="tlIn" aria-label="Phóng to timeline"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM21 21l-4.3-4.3M11 8v6M8 11h6"/></svg></button>
       </div>

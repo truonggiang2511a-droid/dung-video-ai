@@ -1,7 +1,7 @@
 {
   "name": "Dựng Video AI",
   "short_name": "Dựng Video",
-  "description": "AI dựng video bất động sản từ A–Z ngay trên điện thoại",
+  "description": "AI dựng video ngắn từ A–Z ngay trên điện thoại: cắt, ghép cảnh, chữ, phụ đề",
   "lang": "vi",
   "start_url": "./",
   "scope": "./",

@@ -1,5 +1,6 @@
 // Timeline kiểu CapCut: đầu phát cố định ở giữa, kéo timeline để tua. Các làn: Chữ, Phụ đề, Hiệu ứng, Cảnh phụ, Video chính, Nhạc.
 import {duration, segStarts, subLines} from './render.js';
+import {genreOf} from './templates.js';
 
 const ROWS = [
   {key: 'texts', label: 'Chữ', icon: 'M4 7V4h16v3M9 20h6M12 4v16'},
@@ -191,8 +192,8 @@ export class Timeline {
     if (!p.main) {
       this.empty.hidden = false;
       this.empty.innerHTML = `
-        <button class="drop main" data-add="main">${svg('M12 5v14M5 12h14', 22)}<b>Thêm video chính</b><small>Video bạn đứng nói (A-roll)</small></button>
-        <button class="drop" data-add="broll">${svg('M12 5v14M5 12h14', 22)}<b>Thêm cảnh phụ</b><small>Phòng khách, bếp, mặt tiền… (B-roll)</small></button>`;
+        <button class="drop main" data-add="main">${svg('M12 5v14M5 12h14', 22)}<b>Thêm video chính</b><small>Video bạn nói trước máy quay (A-roll)</small></button>
+        <button class="drop" data-add="broll">${svg('M12 5v14M5 12h14', 22)}<b>Thêm cảnh phụ</b><small>${genreOf(p).broll} (B-roll)</small></button>`;
     } else this.empty.hidden = true;
   }
 

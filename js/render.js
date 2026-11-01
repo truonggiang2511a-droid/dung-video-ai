@@ -1,10 +1,19 @@
 // Bộ dựng khung hình: vẽ MỘT khung của video lên canvas 2D.
 // Dùng chung cho xem trước (player.js) và xuất MP4 (export.js) để hai bên giống hệt nhau.
-// Toạ độ luôn theo khung gốc 1080 x 1920 — nơi gọi tự scale ctx.
+// Toạ độ theo khung gốc của khổ hình đang dùng (9:16 = 1080 x 1920, 16:9 = 1920 x 1080…; cạnh ngắn luôn 1080
+// nên cỡ chữ/icon giữ nguyên) — nơi gọi tự scale ctx. Đổi khổ: setFormat(p.format) trước khi vẽ.
+import {FORMATS} from './templates.js';
 
-export const W = 1080;
-export const H = 1920;
+export let W = 1080;
+export let H = 1920;
 export const FPS = 30;
+export function setFormat(key) {
+  const f = FORMATS[key] || FORMATS['9:16'];
+  const changed = W !== f.w || H !== f.h;
+  W = f.w;
+  H = f.h;
+  return changed;
+}
 
 // ---------- Font ----------
 export const FONTS = {
@@ -63,6 +72,23 @@ export const ICONS = {
   star: {label: 'Nổi bật', d: 'M12 2l3 6.6 7.2.8-5.4 4.9 1.5 7.1L12 17.8 5.7 21.4l1.5-7.1L1.8 9.4 9 8.6z'},
   bed: {label: 'Phòng ngủ', d: 'M3 6h2v6h6V8h7a3 3 0 0 1 3 3v8h-2v-2H5v2H3zm5 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4z'},
   key: {label: 'Bàn giao', d: 'M14 2a6 6 0 0 0-5.7 7.9L2 16.2V22h5.8v-2.6h2.6v-2.6h2.6l.7-.7A6 6 0 1 0 14 2zm2.5 6a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z'},
+  // dùng chung mọi thể loại
+  heart: {label: 'Yêu thích', d: 'M12 21.3 10.6 20C5.4 15.4 2 12.3 2 8.5 2 5.4 4.4 3 7.5 3c1.7 0 3.4.8 4.5 2.1C13.1 3.8 14.8 3 16.5 3 19.6 3 22 5.4 22 8.5c0 3.8-3.4 6.9-8.6 11.5z'},
+  fire: {label: 'Hot', d: 'M13.5.7s.7 2.6.7 4.8c0 2.1-1.4 3.8-3.5 3.8S7.1 7.6 7.1 5.5l.03-.36C5.1 7.6 4 10.7 4 14a8 8 0 0 0 16 0C20 8.6 17.4 3.8 13.5.7zM11.7 19c-1.8 0-3.2-1.4-3.2-3.1 0-1.6 1-2.8 2.8-3.1 1.8-.4 3.6-1.2 4.6-2.6.4 1.3.6 2.6.6 4 0 2.6-2.1 4.8-4.8 4.8z'},
+  check: {label: 'Đúng', d: 'M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm-2 15-5-5 1.4-1.4 3.6 3.6 7.6-7.6L19 8l-9 9z'},
+  bulb: {label: 'Ý tưởng', d: 'M9 21c0 .5.4 1 1 1h4c.6 0 1-.5 1-1v-1H9v1zm3-19C8.1 2 5 5.1 5 9c0 2.4 1.2 4.5 3 5.7V17c0 .5.4 1 1 1h6c.6 0 1-.5 1-1v-2.3c1.8-1.3 3-3.4 3-5.7 0-3.9-3.1-7-7-7z'},
+  chat: {label: 'Nhắn tin', d: 'M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z'},
+  thumb: {label: 'Thích', d: 'M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.3l1-4.6v-.3c0-.4-.2-.8-.4-1.1L14.2 1 7.6 7.6C7.2 7.9 7 8.4 7 9v10c0 1.1.9 2 2 2h9c.8 0 1.5-.5 1.8-1.2l3-7.1c.1-.2.1-.5.1-.7v-2z'},
+  clock: {label: 'Thời gian', d: 'M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm4.2 14.2L11 13V7h1.5v5.2l4.5 2.7-.8 1.3z'},
+  cart: {label: 'Mua hàng', d: 'M7 18c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.6-1.4 2.4c-.1.3-.2.6-.2 1 0 1.1.9 2 2 2h12v-2H7.4c-.1 0-.2-.1-.2-.2v-.1l.9-1.7h7.4c.8 0 1.4-.4 1.7-1l3.6-6.5c.1-.2.1-.3.1-.5 0-.6-.4-1-1-1H5.2l-.9-2H1zm16 16c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z'},
+  gift: {label: 'Quà tặng', d: 'M20 6h-2.2c.1-.3.2-.6.2-1 0-1.7-1.3-3-3-3-1 0-1.9.5-2.5 1.3L12 4l-.5-.7C10.9 2.5 10 2 9 2 7.3 2 6 3.3 6 5c0 .4.1.7.2 1H4c-1.1 0-2 .9-2 2v3h1v9c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-9h1V8c0-1.1-.9-2-2-2zM15 4c.6 0 1 .4 1 1s-.4 1-1 1-1-.4-1-1 .4-1 1-1zM9 4c.6 0 1 .4 1 1s-.4 1-1 1-1-.4-1-1 .4-1 1-1zm2 16H5v-9h6v9zm8 0h-6v-9h6v9z'},
+  truck: {label: 'Giao hàng', d: 'M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.7 1.3 3 3 3s3-1.3 3-3h6c0 1.7 1.3 3 3 3s3-1.3 3-3h2v-5l-3-4zM6 18.5c-.8 0-1.5-.7-1.5-1.5s.7-1.5 1.5-1.5 1.5.7 1.5 1.5-.7 1.5-1.5 1.5zm13.5-9 2 2.5H17V9.5h2.5zM18 18.5c-.8 0-1.5-.7-1.5-1.5s.7-1.5 1.5-1.5 1.5.7 1.5 1.5-.7 1.5-1.5 1.5z'},
+  food: {label: 'Món ăn', d: 'M11 9H9V2H7v7H5V2H3v7c0 2.1 1.7 3.8 3.8 4V22h2.5v-9c2.1-.2 3.7-1.9 3.7-4V2h-2v7zm5-3v8h2.5v8H21V2c-2.8 0-5 2.2-5 4z'},
+  coffee: {label: 'Cà phê', d: 'M20 3H4v10c0 2.2 1.8 4 4 4h6c2.2 0 4-1.8 4-4v-3h2c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 5h-2V5h2v3zM2 21h18v-2H2v2z'},
+  book: {label: 'Kiến thức', d: 'M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 4h5v8l-2.5-1.5L6 12V4z'},
+  chart: {label: 'Tăng trưởng', d: 'M16 6l2.3 2.3-4.9 4.9-4-4L2 16.6 3.4 18l6-6 4 4 6.3-6.3L22 12V6z'},
+  camera: {label: 'Máy ảnh', d: 'M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4zM9 2 7.2 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.2L15 2H9zm3 15a5 5 0 1 1 0-10 5 5 0 0 1 0 10z'},
+  plane: {label: 'Du lịch', d: 'M21 16v-2l-8-5V3.5c0-.8-.7-1.5-1.5-1.5S10 2.7 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z'},
 };
 const iconPaths = {};
 const iconPath = (k) => (iconPaths[k] ||= new Path2D(ICONS[k].d));
@@ -388,7 +414,7 @@ function drawCta(ctx, p, T, D) {
   ctx.font = '400 84px Anton, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const text = (c.text || 'NHẮN TIN XEM NHÀ NGAY').toUpperCase();
+  const text = (c.text || 'THEO DÕI ĐỂ XEM THÊM').toUpperCase();
   const tw = Math.min(W * 0.86, ctx.measureText(text).width + 100);
   const th = 150;
   ctx.shadowColor = 'rgba(0,0,0,0.45)';

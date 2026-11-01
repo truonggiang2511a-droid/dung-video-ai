@@ -2,6 +2,7 @@
 import {analyzeAudio, findSilences, wav16} from './media.js';
 import {duration, tlOfSrc, timelineWords, ICONS} from './render.js';
 import {applyOp, describeOp, find, newText, uid} from './model.js';
+import {genreOf, formatOf} from './templates.js';
 
 // ---------- Gọi máy chủ ----------
 let health = null;
@@ -79,23 +80,62 @@ export function sanitizeOps(p, ops, target) {
 }
 
 // ---------- Kế hoạch dựng khi chưa có AI máy chủ ----------
-function numberLockups(p) {
-  // Chỉ đưa số lên hình khi chính người dẫn nói ra (luật của Giang)
+const PALETTE = ['#ffc61a', '#2f8cff', '#ff5fb8', '#2ad46a', '#9a6bff', '#ff8a1f'];
+// Đơn vị đi sau con số → cách hiện trên hình (chỉ đưa số lên hình khi CHÍNH người nói nói ra — luật của Giang)
+const UNITS = [
+  [/^(ty)$/, 'TỶ', 'price'],
+  [/^(trieu|tr)$/, 'TRIỆU', 'price'],
+  [/^(nghin|ngan|k)$/, 'K', 'price'],
+  [/^(dong|vnd)$/, 'Đ', 'price'],
+  [/^(phan)$/, '%', 'pct'],
+  [/^%$/, '%', 'pct'],
+  [/^(m2|met)$/, 'M²', 'area'],
+];
+const NOUNS = /^(buoc|meo|cach|ly do|dieu|loai|mon|phong|tang|lau|ngay|thang|nam|phut|gio|nguoi|san pham|mau|size|cai|chiec|hop|goi|kg|km|lan|diem|sao)$/;
+export function numberLockups(p) {
+  const g = p.genre || 'chung';
+  const icons = genreOf(p).icons;
   const ws = timelineWords(p);
   const out = [];
+  let ci = 0;
   for (let i = 0; i < ws.length; i++) {
     const w = plain(ws[i].w).replace(/[.,!?]$/, '');
-    const next = plain(ws[i + 1]?.w || '');
-    const num = /^\d+([.,]\d+)?$/.test(w) ? ws[i].w.replace(/[.!?]$/, '') : null;
-    if (!num) continue;
-    if (/^(ty|trieu)/.test(next)) {
-      out.push(newText(ws[i].s, {kind: 'price', lead: 'giá', main: `${num} ${next.startsWith('ty') ? 'TỶ' : 'TRIỆU'}`, color: '#ff2a2a', icon: 'tag', dur: 4}));
-    } else if (/^(m2|met|m)$/.test(next) || /x/.test(next)) {
-      out.push(newText(ws[i].s, {lead: 'diện tích', main: `${num} ${next === 'x' ? 'x ' + (ws[i + 2]?.w || '') : 'M²'}`.toUpperCase(), color: '#ffc61a', icon: 'ruler', dur: 3.5}));
+    // “199”, “3,8”, “50%”, “399k”, “5tr”
+    const mm = w.match(/^(\d+(?:[.,]\d+)?)(k|tr|%)?$/);
+    if (!mm) continue;
+    const num = mm[1];
+    const next = plain(ws[i + 1]?.w || '').replace(/[.,!?]$/, '');
+    const prev = plain((ws[i - 2]?.w || '') + ' ' + (ws[i - 1]?.w || ''));
+    const at = ws[i].s;
+    const unit = mm[2] === '%' ? UNITS[5] : mm[2] === 'k' ? UNITS[2] : mm[2] === 'tr' ? UNITS[1] : UNITS.find(([re]) => re.test(next));
+    if (unit && unit[2] === 'price') {
+      const lead = /chi con/.test(prev) ? 'chỉ còn' : /giam|sale|khuyen/.test(prev) ? 'giảm còn' : g === 'bds' || g === 'banhang' ? 'giá' : '';
+      out.push(newText(at, {kind: 'price', lead, main: `${num} ${unit[1]}`.replace(' K', 'K').replace(' Đ', 'Đ'), color: '#ff2a2a', icon: icons.includes('tag') ? 'tag' : icons[0], dur: 4}));
+    } else if (unit && unit[2] === 'pct') {
+      out.push(newText(at, {lead: /giam|sale/.test(prev) ? 'giảm' : '', main: `${num.replace('%', '')}%`, color: '#ffc61a', icon: icons.includes('fire') ? 'fire' : icons[0], dur: 3.5}));
+    } else if (unit && unit[2] === 'area') {
+      out.push(newText(at, {lead: 'diện tích', main: `${num} M²`, color: '#ffc61a', icon: icons.includes('ruler') ? 'ruler' : icons[0], dur: 3.5}));
+    } else if (NOUNS.test(next) && g !== 'bds') {
+      // “3 bước”, “5 mẹo”, “2 tầng”… → cụm chữ màu xoay vòng, icon theo thể loại
+      out.push(newText(at, {main: `${num} ${ws[i + 1].w.replace(/[.,!?]$/, '')}`.toUpperCase(), color: PALETTE[ci % PALETTE.length], icon: icons[ci % icons.length], dur: 3.2}));
+      ci++;
+    } else if (g === 'bds' && /^x$/.test(next)) {
+      out.push(newText(at, {lead: 'diện tích', main: `${num} X ${ws[i + 2]?.w || ''}`.toUpperCase(), color: '#ffc61a', icon: 'ruler', dur: 3.5}));
     }
   }
-  // không chồng nhau
-  return out.filter((t, i) => !out.slice(0, i).some((u) => Math.abs(u.start - t.start) < 4));
+  // không chồng nhau: cụm sau cách cụm trước ≥ 2,2 s; cụm trước tự rút ngắn để nhường chỗ
+  const keep = [];
+  for (const t of out) {
+    const last = keep[keep.length - 1];
+    if (last && t.start - last.start < 2.2) {
+      // giá quan trọng hơn: thay cụm trước nếu cụm trước không phải giá
+      if (t.kind === 'price' && last.kind !== 'price') keep[keep.length - 1] = t;
+      continue;
+    }
+    if (last && last.start + last.dur > t.start - 0.15) last.dur = Math.max(2, t.start - 0.15 - last.start);
+    keep.push(t);
+  }
+  return keep;
 }
 
 export function localPlan(p) {
@@ -209,7 +249,10 @@ export function localCommand(p, text, target) {
 // ---------- Tóm tắt dự án gửi cho AI ----------
 function compact(p) {
   const r2 = (x) => Math.round(x * 100) / 100;
+  const g = genreOf(p);
   return {
+    genre: {key: p.genre || 'chung', label: g.label, style: g.ai, icons: g.icons, cta: g.cta},
+    format: p.format || '9:16',
     duration: r2(duration(p)),
     words: timelineWords(p).map((w) => [w.w, r2(w.s), r2(w.e)]),
     sources: Object.values(p.sources).map((s) => ({id: s.id, kind: s.kind, name: s.name, duration: r2(s.duration)})),
@@ -381,7 +424,7 @@ export async function autoEdit(ed, log) {
   let ops = null;
   if (h.ai) {
     try {
-      const r = await api('ai', {mode: 'plan', template: p.template, project: compact(p)});
+      const r = await api('ai', {mode: 'plan', template: p.template, genre: p.genre, project: compact(p)});
       ops = sanitizeOps(p, r.ops);
       log('ke', 'ok', r.note || `AI đề xuất ${ops.length} thao tác`);
     } catch (e) {

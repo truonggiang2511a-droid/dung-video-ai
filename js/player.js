@@ -4,7 +4,7 @@
 //  - HÌNH chạy theo tiếng: 2 thẻ <video> cho video chính, thẻ rảnh luôn tua sẵn tới đầu đoạn kế tiếp → tới chỗ cắt chỉ việc đổi thẻ
 //  - Video chưa kịp ra hình thì GIỮ khung cuối (không bao giờ vẽ khung xám), cảnh phụ được tua sẵn trước 2 giây
 //  - Chưa giải mã xong tiếng / máy không cho Web Audio → dùng tiếng của thẻ video, đồng hồ dừng chờ khi video đang tua (không nhảy cóc lời)
-import {W, H, drawFrame, duration, srcAt, activeBrolls, segStarts} from './render.js';
+import {W, H, drawFrame, duration, srcAt, activeBrolls, segStarts, setFormat} from './render.js';
 
 const engine = () => import('./engine.js');
 const PREVIEW_RATE = 32000;
@@ -94,17 +94,31 @@ export class Player {
     requestAnimationFrame(this._tick);
   }
 
-  setScale(w) {
-    this.canvas.width = w;
-    this.canvas.height = Math.round((w * H) / W);
-    this.k = w / W;
+  // long = số điểm ảnh của cạnh dài khung xem (máy tính 1280, điện thoại 960)
+  setScale(long) {
+    this.long = long;
+    this._resize();
+  }
+  _resize() {
+    const k = this.long / Math.max(W, H);
+    this.canvas.width = Math.round(W * k);
+    this.canvas.height = Math.round(H * k);
+    this.canvas.style.aspectRatio = `${W} / ${H}`;
+    this.canvas.classList.toggle('land', W > H);
+    this.k = k;
     this.holds = {};
     this.dirty = true;
+  }
+  // Đổi khổ hình (9:16 / 4:5 / 1:1 / 16:9)
+  setFormat(key) {
+    setFormat(key);
+    this._resize();
   }
 
   // ---------- gắn / gỡ file ----------
   async attach(p, getBlob) {
     this.p = p;
+    if (setFormat(p.format)) this._resize();
     const want = new Set(Object.keys(p.sources));
     for (const id of Object.keys(this.urls)) if (!want.has(id)) this._drop(id);
     for (const [id, src] of Object.entries(p.sources)) {

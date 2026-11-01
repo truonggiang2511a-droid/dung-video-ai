@@ -1,10 +1,11 @@
 // Xuất MP4 ngay trên máy khách: vẽ từng khung bằng render.js → mã hoá WebCodecs → ghép MP4 bằng Mediabunny + AAC WebAssembly.
 // Máy không có bộ mã hoá video (iPhone quá cũ) → quay thời gian thực bằng MediaRecorder.
-import {W, H, FPS, drawFrame, duration, srcAt, activeBrolls, segStarts} from './render.js';
+import {W, H, FPS, drawFrame, duration, srcAt, activeBrolls, segStarts, setFormat} from './render.js';
 
 export class Cancelled extends Error {}
 
 export async function exportVideo(p, getBlob, {res = 1080, onProgress, signal} = {}) {
+  setFormat(p.format);
   const m = await import('./engine.js');
   m.useAac();
   const k = res / 1080;
