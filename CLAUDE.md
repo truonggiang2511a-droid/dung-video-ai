@@ -36,20 +36,21 @@ Giang cho phép tự bổ sung/sửa file này khi thấy thiếu/sai so với c
 ### Bản đồ mã nguồn
 | File | Việc |
 |---|---|
-| `js/render.js` | **Bộ dựng khung hình** (dùng chung xem nhanh + xuất): video chính + zoom, B-roll + chuyển cảnh, cụm chữ 3 tầng (dẫn / từ khoá 3D + vệt sáng / ký tay), icon động (Path2D, 28 icon: bộ BĐS + bộ dùng chung), phụ đề bật từng từ, đoạn kết CTA. Toạ độ theo khổ hình: `export let W, H` + `setFormat(p.format)` (9:16 = 1080×1920, 4:5 = 1080×1350, 1:1 = 1080×1080, 16:9 = 1920×1080 — cạnh ngắn luôn 1080 nên cỡ chữ giữ nguyên); phải gọi `setFormat` trước khi vẽ/xuất |
+| `js/render.js` | **Bộ dựng khung hình** (dùng chung xem nhanh + xuất): video chính + zoom, B-roll + chuyển cảnh, cụm chữ 3 tầng (dẫn / từ khoá 3D + vệt sáng / ký tay), icon động (Path2D, 28 icon: bộ BĐS + bộ dùng chung), **phụ đề 4 kiểu** (`SUB_STYLES`: karaoke “Nổi bật” mặc định = chữ in hoa viền đậm, chữ đang nói đổi màu nhấn `subs.hl` + nảy, con số tô màu; box “Hộp màu”; pop “Bật từng chữ”; clean “Tối giản”), `subLines` không tách số khỏi đơn vị (“3,8 tỷ”), đoạn kết CTA. Toạ độ theo khổ hình: `export let W, H` + `setFormat(p.format)` (9:16 = 1080×1920, 4:5 = 1080×1350, 1:1 = 1080×1080, 16:9 = 1920×1080 — cạnh ngắn luôn 1080 nên cỡ chữ giữ nguyên); phải gọi `setFormat` trước khi vẽ/xuất |
 | `js/templates.js` | **Thể loại** (`GENRES`: chung, bds, banhang, amthuc, kienthuc, vlog — mỗi loại: câu kết CTA, gợi ý cảnh phụ, bộ icon ưu tiên, mô tả cho AI) + **khổ hình** (`FORMATS`) + `migrate(p)` cho dự án cũ (câu kết “XEM NHÀ” → bds) + nhớ lựa chọn lần trước (localStorage `dv.genre`, `dv.format`). Thêm thể loại mới = thêm 1 mục, không sửa bộ vẽ |
 | `js/model.js` | Mô hình dự án + **op** (`cut`, `split`, `deleteSeg`, `trimSeg`, `add`, `update`, `remove`, `subs`, `cta`, `music`, `transcript`) + hoàn tác (ảnh chụp JSON) |
 | `js/player.js` | Bản xem nhanh kiểu phần mềm dựng chuyên nghiệp: **tiếng làm đồng hồ** (giải mã tiếng video chính 1 kênh 32 kHz → Web Audio xếp lịch từng đoạn, mềm 6 ms chỗ nối); **3 thẻ `<video>`** cho video chính, thẻ rảnh tua sẵn 2 đoạn kế tiếp (`okCue` kiểm đúng đầu đoạn); hình trước tiếng → đứng chờ, sau xa → tua vượt lên theo thời gian tua đo được; **giữ khung cuối** (canvas `holds`), không bao giờ vẽ khung xám; cảnh phụ tua sẵn trước 2 s. Không có Web Audio / chưa giải mã xong → dùng tiếng thẻ video, đồng hồ dừng khi video đang tua. `refresh()` khi dự án đổi; `audioStream()` cho quay màn hình; `onMainError` khi video chính không ra hình 8 s |
 | `js/timeline.js` | Timeline kiểu CapCut: đầu phát cố định giữa, kéo để tua; 6 làn Chữ/Phụ đề/Hiệu ứng/Cảnh phụ/Video/Nhạc; chọn → hiện tay nắm 2 đầu; kéo clip đã chọn để dời |
 | `js/media.js` | Nhập file (`ensurePlayable`: không hiện hình → đổi H.264, khung gốc 1 s, cạnh dài ≤ 1920), ảnh nhỏ timeline, phân tích âm thanh (Mediabunny, cửa sổ 20 ms, lọc dải tiếng nói 180 Hz–5 kHz) → `findSilences` kiểu VAD 2 ngưỡng theo dB so với ồn nền của chính video (cao = ồn + 3,5…8 dB, thấp = ồn + 2…4 dB), chỉ cắt khoảng không lời ≥ 0,35 s, chừa 0,1 s trước lời + 0,15 s sau lời; WAV 16 kHz |
-| `js/ai.js` | AI dựng A–Z (`autoEdit`), sửa theo lời (`askAi`), **con trỏ diễn từng op** (`animateOps`), bộ dựng cơ bản khi không có AI (`localPlan`, `localCommand`, `numberLockups` theo thể loại: giá tỷ/triệu/nghìn/k → đỏ, % → vàng, m² (bds), “3 bước/5 mẹo…” → màu xoay vòng; giá ưu tiên khi trùng lúc; cụm cách nhau ≥ 2,2 s), lọc op AI (`sanitizeOps`). `compact(p)` gửi kèm thể loại + khổ hình cho máy chủ |
+| `js/ai.js` | AI dựng A–Z (`autoEdit`: nghe → **chép lời** (`transcribeAll`: chia đoạn ~30 s tại chỗ nhỏ tiếng nhất, gợi ý ngữ cảnh theo thể loại + 20 chữ cuối đoạn trước, ghép số bị tách “3”+“.800”, bỏ chữ rơi vào chỗ không có tiếng; Dựng lại thì dùng lời đã chép, không tốn lượt) → cắt (VAD + `wordGapCuts`: khoảng trống ≥ 0,9 s giữa 2 chữ ở chỗ nhỏ tiếng — giúp video ồn) → kế hoạch), sửa theo lời (`askAi`), **con trỏ diễn từng op** (`animateOps`), bộ dựng cơ bản khi không có AI (`localPlan`, `localCommand`, `numberLockups` theo thể loại: giá tỷ/triệu/nghìn/k → đỏ, % → vàng, m² (bds), “3 bước/5 mẹo…” → màu xoay vòng; giá ưu tiên khi trùng lúc; cụm cách nhau ≥ 2,2 s), lọc op AI (`sanitizeOps`). `compact(p)` gửi kèm thể loại + khổ hình cho máy chủ |
 | `js/cursor.js` | Con trỏ AI: điện thoại = ngón tay, máy tính = mũi tên; di chuyển cong, bấm có vòng sóng, kéo, chú thích |
 | `js/export.js` | Xuất MP4: Mediabunny `CanvasSink` (giải mã đúng khung) → vẽ `render.js` → `CanvasSource` (H.264/VP9/AV1) + AAC **WebAssembly**; không có bộ mã hoá → `recordRealtime` (MediaRecorder) |
 | `js/install.js` | Thẻ "Cài app lên màn hình chính" (iOS: Chia sẻ → Thêm vào MH chính; Android: nút Cài app), nhắc mở bằng trình duyệt khi ở Zalo/Facebook, iOS < 16.4 thì nhắc cập nhật |
 | `js/main.js` | Giao diện: màn Dự án, Editor, bảng sửa tay (bảng “Video” khi chưa chọn clip: thể loại, khổ hình, đoạn kết; điện thoại mở bằng nút “Thể loại · khổ” ở thanh phát), chat, duyệt → xuất, phím tắt máy tính (Space, ←/→ khung, Shift ±1 s, Home/End, S tách, Delete, Ctrl+Z/Y/S, +/−, Esc) |
 
 ### Biến môi trường (Cloudflare → Settings → Variables and Secrets) — không ghi khoá vào code / chat
-`AI_OPEN` = `on` mới bật AI (mặc định tắt cho tới khi có tài khoản + lượt dùng) · `ANTHROPIC_API_KEY` · `ANTHROPIC_MODEL` (mặc định `claude-haiku-5-5`) ·
+**Chép lời Whisper BẬT sẵn từ 1/11** (Giang chốt): tắt khẩn cấp bằng biến `STT_OFF` = `on` (wrangler.toml có `keep_vars = true` nên deploy không xoá biến đặt trên bảng). Giới hạn `STT_LIMIT` (ratelimits, namespace `2611011` — riêng, không trùng Vị Trí Studio) 30 đoạn/phút/IP; mỗi lần gửi ≤ ~75 s âm thanh.
+`AI_OPEN` = `on` mới bật Claude `/api/ai` (mặc định tắt cho tới khi có tài khoản + lượt dùng) · `ANTHROPIC_API_KEY` · `ANTHROPIC_MODEL` (mặc định `claude-haiku-5-5`) ·
 `GEMINI_API_KEY` / `GEMINI_MODEL` (dự phòng) · binding `AI` (Workers AI, Whisper `@cf/openai/whisper-large-v3-turbo`, ~0,0005 USD/phút âm thanh).
 
 ### Bắt đầu nhanh
@@ -63,6 +64,8 @@ FILE=speech_mid.mp4 node test/preview.cjs          # ĐO ĐỘ MƯỢT xem nhanh
 node test/silence-eval.mjs                         # CHẤM CẮT KHOẢNG LẶNG bằng giọng đọc có đáp án: "LỜI BỊ CẮT MẤT" phải = 0 với speech_quiet / speech_mid
 node test/fix.cjs                                  # nút Sửa video (đổi định dạng, khung gốc 1 s), Thay/Xoá video chính, Hoàn tác
 FMT=16:9 GENRE=banhang node test/format.cjs 1440 900   # chọn thể loại + khổ hình → khung xem, câu kết, AI dựng, xuất đúng kích thước (/tmp/fmt-out.mp4)
+node test/subs.cjs                                 # chụp 4 kiểu phụ đề với lời giả lập (test/sub-*.png)
+node test/stt.cjs                                  # CHÉP LỜI THẬT trên web (mặc định URL web thật): AI dựng có Whisper → số chữ, chữ số liệu, ảnh phụ đề (test/stt-*.png). Tốn ~0,5 phút lượt miễn phí mỗi lần
 ```
 Video thử có lời: `python3 /home/claude/testmedia/gen/make_speech.py <ồn dB> <tên>` (cần `apt-get install espeak-ng`, giọng `vi`; ghi đáp án vùng có lời + bản sạch .npy), rồi ghép hình `testsrc2` có đồng hồ nguồn (ffmpeg drawtext `%{pts\:hms}`), `-g 300` để thử video khó tua.
 Font: `public/fonts/*.woff2` là bản GỘP 3 bộ chữ latin + latin-ext + vietnamese từ @fontsource (gộp bằng fontTools — xem nhật ký 1/11).
@@ -94,7 +97,7 @@ Font: `public/fonts/*.woff2` là bản GỘP 3 bộ chữ latin + latin-ext + vi
 ---
 
 ## 4. Việc còn lại (theo thứ tự)
-1. ~~Tạo Worker Cloudflare~~ (xong 1/11). Còn: đặt `ANTHROPIC_API_KEY` (Secret) + `AI_OPEN=on` khi đã có giới hạn lượt; gọi thật `/api/transcribe` + `/api/ai` 1 lần để kiểm dạng trả về Whisper.
+1. ~~Tạo Worker Cloudflare~~ (xong 1/11). ~~Chép lời Whisper~~ (bật 1/11, đã gọi thật). Còn: Claude `/api/ai` — đặt `ANTHROPIC_API_KEY` (Secret) + `AI_OPEN=on` khi đã có giới hạn lượt + trạm chuyển tiếp ở Mỹ; gọi thật 1 lần.
 2. Tài khoản + lượt dùng thử + thanh toán (Supabase + SePay, theo cẩm nang mục 4 Vị Trí Studio); máy chủ kiểm lượt trước khi gọi AI.
 3. Chữ sau đầu người dẫn (tách nền người) — chưa có; hiện chữ nằm phía trên đầu (y 0,12–0,3).
 4. Kiểu chữ mẫu 2–5 (chọn theo thể loại), nhạc nền có sẵn, SFX, lọc màu/tốc độ/âm lượng video chính, dựng trên máy chủ cho máy không xuất được. Bản xem nhanh nhẹ (proxy 720p) cho video 4K nếu máy yếu vẫn khựng.
@@ -124,6 +127,9 @@ Font: `public/fonts/*.woff2` là bản GỘP 3 bộ chữ latin + latin-ext + vi
 - 2026-11-01: Thêm nút **Sửa video** ở thanh trạng thái khi video chính 8 s không ra hình (dự án cũ nhập trước khi có `ensurePlayable`); bảng "Đoạn video chính" có **Thay video / Xoá video**; Xoá đoạn cuối cùng = hỏi xoá video chính; Hoàn tác gắn lại video vào player.
 
 - 2026-11-01 12:40: Mở rộng cho mọi người (thể loại + khổ hình + phím tắt). Đổi khổ: `render.js` dùng `export let W/H` (esbuild giữ đúng ràng buộc sống), player `setScale(cạnh dài)` (máy tính 1280, điện thoại 960) + `setFormat`; CSS `#cv.land` cho khổ ngang. Kiểm: `test/format.cjs` 16:9 bán hàng (khung 1280×720, xuất 1280×720 h264+aac, câu kết “NHẮN TIN ĐẶT HÀNG NGAY”) và 1:1 ẩm thực trên 390×844 (xuất 720×720). Điện thoại trước đây KHÔNG mở được bảng “Video” khi chưa chọn clip → thêm nút ở thanh phát.
+
+- 2026-11-01 13:09 (Giang): **bật chép lời Whisper trước** để có phụ đề. Kiểm giá thật (developers.cloudflare.com/workers-ai/platform/pricing): 0,0005 USD/phút (46,63 neuron/phút); 10.000 neuron/ngày miễn phí cho cả tài khoản (≈ 214 phút), gói Free vượt thì báo lỗi chứ không tính tiền, làm mới 00:00 UTC = 7:00 VN. Vị Trí Studio KHÔNG có binding `ai` → không giành lượt. Gọi thật lần đầu (27 s giọng espeak): 2,4 s, có `segments[].words[{word,start,end}]`, `transcription_info.language = vi`, `vad_filter: true` được nhận. Đo so đáp án: phần lớn chữ đầu câu lệch < 0,1 s, chữ ngay sau chỗ nghỉ có khi SỚM 0,3–0,4 s → KHÔNG dùng mốc Whisper để cắt sát chữ (giữ cắt bằng độ lớn âm), chỉ dùng khoảng trống ≥ 0,9 s ở chỗ nhỏ tiếng. Whisper tách số “3” “.800” và có lúc ra “52m” thay “52m2” → ghép/nhận cả hai. Toàn bộ AI dựng trên web thật (390×844, 27 s video): 60 s, 58 chữ, phụ đề bật, chữ “DIỆN TÍCH 52 M²” + “GIÁ 3,8 TỶ”.
+- Lưu ý cho `/api/ai` (Claude) sau này: Vị Trí Studio phải đặt trạm chuyển tiếp ở Mỹ (Durable Object `AiRelay`) vì Anthropic/Gemini chặn yêu cầu đi từ điểm Cloudflare Hồng Kông — khi bật `AI_OPEN` cho app này nhớ làm tương tự (xem `lib/ai-relay.js` bên vi-tri-studio).
 
 ## 6. Công nghệ đã cân nhắc
 | Thứ | Kết luận |

@@ -190,7 +190,7 @@ async function closeEditor() {
 let aiSteps = null;
 function updateStage() {
   const p = ed.p;
-  $('#fmtLabel').textContent = `${GENRES[p.genre]?.label || 'Chung'} · ${p.format || '9:16'}`;
+  $('#fmtLabel').textContent = `${GENRES[p.genre]?.short || 'Chung'} · ${p.format || '9:16'}`;
   const D = p.main ? duration(p) : 0;
   $('#tDur').textContent = fmt(D);
   const ai = $('#btnAi');

@@ -3,6 +3,7 @@
 
 export const GENRES = {
   chung: {
+    short: 'Chung',
     label: 'Chung',
     desc: 'Mọi video nói trước máy quay',
     cta: 'THEO DÕI ĐỂ XEM THÊM',
@@ -11,6 +12,7 @@ export const GENRES = {
     ai: 'video ngắn nói trước máy quay (talking head) cho mạng xã hội Việt Nam',
   },
   bds: {
+    short: 'BĐS',
     label: 'Bất động sản',
     desc: 'Giới thiệu nhà, đất, dự án',
     cta: 'NHẮN TIN XEM NHÀ NGAY',
@@ -19,6 +21,7 @@ export const GENRES = {
     ai: 'video bất động sản cho môi giới Việt Nam (người dẫn đứng nói giới thiệu nhà/đất), số → vàng 3D, giá → đỏ kèm dòng ký tay',
   },
   banhang: {
+    short: 'Bán hàng',
     label: 'Bán hàng',
     desc: 'Giới thiệu sản phẩm, khuyến mãi',
     cta: 'NHẮN TIN ĐẶT HÀNG NGAY',
@@ -27,6 +30,7 @@ export const GENRES = {
     ai: 'video bán hàng / review sản phẩm cho người bán online Việt Nam, nhấn giá, ưu đãi, công dụng (không hứa hẹn quá sự thật)',
   },
   amthuc: {
+    short: 'Ẩm thực',
     label: 'Ẩm thực',
     desc: 'Quán ăn, món ngon, công thức',
     cta: 'GHÉ QUÁN NGAY HÔM NAY',
@@ -35,6 +39,7 @@ export const GENRES = {
     ai: 'video ẩm thực (review quán, giới thiệu món, công thức nấu) cho mạng xã hội Việt Nam',
   },
   kienthuc: {
+    short: 'Kiến thức',
     label: 'Kiến thức',
     desc: 'Chia sẻ, hướng dẫn, mẹo hay',
     cta: 'LƯU LẠI ĐỂ XEM SAU',
@@ -43,6 +48,7 @@ export const GENRES = {
     ai: 'video chia sẻ kiến thức / hướng dẫn / mẹo cho mạng xã hội Việt Nam, nhấn các bước, con số, ý chính',
   },
   vlog: {
+    short: 'Vlog',
     label: 'Vlog',
     desc: 'Đời sống, du lịch, cá nhân',
     cta: 'THEO DÕI MÌNH NHÉ',
