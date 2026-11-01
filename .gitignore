@@ -4,3 +4,5 @@ node_modules/
 test-out/
 .netlify
 site/
+test/*.png
+test/*.mp4

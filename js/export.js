@@ -212,14 +212,11 @@ async function buildAudio(p, getBlob, m, D) {
 export async function recordRealtime(player, {onProgress, signal} = {}) {
   const D = player.D;
   const stream = player.canvas.captureStream(FPS);
-  const main = player.els[player.p.main.src];
+  // tiếng lấy từ bộ trộn Web Audio của bản xem nhanh (đã cắt liền mạch + nhạc nền)
   try {
-    const ac = new (window.AudioContext || window.webkitAudioContext)();
-    const node = ac.createMediaElementSource(main);
-    const dest = ac.createMediaStreamDestination();
-    node.connect(dest);
-    node.connect(ac.destination);
-    for (const t of dest.stream.getAudioTracks()) stream.addTrack(t);
+    await player.whenAudioReady();
+    const as = player.audioStream();
+    for (const t of as?.getAudioTracks() || []) stream.addTrack(t);
   } catch (e) {
     /* không lấy được tiếng: vẫn quay hình */
   }

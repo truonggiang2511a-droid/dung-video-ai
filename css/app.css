@@ -96,6 +96,10 @@ button:disabled{opacity:.4;cursor:default}
 .st-t{flex:1;min-width:0;line-height:1.35}
 .st-ic{display:flex;color:var(--acc2);flex-shrink:0}
 .st-ic.ok{color:var(--ok)}
+.st-ic.warn{width:18px;height:18px;border-radius:9px;background:#e5a50a;color:#111;font-weight:800;font-size:12px;align-items:center;justify-content:center}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.row2 .btn{min-width:0;white-space:nowrap;justify-content:center}
+.btn.ghost.danger{background:transparent;color:#ff7b7f;border-color:rgba(229,72,77,.45)}
 .st-ic.spin{width:14px;height:14px;border-radius:7px;border:2px solid var(--acc);border-top-color:transparent;animation:spin .8s linear infinite}
 .st-dots{display:flex;gap:4px;flex-shrink:0}
 .st-dots i{width:16px;height:4px;border-radius:2px;background:#2d333e}

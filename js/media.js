@@ -65,10 +65,12 @@ function canShow(blob) {
 
 const CODEC_NAME = {hevc: 'HEVC (H.265)', avc: 'H.264', vp9: 'VP9', av1: 'AV1', prores: 'ProRes'};
 
-// Bảo đảm video phát được trong trình duyệt này; không được thì tự đổi sang H.264 (nếu máy giải mã được), không thì báo cách xử lý
-export async function ensurePlayable(file, onMsg) {
+// Bảo đảm video phát được trong trình duyệt này; không được thì tự đổi sang H.264 (nếu máy giải mã được), không thì báo cách xử lý.
+// force = true: luôn đổi (nút “Sửa video” cho dự án cũ).
+// Bản đổi: khung gốc mỗi 1 giây (mặc định thư viện là 5 giây → tua rất chậm, xem nhanh bị khựng), cạnh dài tối đa 1920 (đủ cho xuất 1080p).
+export async function ensurePlayable(file, onMsg, force = false) {
   const meta = await probeVideo(file).catch(() => null);
-  if (meta && meta.w > 0 && (await canShow(file))) return {file, meta};
+  if (!force && meta && meta.w > 0 && (await canShow(file))) return {file, meta};
   const m = await engine();
   const input = new m.Input({source: new m.BlobSource(file), formats: m.ALL_FORMATS});
   let track = null;
@@ -77,7 +79,8 @@ export async function ensurePlayable(file, onMsg) {
   } catch (e) {
     track = null;
   }
-  if (!track) throw new Error(`File “${file.name}” không có hình hoặc định dạng lạ. Hãy chọn file video MP4/MOV.`);
+  const name = file.name || 'video';
+  if (!track) throw new Error(`File “${name}” không có hình hoặc định dạng lạ. Hãy chọn file video MP4/MOV.`);
   const codec = CODEC_NAME[track.codec] || track.codec || 'không rõ';
   if (!(await track.canDecode())) {
     const tip = track.codec === 'hevc'
@@ -87,14 +90,20 @@ export async function ensurePlayable(file, onMsg) {
   }
   // giải mã được bằng WebCodecs nhưng thẻ <video> không hiện → đổi sang H.264 ngay trên máy
   m.useAac();
+  const dw = track.displayWidth || track.codedWidth;
+  const dh = track.displayHeight || track.codedHeight;
+  const k = Math.min(1, 1920 / Math.max(dw, dh));
+  const even = (x) => Math.max(2, Math.round(x / 2) * 2);
   const target = new m.BufferTarget();
   const output = new m.Output({format: new m.Mp4OutputFormat({fastStart: 'in-memory'}), target});
-  const conv = await m.Conversion.init({input, output, video: {codec: 'avc', bitrate: m.QUALITY_HIGH}, audio: {codec: 'aac'}});
+  const video = {codec: 'avc', quality: m.QUALITY_HIGH, keyFrameInterval: 1};
+  if (k < 1) Object.assign(video, {width: even(dw * k), height: even(dh * k), fit: 'contain'});
+  const conv = await m.Conversion.init({input, output, video, audio: {codec: 'aac'}});
   if (!conv.isValid) throw new Error(`Không đổi được video ${codec} sang H.264 trên máy này. Hãy mở app bằng Safari hoặc Edge.`);
-  conv.onProgress = (k) => onMsg?.(`Video dạng ${codec} — đang đổi sang H.264 để phát được… ${Math.round(k * 100)}%`);
-  onMsg?.(`Video dạng ${codec} — đang đổi sang H.264 để phát được…`);
+  conv.onProgress = (x) => onMsg?.(`Video dạng ${codec} — đang đổi sang H.264 để phát mượt… ${Math.round(x * 100)}%`);
+  onMsg?.(`Video dạng ${codec} — đang đổi sang H.264 để phát mượt…`);
   await conv.execute();
-  const out = new File([target.buffer], file.name.replace(/\.[^.]+$/, '') + '.mp4', {type: 'video/mp4'});
+  const out = new File([target.buffer], name.replace(/\.[^.]+$/, '') + '.mp4', {type: 'video/mp4'});
   const meta2 = await probeVideo(out);
   return {file: out, meta: meta2};
 }
@@ -156,12 +165,14 @@ export async function analyzeAudio(blob, onProgress) {
   let rsAcc = 0;
   let rsCnt = 0;
   let rsStep = 1;
+  let vf = null;
   for await (const {buffer, timestamp} of sink.buffers()) {
     if (!rate) {
       rate = buffer.sampleRate;
       winLen = Math.round(rate * win);
       rsStep = rate / 16000;
     }
+    if (!vf) vf = voiceFilter(rate);
     const chs = [];
     for (let c = 0; c < buffer.numberOfChannels; c++) chs.push(buffer.getChannelData(c));
     const n = buffer.length;
@@ -169,7 +180,8 @@ export async function analyzeAudio(blob, onProgress) {
       let v = 0;
       for (const ch of chs) v += ch[i];
       v /= chs.length;
-      acc += v * v;
+      const fv = vf(v);
+      acc += fv * fv;
       cnt++;
       if (cnt >= winLen) {
         rms.push(Math.sqrt(acc / cnt));
@@ -199,34 +211,83 @@ export async function analyzeAudio(blob, onProgress) {
   };
 }
 
-// Tìm các khoảng lặng cần cắt (giây nguồn). min 0,35 s, chừa 0,1 s mỗi bên (theo skill batdongsan-editor)
-export function findSilences(an, {min = 0.35, keep = 0.1} = {}) {
+// Lọc dải tiếng nói (bỏ ù gió/xe dưới 180 Hz và xì trên 5 kHz) trước khi đo độ lớn → nhận lời chuẩn hơn ở ngoài trời
+export function voiceFilter(sr) {
+  const bq = (type, f0, q) => {
+    const w = (2 * Math.PI * f0) / sr;
+    const al = Math.sin(w) / (2 * q);
+    const c = Math.cos(w);
+    let b0, b1, b2;
+    if (type === 'hp') [b0, b1, b2] = [(1 + c) / 2, -(1 + c), (1 + c) / 2];
+    else [b0, b1, b2] = [(1 - c) / 2, 1 - c, (1 - c) / 2];
+    const a0 = 1 + al;
+    const k = [b0 / a0, b1 / a0, b2 / a0, (-2 * c) / a0, (1 - al) / a0];
+    let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    return (x) => {
+      const y = k[0] * x + k[1] * x1 + k[2] * x2 - k[3] * y1 - k[4] * y2;
+      x2 = x1;
+      x1 = x;
+      y2 = y1;
+      y1 = y;
+      return y;
+    };
+  };
+  const hp = bq('hp', 180, 0.707);
+  const lp = bq('lp', Math.min(5000, sr * 0.45), 0.707);
+  return (x) => lp(hp(x));
+}
+
+// Tìm các khoảng lặng cần cắt (giây nguồn) — kiểu VAD 2 ngưỡng:
+//  - đo theo dB so với tiếng ồn nền của CHÍNH video này (yên tĩnh hay ngoài trời đều đúng)
+//  - ngưỡng cao để nhận chắc chắn có lời, ngưỡng thấp để nới hai đầu lời (âm đầu nhẹ, cuối câu xuống giọng không bị mất)
+//  - giữ 0,1 s trước lời và 0,15 s sau lời; chỉ cắt khoảng nghỉ ≥ 0,35 s (theo skill batdongsan-editor); bỏ tiếng lách cách lẻ
+export function findSilences(an, {min = 0.35, pre = 0.1, post = 0.15, hiK = [3.5, 8, 0.2], loK = [2, 4, 0.08]} = {}) {
   const {rms, win} = an;
-  if (!rms.length) return [];
-  const sorted = [...rms].sort((a, b) => a - b);
-  const q = (x) => sorted[Math.floor((sorted.length - 1) * x)];
-  const noise = q(0.12);
-  const speech = q(0.85);
-  const thr = Math.max(noise * 2, noise + (speech - noise) * 0.18, 0.004);
-  const silent = rms.map((x) => x < thr);
-  const out = [];
-  let i = 0;
-  const N = silent.length;
-  while (i < N) {
-    if (!silent[i]) {
+  const N = rms.length;
+  if (!N) return [];
+  const db = rms.map((x) => 20 * Math.log10(x + 1e-7));
+  const sorted = [...db].sort((a, b) => a - b);
+  const q = (x) => sorted[Math.floor((N - 1) * x)];
+  const noise = q(0.1);
+  const speech = q(0.92);
+  const range = speech - noise;
+  // video gần như không có chỗ nghỉ rõ (ồn lớn / nhạc nền to) → chỉ cắt đầu/cuối thật sự im
+  const hi = noise + Math.max(hiK[0], Math.min(hiK[1], range * hiK[2]));
+  const lo = noise + Math.max(loK[0], Math.min(loK[1], range * loK[2]));
+  // 1) vùng chắc chắn có lời: vượt ngưỡng cao; lan ra hai bên khi còn trên ngưỡng thấp
+  const sp = new Uint8Array(N);
+  for (let i = 0; i < N; i++) if (db[i] >= hi) sp[i] = 1;
+  for (let i = 1; i < N; i++) if (!sp[i] && sp[i - 1] && db[i] >= lo) sp[i] = 1;
+  for (let i = N - 2; i >= 0; i--) if (!sp[i] && sp[i + 1] && db[i] >= lo) sp[i] = 1;
+  // 2) bỏ mẩu "lời" quá ngắn mà không đủ to (tiếng gõ, lách cách): < 0,1 s và đỉnh < ngưỡng cao + 6 dB
+  for (let i = 0; i < N; ) {
+    if (!sp[i]) {
       i++;
       continue;
     }
     let j = i;
-    while (j < N && silent[j]) j++;
+    let peak = -999;
+    while (j < N && sp[j]) peak = Math.max(peak, db[j++]);
+    if ((j - i) * win < 0.1 && peak < hi + 6) sp.fill(0, i, j);
+    i = j;
+  }
+  // 3) khoảng không lời ≥ min → cắt, chừa đệm hai bên
+  const out = [];
+  for (let i = 0; i < N; ) {
+    if (sp[i]) {
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < N && !sp[j]) j++;
     const a = i * win;
     const b = j * win;
     const isHead = i === 0;
     const isTail = j >= N;
     if (b - a >= min || isHead || isTail) {
-      const ca = isHead ? 0 : a + keep;
-      const cb = isTail ? N * win + 1 : b - keep;
-      if (cb - ca > 0.15) out.push({a: ca, b: cb});
+      const ca = isHead ? 0 : a + post;
+      const cb = isTail ? N * win + 1 : b - pre;
+      if (cb - ca > 0.12) out.push({a: ca, b: cb});
     }
     i = j;
   }

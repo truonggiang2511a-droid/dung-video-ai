@@ -38,9 +38,9 @@ Giang cho phép tự bổ sung/sửa file này khi thấy thiếu/sai so với c
 |---|---|
 | `js/render.js` | **Bộ dựng khung hình** (dùng chung xem nhanh + xuất): video chính + zoom, B-roll + chuyển cảnh, cụm chữ 3 tầng mẫu 1 (dẫn / từ khoá 3D + vệt sáng / ký tay), icon động (Path2D), phụ đề bật từng từ, đoạn kết CTA. Toạ độ gốc 1080×1920 |
 | `js/model.js` | Mô hình dự án + **op** (`cut`, `split`, `deleteSeg`, `trimSeg`, `add`, `update`, `remove`, `subs`, `cta`, `music`, `transcript`) + hoàn tác (ảnh chụp JSON) |
-| `js/player.js` | Bản xem nhanh: thẻ `<video>` ẩn + vẽ canvas mỗi khung, đồng hồ tường, lệch > 0,3 s thì tua |
+| `js/player.js` | Bản xem nhanh kiểu phần mềm dựng chuyên nghiệp: **tiếng làm đồng hồ** (giải mã tiếng video chính 1 kênh 32 kHz → Web Audio xếp lịch từng đoạn, mềm 6 ms chỗ nối); **3 thẻ `<video>`** cho video chính, thẻ rảnh tua sẵn 2 đoạn kế tiếp (`okCue` kiểm đúng đầu đoạn); hình trước tiếng → đứng chờ, sau xa → tua vượt lên theo thời gian tua đo được; **giữ khung cuối** (canvas `holds`), không bao giờ vẽ khung xám; cảnh phụ tua sẵn trước 2 s. Không có Web Audio / chưa giải mã xong → dùng tiếng thẻ video, đồng hồ dừng khi video đang tua. `refresh()` khi dự án đổi; `audioStream()` cho quay màn hình; `onMainError` khi video chính không ra hình 8 s |
 | `js/timeline.js` | Timeline kiểu CapCut: đầu phát cố định giữa, kéo để tua; 6 làn Chữ/Phụ đề/Hiệu ứng/Cảnh phụ/Video/Nhạc; chọn → hiện tay nắm 2 đầu; kéo clip đã chọn để dời |
-| `js/media.js` | Nhập file, ảnh nhỏ timeline, phân tích âm thanh (Mediabunny, cửa sổ 20 ms) → khoảng lặng (min 0,35 s, chừa 0,1 s), WAV 16 kHz |
+| `js/media.js` | Nhập file (`ensurePlayable`: không hiện hình → đổi H.264, khung gốc 1 s, cạnh dài ≤ 1920), ảnh nhỏ timeline, phân tích âm thanh (Mediabunny, cửa sổ 20 ms, lọc dải tiếng nói 180 Hz–5 kHz) → `findSilences` kiểu VAD 2 ngưỡng theo dB so với ồn nền của chính video (cao = ồn + 3,5…8 dB, thấp = ồn + 2…4 dB), chỉ cắt khoảng không lời ≥ 0,35 s, chừa 0,1 s trước lời + 0,15 s sau lời; WAV 16 kHz |
 | `js/ai.js` | AI dựng A–Z (`autoEdit`), sửa theo lời (`askAi`), **con trỏ diễn từng op** (`animateOps`), bộ dựng cơ bản khi không có AI (`localPlan`, `localCommand`), lọc op AI (`sanitizeOps`) |
 | `js/cursor.js` | Con trỏ AI: điện thoại = ngón tay, máy tính = mũi tên; di chuyển cong, bấm có vòng sóng, kéo, chú thích |
 | `js/export.js` | Xuất MP4: Mediabunny `CanvasSink` (giải mã đúng khung) → vẽ `render.js` → `CanvasSource` (H.264/VP9/AV1) + AAC **WebAssembly**; không có bộ mã hoá → `recordRealtime` (MediaRecorder) |
@@ -58,7 +58,11 @@ python3 -m http.server 8790 --directory site      # mở http://127.0.0.1:8790 (
 URL=https://dung-video-ai.truonggiang2511a.workers.dev/ node test/flow.cjs 390 844   # chạy trên web thật; bỏ URL= để chạy bản cục bộ
 node test/pc.cjs                                   # máy tính 1600×900: mở thẳng timeline, file HEVC báo lỗi rõ, AI dựng, bấm thước để tua
 node test/flow.cjs 390 844                         # kiểm thử luồng chính trên khổ điện thoại (cần playwright + file trong /home/claude/testmedia)
+FILE=speech_mid.mp4 node test/preview.cjs          # ĐO ĐỘ MƯỢT xem nhanh: khung đứng/xám (stale), tiếng nhảy (skipped), lệch hình-tiếng; NO_AD=1 / NO_WA=1 để thử máy cũ
+node test/silence-eval.mjs                         # CHẤM CẮT KHOẢNG LẶNG bằng giọng đọc có đáp án: "LỜI BỊ CẮT MẤT" phải = 0 với speech_quiet / speech_mid
+node test/fix.cjs                                  # nút Sửa video (đổi định dạng, khung gốc 1 s), Thay/Xoá video chính, Hoàn tác
 ```
+Video thử có lời: `python3 /home/claude/testmedia/gen/make_speech.py <ồn dB> <tên>` (cần `apt-get install espeak-ng`, giọng `vi`; ghi đáp án vùng có lời + bản sạch .npy), rồi ghép hình `testsrc2` có đồng hồ nguồn (ffmpeg drawtext `%{pts\:hms}`), `-g 300` để thử video khó tua.
 Font: `public/fonts/*.woff2` là bản GỘP 3 bộ chữ latin + latin-ext + vietnamese từ @fontsource (gộp bằng fontTools — xem nhật ký 1/11).
 
 ---
@@ -81,7 +85,7 @@ Font: `public/fonts/*.woff2` là bản GỘP 3 bộ chữ latin + latin-ext + vi
 - **Chỗ khách đã sửa tay tự khoá** (`locked: true`) — AI không ghi đè trừ khi khách nhờ sửa đúng chỗ đó.
 - Con trỏ AI diễn thao tác như người dựng (ngón tay trên điện thoại, mũi tên trên máy tính), có nút "Tua nhanh".
 - **Bản xem nhanh trước, khách duyệt rồi mới render** (`p.approved`; sửa nội dung sau khi duyệt → phải duyệt lại).
-- Phong cách mặc định "mẫu 1" (skill batdongsan-editor): số → vàng 3D, giá → đỏ + dòng ký tay, chữ dẫn nhỏ, icon động mỗi cụm, phụ đề 3 từ/dòng ≤ 16 ký tự, khoảng lặng ≥ 0,35 s chừa 0,1 s, CTA "NHẮN TIN XEM NHÀ NGAY", **không bịa số, không số điện thoại trên hình**.
+- Phong cách mặc định "mẫu 1" (skill batdongsan-editor): số → vàng 3D, giá → đỏ + dòng ký tay, chữ dẫn nhỏ, icon động mỗi cụm, phụ đề 3 từ/dòng ≤ 16 ký tự, khoảng lặng ≥ 0,35 s chừa 0,1 s (1/11: chừa thêm 0,15 s SAU lời vì Giang báo cắt mất đuôi chữ), CTA "NHẮN TIN XEM NHÀ NGAY", **không bịa số, không số điện thoại trên hình**.
 - Tối đa miễn phí: render trên máy khách, lưu trên máy khách; tiền chỉ tốn cho AI (Claude Haiku + Whisper).
 
 ---
@@ -111,6 +115,10 @@ Font: `public/fonts/*.woff2` là bản GỘP 3 bộ chữ latin + latin-ext + vi
 
 - 2026-11-01 11:18: Đẩy code lên GitHub mà Cloudflare KHÔNG tự build (Settings → Builds báo "disconnected from your Git account") — vì GitHub App **Cloudflare Workers and Pages** chưa có quyền repo này (Vị Trí Studio vẫn bình thường). Giang thêm `dung-video-ai` vào github.com/settings/installations → Cloudflare Workers and Pages → Configure → Repository access (giữ nguyên vi-tri-studio). Repo mới sau này: nhớ cấp quyền cho CẢ app Claude lẫn app Cloudflare.
   Sau khi cấp quyền, Worker vẫn báo "disconnected" → phải vào Worker → Settings → Builds → Disconnect rồi **Connect** lại: chọn đúng repo `dung-video-ai` (KHÔNG chọn vi-tri-studio), nhánh `main`, Build command `npm ci && bash build.sh`, Deploy `npx wrangler deploy` (ô Build command bị trống khi nối lại — phải điền lại). Nối lại xong phải đẩy 1 commit mới thì mới build.
+
+- 2026-11-01 11:53 (Giang quay màn hình): xem nhanh **đứng hình + xám + mất tiếng 1–2 s ở MỖI chỗ cắt**, nghe như AI cắt nhầm. Nguyên nhân: (1) player cũ dùng đồng hồ tường, thẻ `<video>` phải tua tới đầu đoạn mới mỗi lần qua chỗ cắt → trong lúc tua vẽ khung xám, tiếng tắt; đồng hồ vẫn chạy nên lệch > 0,3 s → tua tiếp → tua đuổi mãi, nhảy cóc lời; (2) Mediabunny `Conversion` mặc định **khung gốc 5 giây** → video iPhone đã đổi định dạng tua rất chậm; (3) ngưỡng khoảng lặng tuyến tính quá cao → chữ nói nhỏ/cuối câu bị coi là im lặng, bị cắt thật. Sửa: viết lại player (xem bản đồ mã nguồn), `keyFrameInterval: 1` + cạnh dài ≤ 1920 khi đổi định dạng, `findSilences` VAD 2 ngưỡng dB + lọc dải tiếng nói. Đo bằng `test/preview.cjs` (cùng video, cùng máy): bản cũ khung đứng 2,8 s (GOP 1 s) và 12,9/18,5 s (GOP 10 s) → bản mới 0 s cả hai, lệch hình–tiếng p95 ≤ 0,13 s; `test/silence-eval.mjs`: lời bị cắt mất 0,12–0,29 s → 0 s (yên tĩnh, ồn vừa). Bài học: **luôn đo bằng số** (khung đứng, lời bị mất) trên video khó (GOP dài, có câu nói nhỏ, ồn nền) trước khi nói "đã mượt".
+- 2026-11-01: Thẻ video "đã tua sẵn" phải kiểm cả VỊ TRÍ (`okCue`: đúng đầu đoạn), không chỉ số thứ tự đoạn — đoạn cắt đổi (AI cắt, khách tách) làm số thứ tự cũ trỏ sai chỗ → hình đi trước tiếng 2,6 s.
+- 2026-11-01: Thêm nút **Sửa video** ở thanh trạng thái khi video chính 8 s không ra hình (dự án cũ nhập trước khi có `ensurePlayable`); bảng "Đoạn video chính" có **Thay video / Xoá video**; Xoá đoạn cuối cùng = hỏi xoá video chính; Hoàn tác gắn lại video vào player.
 
 ## 6. Công nghệ đã cân nhắc
 | Thứ | Kết luận |

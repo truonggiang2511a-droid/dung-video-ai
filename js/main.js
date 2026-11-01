@@ -2,7 +2,7 @@
 import {loadFonts, duration, COLORS, ICONS, FONTS, W, H} from './render.js';
 import {store} from './store.js';
 import {newProject, applyOp, History, find, newText, uid} from './model.js';
-import {importFile, probeVideo} from './media.js';
+import {importFile, probeVideo, ensurePlayable, thumbs} from './media.js';
 import {Player} from './player.js';
 import {Timeline} from './timeline.js';
 import {Cursor} from './cursor.js';
@@ -154,6 +154,7 @@ async function openEditor(p) {
   p._rev = 1;
   ed.p = p;
   ed.sel = null;
+  ed.mainBad = false;
   ed.history = new History();
   $('#home').hidden = true;
   $('#editor').hidden = false;
@@ -211,6 +212,8 @@ function renderStatus() {
     h = `<span class="st-ic spin" aria-hidden="true"></span><span class="st-t"><b>AI đang dựng</b> · ${esc(aiSteps[Math.min(k, aiSteps.length - 1)].text)}</span>
       <span class="st-dots" aria-hidden="true">${aiSteps.map((x) => `<i class="${x.st}"></i>`).join('')}</span>
       <button class="btn ghost xs" data-act="skip">${icon(I.ff, 14)} Tua nhanh</button>`;
+  } else if (p.main && ed.mainBad) {
+    h = `<span class="st-ic warn" aria-hidden="true">!</span><span class="st-t"><b>Video chính chưa hiện được hình</b> trên trình duyệt này (thường là video iPhone dạng HEVC).</span><button class="btn ai xs" data-act="fixMain">Sửa video</button>`;
   } else if (!p.main) {
     h = `<span class="st-t">Kéo thả video vào timeline, hoặc bấm <b>Thêm video chính</b> bên dưới.</span>`;
   } else if (!p.aiDone) {
@@ -254,6 +257,7 @@ async function addFiles(kind, files) {
       toast(`Đang nạp “${esc(f.name)}”…`, 120000);
       const src = await importFile(p, f, kind, (m) => toast(esc(m), 120000));
       if (kind === 'main') {
+        ed.mainBad = false;
         p.main = {src: src.id, segs: [{in: 0, out: src.duration}]};
         p.transcript = null;
         p.aiDone = false;
@@ -276,6 +280,57 @@ async function addFiles(kind, files) {
   }
   ed.busy = false;
   ed.changed(true, true);
+}
+
+// Xoá hẳn video chính (cảnh phụ vẫn giữ trong kho để dùng lại)
+async function removeMain() {
+  const p = ed.p;
+  if (!p.main) return;
+  const ok = await dialog({title: 'Xoá video chính?', body: 'Video chính, các chỗ đã cắt, chữ và hiệu ứng sẽ bị xoá. Cảnh phụ vẫn còn trong kho để dùng lại. Bấm Hoàn tác nếu đổi ý.', ok: 'Xoá video', danger: true});
+  if (!ok) return;
+  ed.player.pause();
+  ed.history.push(p);
+  p.main = null;
+  p.transcript = null;
+  p.aiDone = false;
+  p.approved = false;
+  p.broll = [];
+  p.texts = [];
+  p.zooms = [];
+  ed.mainBad = false;
+  select(null);
+  await ed.player.attach(p, ed.getBlob);
+  ed.seek(0);
+  ed.changed(true, true);
+}
+
+// Dự án cũ có video chưa hiện được hình → đổi định dạng ngay trên máy, giữ nguyên các chỗ đã cắt
+async function fixMain() {
+  const p = ed.p;
+  const src = p.main && p.sources[p.main.src];
+  if (!src || ed.busy) return;
+  ed.busy = true;
+  updateStage();
+  try {
+    const blob = await ed.getBlob(src.fileKey);
+    const {file, meta} = await ensurePlayable(blob, (m) => toast(esc(m), 120000), true);
+    await store.putFile(src.fileKey, file);
+    Object.assign(src, {w: meta.w, h: meta.h});
+    try {
+      src.thumbs = await thumbs(file, 14);
+    } catch (e) {
+      /* giữ ảnh cũ */
+    }
+    ed.mainBad = false;
+    ed.player._drop(src.id);
+    await ed.player.attach(p, ed.getBlob);
+    toast('Đã sửa video — phát được rồi.');
+  } catch (e) {
+    $('#toast').classList.remove('on');
+    dialog({title: 'Chưa sửa được video', body: `<p>${esc(e.message)}</p>`, ok: 'Đã hiểu', cancel: ''});
+  }
+  ed.busy = false;
+  ed.changed(true);
 }
 
 // Kéo thả file từ máy tính vào app
@@ -399,7 +454,8 @@ function renderInspector() {
   } else if (s?.type === 'seg' && it) {
     h = `<h4>Đoạn video chính</h4><p class="hint">Kéo hai đầu đoạn để lấy thêm / bớt hình. Bấm Tách để cắt tại đầu phát.</p>
       <button class="btn ghost wide" data-act="split">${icon(I.split, 17)} Tách tại đầu phát</button>
-      <button class="btn ghost wide" data-act="restore">Khôi phục mọi đoạn đã cắt</button>`;
+      <button class="btn ghost wide" data-act="restore">Khôi phục mọi đoạn đã cắt</button>
+      <div class="row2"><button class="btn ghost" data-act="replaceMain">${icon(I.film, 16)} Thay video</button><button class="btn ghost danger" data-act="removeMain">${icon(I.trash, 16)} Xoá video</button></div>`;
   } else if (s?.type === 'subs') {
     h = subsPanel();
   } else if (s?.type === 'music' && it) {
@@ -465,7 +521,7 @@ function bindInspector() {
     p._rev++;
     if (p.approved) p.approved = false;
     ed.player.dirty = true;
-    ed.player._sync?.(true);
+    ed.player.refresh();
     ed.tl.render(p);
     updateStage();
     queueSave();
@@ -518,6 +574,12 @@ async function act(a, el) {
     case 'split':
       manual(() => applyOp(p, {op: 'split', T: ed.player.T}), {lock: false});
       return;
+    case 'replaceMain':
+      return pick('main');
+    case 'removeMain':
+      return removeMain();
+    case 'fixMain':
+      return fixMain();
     case 'restore': {
       const src = p.sources[p.main.src];
       manual(() => (p.main.segs = [{in: 0, out: src.duration}]), {lock: false});
@@ -527,6 +589,7 @@ async function act(a, el) {
     case 'del': {
       const s = ed.sel;
       if (!s) return;
+      if (s.type === 'seg' && p.main.segs.length <= 1) return removeMain();
       if (s.type === 'seg') manual(() => applyOp(p, {op: 'deleteSeg', i: +s.id}), {lock: false});
       else if (s.type === 'music') manual(() => (p.music = null), {lock: false});
       else manual(() => applyOp(p, {op: 'remove', id: s.id}), {lock: false});
@@ -955,6 +1018,10 @@ async function boot() {
     $('#btnPlay').setAttribute('aria-label', on ? 'Tạm dừng' : 'Phát');
   };
   ed.player.onEnd = () => renderStatus();
+  ed.player.onMainError = () => {
+    ed.mainBad = true;
+    renderStatus();
+  };
   ed.tl = new Timeline($('#tl'), tlCb);
   ed.cur = new Cursor();
   window.__dv = ed; // để kiểm thử (xem CLAUDE.md)
@@ -1054,6 +1121,7 @@ function undoRedo(dir) {
   for (const k of Object.keys(ed.p)) if (!k.startsWith('_')) delete ed.p[k];
   Object.assign(ed.p, snap);
   select(null);
+  ed.player.attach(ed.p, ed.getBlob); // video chính có thể vừa được khôi phục / gỡ
   ed.changed(true);
 }
 
