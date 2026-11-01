@@ -1,13 +1,15 @@
 // Máy chủ Cloudflare Worker: phục vụ giao diện (thư mục site/) + 2 route AI.
 //  POST /api/transcribe  (audio/wav 16 kHz mono) → Workers AI Whisper → {words:[{w,s,e}]}
-//  POST /api/ai          ({mode:'plan'|'edit', ...}) → Claude → {note|reply, ops:[...]}
+//  POST /api/ai          ({mode:'highlight'|'edit'|'plan', ...}) → Claude / AI Cloudflare → {items} | {note|reply, ops:[...]}
 //  POST /api/vision     ({genre, items:[{id, img:'data:image/jpeg;base64,…'}]}) → Workers AI Llama 4 Scout xem cảnh phụ → {tags:{id:{nhan, tu_khoa}}}
 //  GET  /api/health      → {ai, stt, vision}
 // AI nhìn cảnh phụ (/api/vision, ~0,0003 USD/cảnh, dùng chung 10.000 neuron/ngày miễn phí với Whisper) BẬT sẵn từ 1/11; tắt khẩn cấp: VISION_OFF = "on".
-// Claude (/api/ai) chỉ chạy khi AI_OPEN = "on" (Cloudflare → Settings → Variables). Chưa có tài khoản/lượt dùng thì để tắt.
 // Chép lời (/api/transcribe, Whisper ~0,0005 USD/phút, 10.000 neuron/ngày miễn phí ≈ 214 phút) BẬT sẵn từ 1/11;
 // tắt khẩn cấp: đặt biến STT_OFF = "on" trong Cloudflare (wrangler.toml có keep_vars nên deploy không xoá).
 // Giới hạn: STT_LIMIT (ratelimits, theo IP) + mỗi lần gửi ≤ ~75 giây âm thanh (máy khách tự chia đoạn ~30 giây).
+// AI hiểu lời (/api/ai, mode highlight | edit | plan): Claude Haiku 5.5 khi AI_OPEN = "on" + Secret ANTHROPIC_API_KEY (Giang chọn
+// hướng A 1/11 21:39), gọi qua trạm Mỹ AiGate có giới hạn lượt/IP/ngày + tiền/ngày; chưa bật / lỗi / hết hạn mức → AI miễn phí
+// của Cloudflare Workers AI (Llama 4 Scout). Tắt khẩn cấp phần Workers AI: AI_OFF = "on". GET /api/ai-usage = tiền Claude hôm nay.
 
 const json = (o, s = 200) => new Response(JSON.stringify(o), {status: s, headers: {'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store'}});
 
@@ -17,8 +19,10 @@ export default {
     const open = env.AI_OPEN === 'on';
     const stt = env.STT_OFF !== 'on' && !!env.AI;
     const vision = env.VISION_OFF !== 'on' && !!env.AI;
+    const claude = open && !!env.ANTHROPIC_API_KEY;
+    const cf = env.AI_OFF !== 'on' && !!env.AI; // AI miễn phí của Cloudflare: dùng khi chưa bật Claude, hoặc Claude lỗi / hết hạn mức
     try {
-      if (url.pathname === '/api/health') return json({ai: open && !!(env.ANTHROPIC_API_KEY || env.GEMINI_API_KEY), stt, vision});
+      if (url.pathname === '/api/health') return json({ai: claude || cf, provider: claude ? 'claude' : cf ? 'cf' : null, stt, vision});
       if (url.pathname === '/api/vision' && req.method === 'POST') {
         if (!vision) return json({error: 'AI nhìn cảnh đang tắt'}, 503);
         if (env.STT_LIMIT) {
@@ -36,9 +40,15 @@ export default {
         return json(await transcribe(req, env, url));
       }
       if (url.pathname === '/api/ai' && req.method === 'POST') {
-        if (!open) return json({error: 'AI chưa bật'}, 503);
-        return json(await ai(await req.json(), env));
+        if (!claude && !cf) return json({error: 'AI chưa bật'}, 503);
+        if (env.STT_LIMIT) {
+          const {success} = await env.STT_LIMIT.limit({key: 'a:' + (req.headers.get('cf-connecting-ip') || 'x')});
+          if (!success) return json({error: 'Gửi quá nhanh — thử lại sau 1 phút'}, 429);
+        }
+        return json(await ai(await req.json(), env, url, req.headers.get('cf-connecting-ip') || 'x', claude, cf));
       }
+      // Xem chi tiêu Claude hôm nay (chỉ số tổng, không có dữ liệu khách)
+      if (url.pathname === '/api/ai-usage' && env.AI_GATE) return env.AI_GATE.get(env.AI_GATE.idFromName(GATE_NAME), {locationHint: 'enam'}).fetch('https://gate.internal/usage');
       if (url.pathname.startsWith('/api/')) return json({error: 'Không có route này'}, 404);
     } catch (e) {
       return json({error: String(e.message || e).slice(0, 300)}, 500);
@@ -129,6 +139,32 @@ Trả JSON: {"nhan": "tên cảnh 1–4 chữ tiếng Việt có dấu, cụ th�
   return {tags};
 }
 
+// ---------- AI miễn phí của Cloudflare (Workers AI) ----------
+// mode 'highlight': chọn CỤM CHỮ ĐIỂM NHẤN từ lời nói (máy khách kiểm lại: chữ phải có trong lời, số do bộ dựng tự làm)
+// mode 'edit': hiểu câu nhắn sửa → ops (cùng luật với Claude)
+const CF_MODELS = ['@cf/meta/llama-4-scout-17b-16e-instruct', '@cf/openai/gpt-oss-120b', '@cf/qwen/qwen3-30b-a3b-fp8', '@cf/mistralai/mistral-small-3.1-24b-instruct', '@cf/google/gemma-3-12b-it'];
+const CF_DEFAULT = '@cf/meta/llama-4-scout-17b-16e-instruct';
+async function cfChat(env, model, system, user, max = 1600) {
+  let text = '';
+  if (model.includes('gpt-oss')) {
+    const r = await env.AI.run(model, {instructions: system, input: user, reasoning: {effort: 'low'}, max_output_tokens: max});
+    text = (r.output || []).filter((o) => o.type === 'message').flatMap((o) => o.content || []).map((c) => c.text || '').join('') || r.output_text || r.response || '';
+  } else {
+    const r = await env.AI.run(model, {messages: [{role: 'system', content: system}, {role: 'user', content: user}], max_tokens: max, temperature: 0.25, response_format: {type: 'json_object'}});
+    text = typeof r.response === 'string' ? r.response : JSON.stringify(r.response || '');
+  }
+  text = String(text).replace(/<think>[\s\S]*?<\/think>/g, '');
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('AI trả lời không đúng dạng');
+  return JSON.parse(m[0]);
+}
+const HL_SYS = `Bạn là biên tập viên video ngắn (TikTok/Reels) tiếng Việt. Từ lời người nói (mỗi dòng: [giây] câu), chọn các CỤM CHỮ ĐIỂM NHẤN để hiện to trên video.
+LUẬT:
+- "main": lấy NGUYÊN VĂN 1–4 từ có trong lời nói (được bỏ từ đệm), tối đa 18 ký tự, VIẾT HOA. Ưu tiên: lợi ích chính, đặc điểm nổi bật, từ gây tò mò, lời kêu gọi. KHÔNG chọn con số/giá (đã có bộ khác làm). KHÔNG bịa chữ không có trong lời.
+- "lead": 1–3 từ nhỏ phía trên, lấy từ ngay trước cụm trong lời nói (có thể để trống "").
+- "start": số giây của câu chứa cụm (lấy đúng số trong ngoặc vuông của câu đó).
+- Các cụm cách nhau tối thiểu GAP giây; chọn tối đa COUNT cụm; không chọn ở 2 giây đầu và 4 giây cuối.
+Chỉ trả JSON: {"items":[{"start":0,"lead":"","main":""}]}`;
 // ---------- Claude dựng / sửa ----------
 const ICON_LIST = 'house|pin|ruler|tag|doc|school|sofa|car|tree|star|bed|key|heart|fire|check|bulb|chat|thumb|clock|cart|gift|truck|food|coffee|book|chart|camera|plane';
 const GENRE_RULES = {
@@ -171,33 +207,111 @@ LUẬT BẮT BUỘC:
 Chỉ trả JSON, không giải thích thêm.`;
 }
 
-async function ai(body, env) {
-  const prompt = body.mode === 'plan'
-    ? `Chế độ: plan (dựng từ đầu). Dự án:\n${JSON.stringify(body.project)}`
-    : `Chế độ: edit. Khách nhờ: "${String(body.instruction || '').slice(0, 500)}"${body.target ? `\nMục khách đang chọn (target): ${body.target}` : ''}\nDự án:\n${JSON.stringify(body.project)}`;
-  let text = '';
-  if (env.ANTHROPIC_API_KEY) {
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json'},
-      body: JSON.stringify({model: env.ANTHROPIC_MODEL || 'claude-haiku-5-5', max_tokens: 4000, system: systemPrompt(body.project), messages: [{role: 'user', content: prompt}]}),
-    });
-    const j = await r.json();
-    if (!r.ok) throw new Error('Claude: ' + (j.error?.message || r.status));
-    text = (j.content || []).map((c) => c.text || '').join('');
-  } else if (env.GEMINI_API_KEY) {
-    const model = env.GEMINI_MODEL || 'gemini-2.5-flash';
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: {'content-type': 'application/json'},
-      body: JSON.stringify({systemInstruction: {parts: [{text: systemPrompt(body.project)}]}, contents: [{role: 'user', parts: [{text: prompt}]}], generationConfig: {responseMimeType: 'application/json'}}),
-    });
-    const j = await r.json();
-    if (!r.ok) throw new Error('Gemini: ' + (j.error?.message || r.status));
-    text = j.candidates?.[0]?.content?.parts?.map((x) => x.text).join('') || '';
-  } else throw new Error('Chưa có khoá AI');
-  const m = text.match(/\{[\s\S]*\}/);
-  if (!m) throw new Error('AI trả lời không đúng dạng');
-  const out = JSON.parse(m[0]);
-  return {note: out.note || '', reply: out.reply || '', ops: Array.isArray(out.ops) ? out.ops.slice(0, 120) : []};
+// ---------- Gọi AI hiểu lời: Claude (qua trạm Mỹ, có giới hạn) → không được thì AI miễn phí của Cloudflare ----------
+function buildPrompt(body) {
+  if (body.mode === 'highlight') {
+    const lines = (Array.isArray(body.phrases) ? body.phrases : []).slice(0, 150).map(([s, t]) => `[${(+s).toFixed(1)}] ${String(t).slice(0, 200)}`).join('\n');
+    const count = Math.max(1, Math.min(20, +body.count || 5));
+    const gap = Math.max(1.5, Math.min(10, +body.gap || 4));
+    const system = HL_SYS.replace('COUNT', count).replace('GAP', gap) + (body.genre ? `\nThể loại video: ${String(body.genre).slice(0, 200)}.` : '');
+    return {system, user: `Lời người nói:\n${lines}`, max: 1200, count};
+  }
+  const proj = JSON.stringify(body.project).slice(0, 120000); // giữ prompt < 100k token (Haiku 5.5 trên 100k token giá ×5)
+  const user = body.mode === 'plan'
+    ? `Chế độ: plan (dựng từ đầu). Dự án:\n${proj}`
+    : `Chế độ: edit. Khách nhờ: "${String(body.instruction || '').slice(0, 500)}"${body.target ? `\nMục khách đang chọn (target): ${body.target}` : ''}\nDự án:\n${proj}`;
+  return {system: systemPrompt(body.project), user, max: 4000};
+}
+async function ai(body, env, url, ip, claude, cf) {
+  const {system, user, max, count} = buildPrompt(body);
+  let out = null;
+  let provider = '';
+  let note = '';
+  if (claude) {
+    try {
+      out = await claudeJson(env, system, user, max, ip);
+      provider = 'claude';
+    } catch (e) {
+      note = String(e.message || e).slice(0, 200);
+      console.log('Claude không dùng được, chuyển AI Cloudflare:', note);
+    }
+  }
+  if (!out && cf) {
+    const model = CF_MODELS.includes(url.searchParams.get('model')) ? url.searchParams.get('model') : CF_DEFAULT;
+    out = await cfChat(env, model, system, user, Math.min(max, 2500));
+    provider = model;
+  }
+  if (!out) throw new Error(note || 'AI chưa bật');
+  if (body.mode === 'highlight') return {items: Array.isArray(out.items) ? out.items.slice(0, count + 3) : [], provider, fallback: note || undefined};
+  return {note: out.note || '', reply: out.reply || '', ops: Array.isArray(out.ops) ? out.ops.slice(0, 120) : [], provider, fallback: note || undefined};
+}
+async function claudeJson(env, system, user, max, ip) {
+  const req = {system, user, max, ip};
+  let j;
+  if (env.AI_GATE) {
+    const stub = env.AI_GATE.get(env.AI_GATE.idFromName(GATE_NAME), {locationHint: 'enam'});
+    const r = await stub.fetch('https://gate.internal/', {method: 'POST', body: JSON.stringify(req)});
+    j = await r.json();
+  } else j = await callClaude(env, req);
+  if (j.error) throw new Error(j.error);
+  const m = String(j.text || '').match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('Claude trả lời không đúng dạng');
+  return JSON.parse(m[0]);
+}
+async function callClaude(env, {system, user, max}) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json'},
+    // Haiku 5.5: KHÔNG gửi temperature/top_p/top_k (bị từ chối), không điền sẵn lượt trả lời
+    body: JSON.stringify({model: env.ANTHROPIC_MODEL || 'claude-haiku-5-5', max_tokens: max, system, messages: [{role: 'user', content: user}]}),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) return {error: 'Claude: ' + (j.error?.message || r.status)};
+  if (j.stop_reason === 'refusal') return {error: 'Claude từ chối yêu cầu này', usage: j.usage};
+  const text = (j.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
+  if (!text) return {error: j.stop_reason === 'max_tokens' ? 'Claude trả lời quá dài' : 'Claude không trả lời', usage: j.usage};
+  return {text, usage: j.usage};
+}
+
+// Trạm gọi Claude CỐ ĐỊNH ở Mỹ (Durable Object, locationHint 'enam') + sổ chi tiêu:
+//  • mạng Việt Nam hay đi qua điểm Cloudflare Hồng Kông, Anthropic chặn yêu cầu từ đó (bài học Vị Trí Studio 25/10)
+//  • đếm lượt mỗi IP mỗi ngày (AI_IP_DAY, mặc định 40) và tiền cả ngày (AI_DAY_USD, mặc định 1 USD) — vượt thì trả lỗi,
+//    máy chủ tự chuyển sang AI miễn phí của Cloudflare. Giá Haiku 5.5: 0,10 / 0,50 USD mỗi triệu token vào/ra (prompt ≤ 100k token).
+//  • Chặn cứng cuối cùng vẫn là hạn mức chi tiêu đặt trong tài khoản Anthropic (Giang tự đặt).
+const GATE_NAME = 'ai-gate-us-1';
+export class AiGate {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+  }
+  async fetch(req) {
+    const url = new URL(req.url);
+    const st = this.state.storage;
+    const today = new Date().toISOString().slice(0, 10);
+    let day = (await st.get('day')) || {d: today, usd: 0, n: 0};
+    if (day.d !== today) {
+      await st.deleteAll(); // sang ngày mới: xoá sổ ngày cũ (cả số lượt từng IP)
+      day = {d: today, usd: 0, n: 0};
+    }
+    if (url.pathname === '/usage') return json({...day, limitUsd: +this.env.AI_DAY_USD || 1});
+    const body = await req.json();
+    const ipKey = 'ip:' + (body.ip || 'x');
+    const ipN = (await st.get(ipKey)) || 0;
+    if (day.usd >= (+this.env.AI_DAY_USD || 1)) return json({error: 'Hết hạn mức Claude hôm nay'});
+    if (ipN >= (+this.env.AI_IP_DAY || 40)) return json({error: 'Máy này đã dùng hết lượt Claude hôm nay'});
+    // giữ chỗ trước khi gọi (các yêu cầu chạy song song không vượt lượt)
+    await st.put(ipKey, ipN + 1);
+    day.n++;
+    await st.put('day', day);
+    const out = await callClaude(this.env, body);
+    const u = out.usage || {};
+    const big = (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0) > 100000;
+    const pin = +this.env.AI_PRICE_IN || (big ? 0.5 : 0.1);
+    const pout = +this.env.AI_PRICE_OUT || (big ? 2.5 : 0.5);
+    const cost = ((u.input_tokens || 0) * pin + (u.cache_creation_input_tokens || 0) * pin * 1.25 + (u.cache_read_input_tokens || 0) * pin * 0.1 + (u.output_tokens || 0) * pout) / 1e6;
+    const now = (await st.get('day')) || day;
+    now.usd = +(now.usd + cost).toFixed(6);
+    await st.put('day', now);
+    return json({...out, cost});
+  }
 }

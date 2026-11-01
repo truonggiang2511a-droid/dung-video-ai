@@ -490,3 +490,4 @@ kbd{display:inline-block;min-width:18px;padding:0 5px;margin:0 1px;border:1px so
 .fx-it small{font-size:11px;font-weight:600;white-space:nowrap}
 .fx-it.on{border-color:var(--acc);color:var(--acc)}
 #media h5{margin:14px 0 8px}
+.c-main .jt{position:absolute;left:0;top:0;bottom:0;z-index:2;width:12px;background:var(--acc);color:var(--ink);font-style:normal;font-size:9px;line-height:inherit;text-align:center;border-radius:0 4px 4px 0}

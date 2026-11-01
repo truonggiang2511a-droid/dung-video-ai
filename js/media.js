@@ -83,9 +83,21 @@ export async function ensurePlayable(file, onMsg, force = false) {
   if (!track) throw new Error(`File “${name}” không có hình hoặc định dạng lạ. Hãy chọn file video MP4/MOV.`);
   const codec = CODEC_NAME[track.codec] || track.codec || 'không rõ';
   if (!(await track.canDecode())) {
-    const tip = track.codec === 'hevc'
-      ? 'Video quay iPhone dạng HEVC (H.265) — trình duyệt này chưa đọc được. Cách nhanh: mở app bằng Safari hoặc Microsoft Edge; hoặc trên iPhone vào Cài đặt → Camera → Định dạng → chọn “Tương thích nhất” rồi quay lại.'
-      : `Trình duyệt này chưa đọc được video định dạng ${codec}. Hãy thử Safari, Edge hoặc Chrome bản mới, hoặc xuất lại video dạng MP4 (H.264).`;
+    let tip = `Trình duyệt này chưa đọc được video định dạng ${codec}. Hãy thử Safari, Edge hoặc Chrome bản mới, hoặc xuất lại video dạng MP4 (H.264).`;
+    if (track.codec === 'hevc') {
+      // Phân biệt: máy KHÔNG đọc được HEVC nói chung, hay chỉ không đọc được bản HDR 10-bit / 4K của iPhone
+      const str = (await track.getCodecParameterString().catch(() => '')) || '';
+      const hdr = (await track.hasHighDynamicRange?.().catch(() => false)) || /^(hvc1|hev1)\.2\./.test(str);
+      const big = Math.max(track.displayWidth || 0, track.displayHeight || 0) > 2000;
+      let basic = false;
+      try {
+        basic = typeof VideoDecoder !== 'undefined' && (await VideoDecoder.isConfigSupported({codec: 'hvc1.1.6.L120.B0', codedWidth: 1920, codedHeight: 1080})).supported === true;
+      } catch (e) {}
+      const kind = [hdr && 'HDR 10-bit', big && '4K'].filter(Boolean).join(', ');
+      tip = basic && kind
+        ? `Video quay iPhone dạng HEVC (H.265) ${kind} — máy này đọc được HEVC thường nhưng chưa đọc được bản ${kind}. Cách nhanh: trên iPhone vào Cài đặt → Camera → Quay video → TẮT “Video HDR” (và chọn 1080p) rồi quay lại cảnh này; hoặc mở app bằng Safari / Microsoft Edge.`
+        : `Video quay iPhone dạng HEVC (H.265)${kind ? ' ' + kind : ''} — trình duyệt này chưa đọc được. Cách nhanh: mở app bằng Microsoft Edge hoặc Safari; hoặc trên iPhone vào Cài đặt → Camera → Định dạng → chọn “Tương thích nhất” rồi quay lại.`;
+    }
     throw new Error(tip);
   }
   // giải mã được bằng WebCodecs nhưng thẻ <video> không hiện → đổi sang H.264 ngay trên máy
@@ -207,6 +219,7 @@ export async function analyzeAudio(blob, onProgress) {
     win,
     peaks: peaks.map((x) => Math.round((x / mx) * 100)),
     pcm16: Float32Array.from(pcm16),
+    voi: voicing(pcm16, win),
     duration: total,
   };
 }
@@ -248,33 +261,180 @@ export function levels(an, {hiK = [3.5, 8, 0.2], loK = [2, 4, 0.08]} = {}) {
   return {db, noise, speech, range, hi: noise + Math.max(hiK[0], Math.min(hiK[1], range * hiK[2])), lo: noise + Math.max(loK[0], Math.min(loK[1], range * loK[2]))};
 }
 
-// Tìm các khoảng lặng cần cắt (giây nguồn) — kiểu VAD 2 ngưỡng:
-//  - đo theo dB so với tiếng ồn nền của CHÍNH video này (yên tĩnh hay ngoài trời đều đúng)
-//  - ngưỡng cao để nhận chắc chắn có lời, ngưỡng thấp để nới hai đầu lời (âm đầu nhẹ, cuối câu xuống giọng không bị mất)
-//  - giữ 0,1 s trước lời và 0,15 s sau lời; chỉ cắt khoảng nghỉ ≥ 0,35 s (theo skill batdongsan-editor); bỏ tiếng lách cách lẻ
-export function findSilences(an, {min = 0.35, pre = 0.1, post = 0.15, hiK = [3.5, 8, 0.2], loK = [2, 4, 0.08]} = {}) {
+// Độ "có giọng" từng khung 20 ms (0…1): tự tương quan chuẩn hoá lớn nhất trong dải cao độ giọng người 70–400 Hz.
+// Tiếng Việt là tiếng có thanh điệu — MỌI âm tiết đều có nguyên âm hữu thanh → khung có cao độ rõ = có người nói,
+// còn xe chạy, gió, quạt, tiếng xì… gần như không có cao độ → không bị nhận nhầm là lời dù to.
+export function voicing(pcm16, win = 0.02) {
+  const n = Math.floor(pcm16.length / 2);
+  const x = new Float32Array(n);
+  let prev = 0;
+  let hp = 0;
+  let lp = 0;
+  for (let i = 0; i < n; i++) {
+    const v = (pcm16[2 * i] + pcm16[2 * i + 1]) / 2; // 8 kHz
+    hp = 0.92 * (hp + v - prev); // bỏ ù dưới ~100 Hz
+    prev = v;
+    lp += 0.5 * (hp - lp); // giữ phần dưới ~900 Hz (cao độ + formant 1)
+    x[i] = lp;
+  }
+  const hop = Math.round(8000 * win);
+  const M = 240;
+  const L0 = 20; // 400 Hz
+  const L1 = 114; // 70 Hz
+  const sq = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) sq[i + 1] = sq[i] + x[i] * x[i];
+  const F = Math.floor(n / hop);
+  const out = new Float32Array(F);
+  for (let f = 0; f < F; f++) {
+    const s = Math.max(0, f * hop + hop / 2 - (M + L1) / 2) | 0;
+    if (s + M + L1 >= n) break;
+    const e0 = sq[s + M] - sq[s];
+    if (e0 < 1e-9) continue;
+    let best = 0;
+    for (let L = L0; L <= L1; L++) {
+      let c = 0;
+      for (let k = 0; k < M; k++) c += x[s + k] * x[s + k + L];
+      if (c <= 0) continue;
+      const e1 = sq[s + L + M] - sq[s + L];
+      const r = c / Math.sqrt(e0 * e1 + 1e-12);
+      if (r > best) best = r;
+    }
+    out[f] = best;
+  }
+  return out;
+}
+
+// Tìm các khoảng lặng cần cắt (giây nguồn).
+// Có độ "có giọng" (an.voi) → VAD theo cao độ + ồn nền CỤC BỘ (±1,5 s): đúng cả ngoài đường, quán ồn, có quạt/ù điện.
+// Không có → VAD 2 ngưỡng theo dB như cũ.
+// words (lời chép Whisper, giây nguồn) nếu có: chữ được giữ chắc chắn; khoảng không có chữ ≥ 0,5 s thì bỏ qua tiếng nền có cao độ
+// (người khác nói, nhạc) nhỏ hơn giọng chính ≥ 8 dB.
+// pre/post: phần nghỉ giữ lại trước/sau lời (nhịp cắt: tự nhiên 0,12/0,18 · gọn 0,08/0,12 · rất gọn 0,05/0,08).
+export const CUT_PACE = {
+  natural: {label: 'Tự nhiên', min: 0.45, pre: 0.12, post: 0.18},
+  tight: {label: 'Gọn', min: 0.3, pre: 0.08, post: 0.12},
+  snappy: {label: 'Rất gọn', min: 0.22, pre: 0.05, post: 0.08},
+};
+export function findSilences(an, {min = 0.3, pre = 0.08, post = 0.12, hiK = [3.5, 8, 0.2], loK = [2, 4, 0.08], words = null, vt = 0.5, dbg = null} = {}) {
   const {rms, win} = an;
   const N = rms.length;
   if (!N) return [];
-  const {db, hi, lo} = levels(an, {hiK, loK});
-  // 1) vùng chắc chắn có lời: vượt ngưỡng cao; lan ra hai bên khi còn trên ngưỡng thấp
+  const {db, hi, lo, noise, speech} = levels(an, {hiK, loK});
   const sp = new Uint8Array(N);
-  for (let i = 0; i < N; i++) if (db[i] >= hi) sp[i] = 1;
-  for (let i = 1; i < N; i++) if (!sp[i] && sp[i - 1] && db[i] >= lo) sp[i] = 1;
-  for (let i = N - 2; i >= 0; i--) if (!sp[i] && sp[i + 1] && db[i] >= lo) sp[i] = 1;
-  // 2) bỏ mẩu "lời" quá ngắn mà không đủ to (tiếng gõ, lách cách): < 0,1 s và đỉnh < ngưỡng cao + 6 dB
-  for (let i = 0; i < N; ) {
-    if (!sp[i]) {
-      i++;
-      continue;
+  let voiOk = !!an.voi && an.voi.length > N * 0.8;
+  if (voiOk) {
+    const voi = an.voi;
+    // ồn nền cục bộ: phân vị 10% trong cửa sổ ±1,5 s (tính mỗi 5 khung)
+    const nl = new Float32Array(N);
+    const half = Math.round(1.5 / win);
+    for (let c = 0; c < N; c += 5) {
+      const arr = Array.from(db.slice(Math.max(0, c - half), Math.min(N, c + half))).sort((p, q) => p - q);
+      const v = Math.min(arr[Math.floor(arr.length * 0.1)] ?? noise, noise + 12);
+      nl.fill(v, c, Math.min(N, c + 5));
     }
-    let j = i;
-    let peak = -999;
-    while (j < N && sp[j]) peak = Math.max(peak, db[j++]);
-    if ((j - i) * win < 0.1 && peak < hi + 6) sp.fill(0, i, j);
-    i = j;
+    if (dbg) dbg.nl = nl;
+    // 1) lõi lời: cao độ rõ (≥ 0,62) chỉ cần to hơn ồn cục bộ 2,5 dB (câu nói nhỏ vẫn giữ);
+    //    cao độ vừa (≥ vt) phải to hơn ồn cục bộ 6 dB (tránh nhận nhầm tiếng nền)
+    const core = new Uint8Array(N);
+    for (let i = 0; i < N; i++) {
+      const v = voi[i] || 0;
+      if ((v >= 0.62 && db[i] >= Math.max(nl[i] + 2.5, noise + 2)) || (v >= vt && db[i] >= Math.max(nl[i] + 6, noise + 4))) core[i] = 1;
+    }
+    // 2) nới hai đầu lõi cho phụ âm đầu (≤ 0,2 s) và đuôi chữ xuống giọng (≤ 0,25 s) khi còn to hơn ồn cục bộ 3 dB
+    sp.set(core);
+    for (let i = 0; i < N; i++) {
+      if (!core[i] || (i > 0 && core[i - 1])) continue;
+      for (let k = 1; k <= Math.round(0.2 / win) && i - k >= 0 && !sp[i - k] && db[i - k] >= nl[i - k] + 3; k++) sp[i - k] = 1;
+    }
+    for (let i = N - 1; i >= 0; i--) {
+      if (!core[i] || (i < N - 1 && core[i + 1])) continue;
+      for (let k = 1; k <= Math.round(0.25 / win) && i + k < N && !sp[i + k] && db[i + k] >= nl[i + k] + 3; k++) sp[i + k] = 1;
+    }
+    // bỏ đốm "lời" lẻ < 0,1 s mà nhỏ hơn giọng chính ≥ 15 dB (tiếng động có cao độ thoáng qua)
+    for (let i = 0; i < N; ) {
+      if (!sp[i]) {
+        i++;
+        continue;
+      }
+      let j = i;
+      let pk = -999;
+      while (j < N && sp[j]) pk = Math.max(pk, db[j++]);
+      if ((j - i) * win < 0.1 && pk < speech - 15) sp.fill(0, i, j);
+      i = j;
+    }
+    // An toàn: phần to rõ của file mà phần lớn KHÔNG có cao độ giọng nói (nhạc, tiếng máy, giọng thì thầm, file thử) →
+    // không tin bộ nghe cao độ, quay về cách cắt theo độ lớn âm (không bao giờ cắt mất cả đoạn to)
+    let A = 0;
+    let S = 0;
+    for (let i = 0; i < N; i++) if (db[i] >= hi) A++, sp[i] && S++;
+    if (A * win > 1 && S < 0.5 * A) {
+      voiOk = false;
+      sp.fill(0);
+    }
+    if (dbg) dbg.voiced = A ? S / A : 1;
   }
-  // 3) khoảng không lời ≥ min → cắt, chừa đệm hai bên
+  if (voiOk) {
+    // 3) có lời chép: khoảng trống ≥ 0,5 s giữa 2 chữ → xoá "lời" nhỏ hơn giọng chính ≥ 8 dB (người khác nói, nhạc nền)
+    if (words?.length > 3) {
+      for (let k = -1; k < words.length; k++) {
+        const ga = k < 0 ? 0 : words[k].e;
+        const gb = k + 1 < words.length ? words[k + 1].s : N * win;
+        if (gb - ga < 0.5) continue;
+        // lề nhỏ vì bước cắt còn chừa đệm trước/sau lời (mốc Whisper hay SỚM ở đầu chữ → đã an toàn phía sau)
+        const i0 = Math.ceil((ga + 0.05) / win);
+        const i1 = Math.floor((gb - 0.02) / win);
+        for (let i = i0; i < i1; ) {
+          if (!sp[i]) {
+            i++;
+            continue;
+          }
+          let j = i;
+          let pk = -999;
+          while (j < i1 && sp[j]) pk = Math.max(pk, db[j++]);
+          if (pk < speech - 8) sp.fill(0, i, j);
+          i = j;
+        }
+      }
+      // chữ Whisper chắc chắn là lời (giữ phần lõi giữa chữ — mốc Whisper có thể lệch 0,3 s nên không nới)
+      for (const w of words) {
+        const m = (w.s + w.e) / 2;
+        const i0 = Math.floor(Math.max(w.s, m - 0.08) / win);
+        const i1 = Math.ceil(Math.min(w.e, m + 0.08) / win);
+        for (let i = Math.max(0, i0); i < Math.min(N, i1); i++) sp[i] = 1;
+      }
+    }
+    // 4) gộp lỗ < 0,15 s trong lời (âm tắc giữa chữ)
+    for (let i = 0; i < N; ) {
+      if (sp[i]) {
+        i++;
+        continue;
+      }
+      let j = i;
+      while (j < N && !sp[j]) j++;
+      if (i > 0 && j < N && (j - i) * win < 0.15) sp.fill(1, i, j);
+      i = j;
+    }
+  }
+  if (!voiOk) {
+    // 1) vùng chắc chắn có lời: vượt ngưỡng cao; lan ra hai bên khi còn trên ngưỡng thấp
+    for (let i = 0; i < N; i++) if (db[i] >= hi) sp[i] = 1;
+    for (let i = 1; i < N; i++) if (!sp[i] && sp[i - 1] && db[i] >= lo) sp[i] = 1;
+    for (let i = N - 2; i >= 0; i--) if (!sp[i] && sp[i + 1] && db[i] >= lo) sp[i] = 1;
+    // 2) bỏ mẩu "lời" quá ngắn mà không đủ to (tiếng gõ, lách cách): < 0,1 s và đỉnh < ngưỡng cao + 6 dB
+    for (let i = 0; i < N; ) {
+      if (!sp[i]) {
+        i++;
+        continue;
+      }
+      let j = i;
+      let peak = -999;
+      while (j < N && sp[j]) peak = Math.max(peak, db[j++]);
+      if ((j - i) * win < 0.1 && peak < hi + 6) sp.fill(0, i, j);
+      i = j;
+    }
+  }
+  if (dbg) dbg.sp = sp;
+  // khoảng không lời ≥ min → cắt, chừa đệm hai bên
   const out = [];
   for (let i = 0; i < N; ) {
     if (sp[i]) {
@@ -290,7 +450,8 @@ export function findSilences(an, {min = 0.35, pre = 0.1, post = 0.15, hiK = [3.5
     if (b - a >= min || isHead || isTail) {
       const ca = isHead ? 0 : a + post;
       const cb = isTail ? N * win + 1 : b - pre;
-      if (cb - ca > 0.12) out.push({a: ca, b: cb});
+      // bỏ quá ít (< 0,18 s) thì không cắt: được chẳng bao nhiêu mà thêm 1 cú nhảy hình
+      if (cb - ca >= (isHead || isTail ? 0.08 : 0.18)) out.push({a: ca, b: cb});
     }
     i = j;
   }

@@ -1,6 +1,7 @@
 // Chấm thuật toán cắt khoảng lặng bằng giọng nói tổng hợp có đáp án (test/../testmedia/gen)
 import fs from 'fs';
-import {findSilences, voiceFilter} from '../js/media.js';
+import {findSilences, voiceFilter, voicing, CUT_PACE} from '../js/media.js';
+import {retakeCuts, fillerCuts, mergeRanges} from '../js/ai.js';
 const G = '/home/claude/testmedia/gen/';
 function readWav(f) {
   const b = fs.readFileSync(f);
@@ -29,15 +30,35 @@ for (const name of process.argv.slice(2).length ? process.argv.slice(2) : ['spee
     for (let j = i; j < i + wl; j++) a += fx[j] * fx[j];
     rms.push(Math.sqrt(a / wl));
   }
-  const cuts = findSilences({rms, win}, process.env.OPT ? JSON.parse(process.env.OPT) : undefined);
-  // lời thật: khung 10 ms có năng lượng lời sạch > -55 dBFS
+  // 16 kHz mono như app (lấy trung bình 3 mẫu 48 kHz) → độ có giọng
+  const pcm16 = new Float32Array(Math.floor(x.length / 3));
+  for (let i = 0; i < pcm16.length; i++) pcm16[i] = (x[3 * i] + x[3 * i + 1] + x[3 * i + 2]) / 3;
+  const voi = process.env.OLD ? null : voicing(pcm16, win);
+  // WORDS=1: giả lập lời chép Whisper từ đáp án (mỗi câu = 1 “chữ”, đầu chữ sớm 0,3 s như Whisper hay lệch)
+  const t0 = JSON.parse(fs.readFileSync(G + name + '.json'));
+  // WORDS=2: chữ thật của từng câu (cả câu nói lại) rải đều theo thời gian câu → thử phát hiện câu nói lại
+  let words = process.env.WORDS ? t0.speech.map(([a, b]) => ({w: 'x', s: Math.max(0, a - 0.3), e: b})) : null;
+  if (process.env.WORDS === '2' && t0.all) {
+    words = [];
+    for (const [a, b, , txt] of t0.all) {
+      const ws = String(txt).split(/\s+/);
+      ws.forEach((w, i) => words.push({w, s: a + ((b - a) * i) / ws.length - (i === 0 ? 0.25 : 0), e: a + ((b - a) * (i + 0.85)) / ws.length}));
+    }
+  }
+  const pace = CUT_PACE[process.env.PACE || 'tight'];
+  const opt = {...pace, ...(process.env.OPT ? JSON.parse(process.env.OPT) : {}), words};
+  let cuts = findSilences({rms, win, voi}, process.env.OLD ? {} : opt);
+  if (words && process.env.WORDS === '2') cuts = mergeRanges([...cuts, ...retakeCuts(words, pace), ...fillerCuts(words, pace)]);
+  // lời thật: khung 10 ms có năng lượng lời sạch > ngưỡng (giọng máy: -55 dBFS; giọng người thật InfoRe có ồn phòng thu ~-50 dB → -42 dBFS)
+  const truth0 = JSON.parse(fs.readFileSync(G + name + '.json'));
+  const thr = Math.pow(10, (truth0.th ?? -55) / 20);
   const fl = Math.round(sr * 0.01);
   let clipped = 0, voiced = 0;
   const clipList = [];
   for (let i = 0; i + fl <= clean.length; i += fl) {
     let a = 0;
     for (let j = i; j < i + fl; j++) a += clean[j] * clean[j];
-    const v = Math.sqrt(a / fl) > 0.0018;
+    const v = Math.sqrt(a / fl) > thr;
     if (!v) continue;
     voiced += 0.01;
     const t = i / sr;
@@ -55,8 +76,17 @@ for (const name of process.argv.slice(2).length ? process.argv.slice(2) : ['spee
     if (b - a < 0.35) continue;
     let kept = 0;
     for (let t = a; t < b; t += 0.01) if (!cuts.some((c) => t >= c.a && t < c.b)) kept += 0.01;
-    leftover += Math.max(0, kept - 0.3);
+    leftover += Math.max(0, kept - (process.env.OLD ? 0.3 : pace.pre + pace.post + 0.05));
+    if (process.env.DETAIL) console.log(`   nghỉ ${a.toFixed(2)}–${b.toFixed(2)} (${(b - a).toFixed(2)} s) giữ ${kept.toFixed(2)} s`);
   }
+  const inCut = (a, b) => {
+    let k = 0;
+    for (let t = a; t < b; t += 0.01) if (cuts.some((c) => t >= c.a && t < c.b)) k += 0.01;
+    return k / Math.max(0.01, b - a);
+  };
+  const br = (truth.breaths || []).map(([a, b]) => inCut(a, b));
+  const rt = (truth.retakes || []).map(([a, b]) => inCut(a, b));
+  const extra = (rt.length ? ` | câu nói lại bị bỏ ${Math.round((rt.reduce((p, q) => p + q, 0) / rt.length) * 100)}%` : '') + (truth.breaths ? ` | tiếng thở bị cắt ${Math.round((br.reduce((p, q) => p + q, 0) / Math.max(1, br.length)) * 100)}%` : '');
   const cutTotal = cuts.reduce((s, c) => s + Math.min(c.b, x.length / sr) - c.a, 0);
-  console.log(`${name}: ${cuts.length} chỗ cắt, bỏ ${cutTotal.toFixed(2)} s | LỜI BỊ CẮT MẤT ${clipped.toFixed(2)} s / ${voiced.toFixed(1)} s ${clipList.length ? '@' + [...new Set(clipList.map((t) => Math.floor(t * 2) / 2))].join(',') : ''} | khoảng nghỉ dài còn sót ${leftover.toFixed(2)} s`);
+  console.log(`${name}: ${cuts.length} chỗ cắt, bỏ ${cutTotal.toFixed(2)} s | LỜI BỊ CẮT MẤT ${clipped.toFixed(2)} s / ${voiced.toFixed(1)} s ${clipList.length ? '@' + [...new Set(clipList.map((t) => Math.floor(t * 2) / 2))].join(',') : ''} | khoảng nghỉ dài còn sót ${leftover.toFixed(2)} s${extra}`);
 }

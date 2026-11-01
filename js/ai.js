@@ -1,5 +1,5 @@
 // AI dựng từ A–Z + sửa theo lời nói. Mọi thay đổi là "op" → con trỏ diễn lại trên timeline rồi mới áp vào dự án.
-import {analyzeAudio, findSilences, levels, wav16, thumbs} from './media.js';
+import {analyzeAudio, findSilences, levels, wav16, thumbs, CUT_PACE} from './media.js';
 import {duration, tlOfSrc, timelineWords, segStarts, clamp, ICONS} from './render.js';
 import {applyOp, describeOp, find, newText, uid, TYPE_OF} from './model.js';
 import {genreOf, formatOf} from './templates.js';
@@ -38,7 +38,7 @@ export const plain = (s) =>
     .replace(/đ/g, 'd');
 
 // ---------- Kiểm tra op do AI trả về ----------
-const OPS = new Set(['cut', 'split', 'add', 'update', 'remove', 'subs', 'cta', 'music', 'look']);
+const OPS = new Set(['cut', 'split', 'add', 'update', 'remove', 'subs', 'cta', 'music', 'look', 'segfx']);
 const TEXT_KEYS = ['start', 'dur', 'lead', 'main', 'sign', 'font', 'color', 'style', 'size', 'x', 'y', 'icon', 'kind', 'motion'];
 const BROLL_KEYS = ['start', 'dur', 'in', 'trans', 'src'];
 export function sanitizeOps(p, ops, target) {
@@ -83,6 +83,7 @@ export function sanitizeOps(p, ops, target) {
     if (o.op === 'cut' && isFinite(o.a) && isFinite(o.b) && o.b > o.a) out.push({op: 'cut', a: +o.a, b: +o.b});
     else if (o.op === 'split' && isFinite(o.T)) out.push(o);
     else if (['subs', 'cta', 'music', 'look'].includes(o.op)) out.push(o);
+    else if (o.op === 'segfx' && Number.isInteger(o.i) && p.main?.segs[o.i] && ['none', 'zoomin', 'whip', 'flash', 'shake', 'glitch'].includes(o.tr)) out.push({op: 'segfx', i: o.i, tr: o.tr});
   }
   return out;
 }
@@ -109,6 +110,14 @@ function priceText(num, unit) {
   if (unit === 'K' && v >= 1000) return `${viFmt(v / 1000)} TRIỆU`;
   return unit === 'K' || unit === 'Đ' ? `${num}${unit}` : `${num} ${unit}`;
 }
+// Mật độ chữ điểm nhấn (khách chọn ở bảng Video): numGap = cách nhau tối thiểu giữa 2 cụm chữ số liệu,
+// every = 1 cụm chữ ý chính (không phải số) mỗi bao nhiêu giây video (0 = không thêm), gap = khoảng cách tối thiểu giữa mọi cụm chữ
+export const TEXT_DENSITY = {
+  it: {label: 'Ít', numGap: 4, every: 0, gap: 4},
+  vua: {label: 'Vừa', numGap: 2.2, every: 9, gap: 3},
+  nhieu: {label: 'Nhiều', numGap: 2.2, every: 4.5, gap: 2.2},
+};
+export const densityOf = (p) => TEXT_DENSITY[p.textDensity] || TEXT_DENSITY.vua;
 const NOUNS = /^(buoc|meo|cach|ly do|dieu|loai|mon|phong|tang|lau|ngay|thang|nam|phut|gio|nguoi|san pham|mau|size|cai|chiec|hop|goi|kg|km|lan|diem|sao)$/;
 export function numberLockups(p) {
   const g = p.genre || 'chung';
@@ -153,11 +162,12 @@ export function numberLockups(p) {
       out.push(newText(at, {lead: 'diện tích', main: `${num} X ${ws[i + 2]?.w || ''}`.toUpperCase(), color: '#ffc61a', icon: 'ruler', dur: 3.5}));
     }
   }
-  // không chồng nhau: cụm sau cách cụm trước ≥ 2,2 s; cụm trước tự rút ngắn để nhường chỗ
+  // không chồng nhau: cụm sau cách cụm trước ≥ 2,2 s (Ít: 4 s); cụm trước tự rút ngắn để nhường chỗ
   const keep = [];
+  const numGap = densityOf(p).numGap;
   for (const t of out) {
     const last = keep[keep.length - 1];
-    if (last && t.start - last.start < 2.2) {
+    if (last && t.start - last.start < numGap) {
       // giá quan trọng hơn: thay cụm trước nếu cụm trước không phải giá
       if (t.kind === 'price' && last.kind !== 'price') keep[keep.length - 1] = t;
       continue;
@@ -166,6 +176,105 @@ export function numberLockups(p) {
     keep.push(t);
   }
   return keep;
+}
+
+// ---------- Chữ ý chính (không phải số): AI chọn từ lời nói, máy kiểm lại ----------
+// Cụm lời trên timeline (đã cắt) để gửi AI: [[giây, câu], …]
+export function timelinePhrases(p) {
+  const ws = timelineWords(p);
+  const out = [];
+  let cur = null;
+  ws.forEach((w, i) => {
+    const prev = ws[i - 1];
+    if (!prev || /[.!?…]$/.test(prev.w) || w.s - prev.e > 0.6 || cur.n >= 18 || (cur.n >= 7 && /[,;:]$/.test(prev.w))) out.push((cur = {s: w.s, n: 0, t: []}));
+    cur.t.push(w.w);
+    cur.n++;
+  });
+  return out.map((x) => [+x.s.toFixed(1), x.t.join(' ')]);
+}
+const tok = (s) => plain(s).replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
+// Tìm cụm chữ trong lời (đúng thứ tự, liền nhau) gần mốc giây `near` → [vị trí chữ đầu, số chữ] trong mảng words
+function findRun(ws, toks, near, win) {
+  let best = null;
+  for (let i = 0; i < ws.length; i++) {
+    if (Math.abs(ws[i].s - near) > win) continue;
+    let ok = true;
+    for (let k = 0; k < toks.length; k++) if (tok(ws[i + k]?.w || '').join(' ') !== toks[k]) { ok = false; break; }
+    if (ok && (!best || Math.abs(ws[i].s - near) < Math.abs(ws[best].s - near))) best = i;
+  }
+  return best;
+}
+const KEY_COLORS = ['#ffffff', '#ffc61a', '#2ad46a', '#2fd2ff', '#ff5fb8'];
+// items AI trả về {start, lead, main} → cụm chữ (lấy lại đúng chữ có dấu từ lời chép, bỏ cụm có số / không có trong lời)
+export function keyLockups(p, items) {
+  const ws = timelineWords(p);
+  const D = duration(p);
+  const ctaLen = p.cta?.len || 4;
+  const out = [];
+  for (const it of items || []) {
+    const mt = tok(it.main).slice(0, 5);
+    if (!mt.length || mt.some((t) => /\d/.test(t))) continue;
+    const i = findRun(ws, mt, +it.start || 0, 8);
+    if (i === null) continue;
+    const at = ws[i].s;
+    if (at < 1.2 || at > D - ctaLen - 1.5) continue;
+    const main = ws.slice(i, i + mt.length).map((w) => w.w.replace(/[.,!?…:;"“”]/g, '')).join(' ').toUpperCase();
+    if (main.length < 2 || main.length > 22) continue;
+    // chữ dẫn nhỏ: chỉ giữ khi đúng là mấy chữ ngay trước cụm chính trong lời
+    let lead = '';
+    const lt = tok(it.lead).slice(0, 3);
+    if (lt.length && i >= lt.length && tok(ws.slice(i - lt.length, i).map((w) => w.w).join(' ')).join(' ') === lt.join(' ')) lead = ws.slice(i - lt.length, i).map((w) => w.w.replace(/[.,!?…:;"“”]/g, '')).join(' ').toLowerCase();
+    const endW = ws[i + mt.length - 1];
+    if (out.some((t) => t.main === main)) continue;
+    out.push(newText(+at.toFixed(2), {kind: 'key', lead, main, color: KEY_COLORS[out.length % KEY_COLORS.length], icon: '', dur: +clamp(endW.e - at + 1.6, 2, 3.2).toFixed(2)}));
+  }
+  return out; // giữ thứ tự ưu tiên của nguồn (mergeLockups lấy từ đầu danh sách)
+}
+// Không có AI: chọn cụm ý chính theo danh sách từ hay gặp trong video bán hàng / nhà đất / ẩm thực / kiến thức
+const KEY_PHRASES = {
+  chung: ['mien phi', 'bi mat', 'bi quyet', 'sai lam', 'quan trong', 'luu y', 'dac biet', 'tuyet voi', 'cuc ky', 'nhat dinh'],
+  bds: ['so hong rieng', 'chinh chu', 'ban gap', 'cat lo', 'hem xe hoi', 'full noi that', 'so hong', 'so do', 'ho boi', 'sinh loi', 'dong tien', 'ngan hang ho tro', 'vay ngan hang', 'trung tam', 'gan cho', 'noi that', 'view', 'phap ly', 'mat tien'],
+  banhang: ['chinh hang', 'bao hanh', 'freeship', 'mien phi giao hang', 'giao hang', 'doi tra', 'khuyen mai', 'giam gia', 'qua tang', 'so luong co han', 'ban chay', 'doc quyen', 'chat luong'],
+  amthuc: ['ngon', 'gion', 'dam da', 'thom', 'beo', 'tuoi', 'nong hoi', 'gia truyen', 'dac san', 'bi quyet', 'nuoc dung', 'nuoc cham'],
+  kienthuc: ['bi quyet', 'luu y', 'sai lam', 'quan trong', 'meo', 'cach', 'nguyen nhan', 'giai phap', 'ket qua', 'thuc te'],
+  vlog: ['tuyet voi', 'dep qua', 'bat ngo', 'lan dau', 'trai nghiem', 'dang thu', 'cuc ky'],
+};
+export function localKeys(p) {
+  const ws = timelineWords(p);
+  // thứ tự trong danh sách = độ quan trọng (cụm của thể loại trước, cụm chung sau)
+  const pri = [...(KEY_PHRASES[p.genre] || []), ...KEY_PHRASES.chung].map((x, rank) => ({t: x.split(' '), rank}));
+  const list = [...pri].sort((a, b) => b.t.length - a.t.length);
+  const items = [];
+  const used = new Set();
+  for (let i = 0; i < ws.length; i++) {
+    for (const {t: ph, rank} of list) {
+      if (ph.some((t, k) => tok(ws[i + k]?.w || '').join(' ') !== t)) continue;
+      const key = ph.join(' ');
+      if (used.has(key)) break;
+      used.add(key);
+      items.push({start: ws[i].s, lead: '', main: ws.slice(i, i + ph.length).map((w) => w.w).join(' '), rank});
+      i += ph.length - 1;
+      break;
+    }
+  }
+  return keyLockups(p, items.sort((a, b) => a.rank - b.rank));
+}
+// Gộp chữ số liệu + chữ ý chính theo mật độ: số liệu ưu tiên (giá > số khác > ý chính), cách nhau ≥ gap, tối đa D/every cụm ý chính
+export function mergeLockups(p, nums, keys) {
+  const den = densityOf(p);
+  const D = duration(p);
+  const maxKeys = den.every ? Math.max(1, Math.round(D / den.every)) : 0;
+  const all = [...nums];
+  let nk = 0;
+  for (const k of keys) {
+    if (nk >= maxKeys) break;
+    if (all.some((t) => Math.abs(t.start - k.start) < den.gap)) continue;
+    all.push(k);
+    nk++;
+  }
+  all.sort((a, b) => a.start - b.start);
+  for (let i = 0; i < all.length - 1; i++) if (all[i].start + all[i].dur > all[i + 1].start - 0.15) all[i].dur = +Math.max(1.5, all[i + 1].start - 0.15 - all[i].start).toFixed(2);
+  return all;
 }
 
 // ---------- Bộ dựng chuyên nghiệp (chạy trên máy, không cần AI máy chủ) ----------
@@ -197,7 +306,7 @@ export function brollKeys(src) {
 }
 export const brollTokens = (src) => brollKeys(src).map((x) => x.k);
 
-export function localPlan(p) {
+export function localPlan(p, {keys = null} = {}) {
   const D = duration(p);
   const ops = [];
   if (D < 1) return ops;
@@ -343,10 +452,16 @@ export function localPlan(p) {
     ops.push({op: 'add', list: 'broll', item: {id: uid('b'), src: o.c.x.id, start: +o.s.toFixed(2), dur, in: +Math.min(inn, Math.max(0, d - dur)).toFixed(2), trans, locked: false}});
   });
 
-  // chữ số liệu từ lời nói
-  numberLockups(p).forEach((t, i) => {
-    // chuyển động theo ý: giá → đóng dấu, diện tích/chiều dài → phóng ra, “3 bước/5 mẹo” → trượt vào, còn lại xen kẽ bật/nảy
-    t.motion = t.kind === 'price' ? 'stamp' : /M²|MÉT/.test(t.main) ? 'zoom' : /BƯỚC|MẸO|CÁCH|LÝ DO|ĐIỀU/.test(t.main) ? 'slide' : i % 2 ? 'bounce' : 'pop';
+  // chữ số liệu + chữ ý chính từ lời nói (mật độ theo khách chọn: Ít / Vừa / Nhiều)
+  const KEY_MOTIONS = ['spread', 'rise', 'pop', 'type'];
+  let nKey = 0;
+  mergeLockups(p, numberLockups(p), keys || localKeys(p)).forEach((t, i) => {
+    // chuyển động theo ý: giá → đóng dấu, diện tích/chiều dài → phóng ra, “3 bước/5 mẹo” → trượt vào, chữ ý chính → giãn/nhô/gõ, còn lại xen kẽ bật/nảy
+    if (t.kind === 'key') {
+      t.motion = KEY_MOTIONS[nKey % KEY_MOTIONS.length];
+      t.style = nKey % 3 === 2 ? 'box' : '3d';
+      nKey++;
+    } else t.motion = t.kind === 'price' ? 'stamp' : /M²|MÉT/.test(t.main) ? 'zoom' : /BƯỚC|MẸO|CÁCH|LÝ DO|ĐIỀU/.test(t.main) ? 'slide' : i % 2 ? 'bounce' : 'pop';
     ops.push({op: 'add', list: 'texts', item: t});
   });
 
@@ -377,6 +492,22 @@ export function localPlan(p) {
       tight = !tight;
     }
   });
+
+  // chuyển cảnh ngay chỗ cắt trên video chính (chỗ cắt không bị cảnh phụ che): ở đầu câu, cách nhau ≥ 5 s
+  const jumpOps = [];
+  const starts = segStarts(p);
+  const jl = st.jump || ['zoomin'];
+  let lastJ = 1.5;
+  for (let i = 1; i < starts.length; i++) {
+    const c = starts[i];
+    if (c - lastJ < 5 || c > D - ctaLen - 0.3) continue;
+    if (slots.some((o) => c > o.s - 0.1 && c < o.e + 0.1)) continue;
+    if (phrases.length && !sentAt(c) && !phrases.some((x) => Math.abs(x.s - c) < 0.35 && x.sent)) continue;
+    const tr = jl[jumpOps.length % jl.length];
+    jumpOps.push({op: 'segfx', i, tr, at: c});
+    lastJ = c;
+  }
+  ops.push(...jumpOps);
 
   // hình minh hoạ đúng lời nói (vd “giá” → túi tiền, “ngon” → mặt thưởng thức): tối đa 1 hình / 4,5 s, né cụm chữ
   const lks = ops.filter((o) => o.list === 'texts').map((o) => o.item);
@@ -414,6 +545,11 @@ export function localPlan(p) {
   }
   for (const t of lks) sfx(t.kind === 'price' ? 'cash' : 'pop', t.start + (t.kind === 'price' ? 0.05 : 0.1), t.kind === 'price' ? 0.45 : 0.4);
   for (const s of stks) sfx('bubble', s.start, 0.3);
+  const JUMP_SFX = {zoomin: ['whoosh', 0.28], whip: ['whip', 0.06], flash: ['shutter', 0.02], shake: ['thud', 0], glitch: ['glitch', 0]};
+  for (const j of jumpOps) {
+    const [k, lead] = JUMP_SFX[j.tr] || [];
+    if (k) sfx(k, Math.max(0, j.at - lead), 0.35);
+  }
   sfx('notify', Math.max(0, D - ctaLen + 0.1), 0.45);
 
   // màu video nhẹ theo thể loại (khách đã tự chỉnh màu thì giữ nguyên)
@@ -554,6 +690,17 @@ async function animateOne(ed, o, text) {
     cur.say('✂︎ ' + text);
     await cur.click();
     applyOp(p, o);
+    return;
+  }
+  if (o.op === 'segfx') {
+    const T = segStarts(p)[o.i] ?? 0;
+    await go(T + 0.2);
+    const pt = tl.pointAt('main', T);
+    await cur.moveTo(pt.x, pt.y, 420);
+    cur.say('✦ ' + text + ' · ' + ({zoomin: 'phóng vào', whip: 'lia nhanh', flash: 'loé sáng', shake: 'rung', glitch: 'nhiễu'}[o.tr] || ''));
+    await cur.click();
+    applyOp(p, o);
+    ed.seek(Math.max(0, T - 0.3));
     return;
   }
   if (o.op === 'add') {
@@ -700,24 +847,62 @@ export async function transcribeAll(p, an, onProgress) {
   });
 }
 
-// Video ồn (ngoài trời, nhạc nền): đo độ lớn khó tách lời → dùng lời chép tìm thêm khoảng nghỉ ≥ 0,9 s giữa 2 chữ,
-// chỉ cắt khi chỗ đó nhỏ tiếng hơn lời nói rõ rệt (giữ 0,25 s sau chữ trước, 0,15 s trước chữ sau)
-export function wordGapCuts(an, words, have) {
-  const lv = levels(an);
+// Gộp các đoạn cắt chồng / sát nhau (giây nguồn)
+export function mergeRanges(list) {
   const out = [];
-  const med = (a, b) => {
-    const v = lv.db.slice(Math.floor(a / an.win), Math.ceil(b / an.win)).sort((x, y) => x - y);
-    return v.length ? v[Math.floor(v.length / 2)] : 0;
-  };
-  for (let i = 0; i < words.length - 1; i++) {
-    const a = words[i].e + 0.25;
-    const b = words[i + 1].s - 0.15;
-    if (words[i + 1].s - words[i].e < 0.9 || b - a < 0.35) continue;
-    if (have.some((c) => a < c.b && b > c.a)) continue;
-    if (med(a, b) > lv.noise + lv.range * 0.45) continue;
-    out.push({a, b});
+  for (const r of [...list].sort((x, y) => x.a - y.a)) {
+    const last = out[out.length - 1];
+    if (last && r.a <= last.b + 0.02) last.b = Math.max(last.b, r.b);
+    else out.push({a: r.a, b: r.b, why: r.why});
   }
   return out;
+}
+const normW = (w) => plain(w).replace(/[^a-z0-9]/g, '');
+// cụm lời theo chỗ ngừng ≥ 0,35 s (giây nguồn)
+function sourcePhrases(words) {
+  const ph = [];
+  let cur = null;
+  for (const w of words) {
+    if (!cur || w.s - cur.e >= 0.35) {
+      cur = {s: w.s, e: w.e, ws: []};
+      ph.push(cur);
+    }
+    cur.e = w.e;
+    const t = normW(w.w);
+    if (t) cur.ws.push(t);
+  }
+  return ph;
+}
+// CÂU NÓI LẠI (nói vấp rồi nói lại từ đầu): cụm A là ĐẦU của cụm B ngay sau (≤ 4 s) → bỏ A, giữ lần nói sau
+export function retakeCuts(words, pace = CUT_PACE.tight) {
+  const ph = sourcePhrases(words);
+  const out = [];
+  for (let k = 0; k + 1 < ph.length; k++) {
+    const A = ph[k];
+    const B = ph[k + 1];
+    if (B.s - A.e > 4 || A.ws.length < 2 || B.ws.length <= A.ws.length) continue;
+    let miss = 0;
+    for (let i = 0; i < A.ws.length; i++) if (A.ws[i] !== B.ws[i]) miss++;
+    const ok = miss === 0 || (A.ws.length >= 5 && miss === 1 && A.ws[0] === B.ws[0] && A.ws[1] === B.ws[1]);
+    if (ok) out.push({a: Math.max(0, A.s - 0.02), b: Math.max(A.s, B.s - pace.pre), why: 'retake'});
+  }
+  return out;
+}
+// “ờ / à / ừm…” đứng riêng giữa 2 chỗ ngừng → bỏ
+const FILLERS = new Set(['o', 'a', 'u', 'um', 'om', 'ua', 'uh', 'hmm', 'hm', 'e', 'ay']);
+const FILLER_RAW = /^(ờ+|ơ+|à+|ừ+|ừm+|ờm+|ừa|ầy|ừ ừ|hmm+|um+|uh+|ơ hay)$/i;
+export function fillerCuts(words, pace = CUT_PACE.tight) {
+  const out = [];
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    const raw = String(w.w).trim().toLowerCase().replace(/[.,!?…]/g, '');
+    if (!FILLER_RAW.test(raw) || !FILLERS.has(normW(raw))) continue;
+    const gapL = i ? w.s - words[i - 1].e : 9;
+    const gapR = i + 1 < words.length ? words[i + 1].s - w.e : 9;
+    if (gapL < 0.2 || gapR < 0.2) continue;
+    out.push({a: Math.max(0, (i ? words[i - 1].e : 0) + pace.post), b: (i + 1 < words.length ? words[i + 1].s : w.e + 0.3) - pace.pre, why: 'filler'});
+  }
+  return out.filter((r) => r.b - r.a > 0.1);
 }
 
 // ---------- AI nhìn cảnh phụ: 1 ảnh ghép 3 khung / cảnh → nhãn tiếng Việt + từ khoá ----------
@@ -847,9 +1032,13 @@ export async function autoEdit(ed, log) {
   scan(null);
   if (an) {
     src.peaks = an.peaks;
-    let sil = findSilences(an);
-    const extra = words?.length > 8 ? wordGapCuts(an, words, sil) : [];
-    sil = [...sil, ...extra].sort((x, y) => x.a - y.a);
+    // khoảng lặng theo nhịp khách chọn (VAD theo cao độ giọng + lời chép Whisper) + câu nói lại + “ờ/à” đứng riêng
+    const pace = CUT_PACE[p.cutPace] || CUT_PACE.tight;
+    let sil = findSilences(an, {...pace, words: words?.length > 3 ? words : null});
+    const extra = words?.length > 3 ? [...retakeCuts(words, pace), ...fillerCuts(words, pace)] : [];
+    sil = mergeRanges([...sil, ...extra]);
+    const nRetake = extra.filter((x) => x.why === 'retake').length;
+    if (nRetake) log('nghe', 'run', `Phát hiện ${nRetake} câu nói lại — giữ lần nói sau`);
     const total = sil.reduce((a, s) => a + Math.min(s.b, src.duration) - s.a, 0);
     log('nghe', 'ok', `Tìm thấy ${sil.length} khoảng lặng (${total.toFixed(1).replace('.', ',')} giây)`);
     // 3. cắt — diễn từ cuối lên đầu để vị trí phía trước không xê dịch
@@ -881,20 +1070,30 @@ export async function autoEdit(ed, log) {
     cur.say('');
   }
   log('ke', 'run', 'Lên kịch bản dựng: cảnh phụ, chữ, hiệu ứng');
-  let ops = null;
-  if (h.ai) {
+  // AI (Claude, hoặc AI miễn phí Cloudflare khi Claude tắt/hết hạn mức) đọc lời nói và chọn CHỮ Ý CHÍNH;
+  // còn nhịp cắt, cảnh phụ, chuyển cảnh, zoom, âm thanh do bộ dựng chuyên nghiệp trên máy làm (đúng thời điểm, không tốn tiền)
+  let keys = null;
+  const den = densityOf(p);
+  if (h.ai && den.every && timelineWords(p).length > 8) {
     try {
-      const r = await api('ai', {mode: 'plan', template: p.template, genre: p.genre, project: compact(p)});
-      ops = sanitizeOps(p, r.ops);
-      log('ke', 'ok', r.note || `AI đề xuất ${ops.length} thao tác`);
+      ed.cur.show();
+      ed.cur.step = 'Bước 4/5';
+      const lane = document.querySelector('.tl-label[data-row="texts"]')?.getBoundingClientRect();
+      if (lane) ed.cur.jump(lane.right + 60, lane.top + lane.height / 2);
+      ed.cur.say('AI đọc lời nói, chọn chữ điểm nhấn…');
+      const count = Math.max(1, Math.round(duration(p) / den.every)) + 2;
+      const r = await api('ai', {mode: 'highlight', phrases: timelinePhrases(p), count, gap: den.gap, genre: genreOf(p).ai || genreOf(p).name});
+      keys = keyLockups(p, r.items);
+      const loc = localKeys(p).filter((k) => !keys.some((x) => Math.abs(x.start - k.start) < den.gap));
+      keys = [...keys, ...loc];
+      log('ke', 'run', `AI chọn ${keys.length - loc.length} chữ điểm nhấn`);
     } catch (e) {
-      log('ke', 'warn', 'AI máy chủ lỗi, dùng bộ dựng cơ bản: ' + e.message);
+      keys = null;
     }
+    ed.cur.say('');
   }
-  if (!ops) {
-    ops = localPlan(p);
-    log('ke', 'ok', `Bộ dựng cơ bản: ${ops.length} thao tác`);
-  }
+  const ops = localPlan(p, {keys});
+  log('ke', 'ok', `Kịch bản dựng: ${ops.length} thao tác`);
 
   // 5. diễn từng thao tác
   log('dung', 'run', 'Ghép cảnh phụ, thêm chữ, đẩy máy');
@@ -921,7 +1120,11 @@ export async function askAi(ed, text, target) {
       res = null;
     }
   }
-  if (!res) res = localCommand(p, text, target);
+  // AI không ra thao tác nào dùng được → thử bộ hiểu lệnh trên máy; vẫn không có thì giữ câu trả lời của AI (vd khách hỏi, không nhờ sửa)
+  if (!res || !res.ops.length) {
+    const loc = localCommand(p, text, target);
+    if (!res || loc.ops.length) res = loc;
+  }
   if (res.ops.length) {
     ed.history.push(p);
     await animateOps(ed, res.ops);

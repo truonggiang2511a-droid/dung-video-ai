@@ -26,10 +26,11 @@ const M = '/home/claude/testmedia/';
     const ts = (texts[i] || '').split(' ');
     ts.forEach((t, j) => words.push({w: t, s: +(a + ((bb - a) * j) / ts.length).toFixed(2), e: +(a + ((bb - a) * (j + 0.85)) / ts.length).toFixed(2)}));
   });
-  await p.evaluate(([ws, g]) => {
+  await p.evaluate(([ws, g, d]) => {
     if (ws.length) window.__dv.p.transcript = {words: ws};
     window.__dv.p.genre = g;
-  }, [process.env.NOWORDS ? [] : words, genre]);
+    if (d) window.__dv.p.textDensity = d; // DENSITY=it|vua|nhieu
+  }, [process.env.NOWORDS ? [] : words, genre, process.env.DENSITY || '']);
   await p.click('#btnAi');
   await p.waitForFunction(() => window.__dv.p.aiDone && !window.__dv.busy, null, {timeout: 180000});
   const r = await p.evaluate(() => {
@@ -42,9 +43,12 @@ const M = '/home/claude/testmedia/';
       cuts,
       broll: pp.broll.map((x) => ({name: pp.sources[x.src].name, s: x.start, e: +(x.start + x.dur).toFixed(2), in: x.in, trans: x.trans})),
       zooms: pp.zooms.map((z) => `${z.kind || 'ramp'} ${z.start}–${+(z.start + z.dur).toFixed(2)} ×${z.scale}`),
-      texts: pp.texts.map((t) => `${t.start} ${t.main}`),
+      texts: pp.texts.map((t) => `${t.start} ${t.kind === 'key' ? '[ý chính] ' : ''}${t.lead ? t.lead + ' · ' : ''}${t.main} (${t.motion}, ${t.style})`),
+      keysLocal: window.__ai.localKeys(pp).map((t) => `${t.start} ${t.main}`),
+      phrases: window.__ai.timelinePhrases(pp),
       stickers: (pp.stickers || []).map((t) => `${t.start} ${t.key} (${t.label}) ${t.motion}`),
       sfx: (pp.sfx || []).map((t) => `${t.start} ${t.sfx}`),
+      jumps: pp.main.segs.map((x, i) => (x.tr ? `${i}:${x.tr}` : '')).filter(Boolean),
       tags: Object.values(pp.sources).filter((x) => x.kind === 'broll').map((x) => `${x.name} → ${x.tag || '-'} (${x.tagBy || ''}) [${(x.keywords || []).join(', ')}]`),
     };
   });
@@ -57,7 +61,7 @@ const M = '/home/claude/testmedia/';
   const zs = r.zooms.map((z) => z.split(' ')[1].split('–').map(Number));
   const shown = r.cuts.filter((c) => !r.broll.some((x) => c > x.s - 0.15 && c < x.e + 0.15)).filter((c) => !zs.some(([a, b]) => Math.abs(a - c) < 0.06 || Math.abs(b - c) < 0.06)).length;
   console.log(JSON.stringify(r, null, 1));
-  console.log(`THỂ LOẠI ${genre} · D ${r.D}s · cảnh phụ ${r.broll.length} cú / ${usedClips} cảnh · chỗ cắt ${r.cuts.length} (che bằng cảnh phụ ${hidden}, lộ mà không có zoom giật ${shown}) · zoom ${r.zooms.length} · hình ${r.stickers.length} · âm thanh ${r.sfx.length} · đoạn đứng hình lâu nhất ${still.toFixed(2)}s · lỗi ${errs.length ? errs : 0}`);
+  console.log(`THỂ LOẠI ${genre} · D ${r.D}s · cảnh phụ ${r.broll.length} cú / ${usedClips} cảnh · chỗ cắt ${r.cuts.length} (che bằng cảnh phụ ${hidden}, lộ mà không có zoom giật ${shown}) · zoom ${r.zooms.length} · hình ${r.stickers.length} · chuyển cảnh chỗ cắt ${r.jumps.length} · âm thanh ${r.sfx.length} · đoạn đứng hình lâu nhất ${still.toFixed(2)}s · lỗi ${errs.length ? errs : 0}`);
   if (process.env.SHOT) {
     // ảnh khung có hình minh hoạ / chữ số liệu
     for (const t of String(process.env.SHOT).split(',')) {

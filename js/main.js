@@ -1,15 +1,15 @@
 // Điều khiển giao diện: màn Dự án + màn Editor (khung xem nhanh, timeline, sửa tay, AI).
-import {loadFonts, duration, COLORS, ICONS, FONTS, W, H, SUB_STYLES, TEXT_STYLES, TEXT_MOTIONS, TEXT_PRESETS, TRANSITIONS, FILTERS, applyLook, tlOfSrc, srcAt, drawFrame, setFormat} from './render.js';
+import {loadFonts, duration, COLORS, ICONS, FONTS, W, H, SUB_STYLES, TEXT_STYLES, TEXT_MOTIONS, TEXT_PRESETS, TRANSITIONS, FILTERS, JUMP_TRANS, applyLook, tlOfSrc, srcAt, segStarts as segStartsOf, drawFrame, setFormat} from './render.js';
 import {store} from './store.js';
 import {newProject, applyOp, History, find, newText, uid, ITEM_TYPES} from './model.js';
 import {SFX, SFX_MAP, playSfx} from './sfx.js';
 import {MOTIONS, searchLib, loadIndex} from './library.js';
 import {FONT_CATS, ensureFont, ensureProjectFonts} from './fonts.js';
-import {importFile, probeVideo, ensurePlayable, thumbs} from './media.js';
+import {importFile, probeVideo, ensurePlayable, thumbs, CUT_PACE} from './media.js';
 import {Player} from './player.js';
 import {Timeline} from './timeline.js';
 import {Cursor} from './cursor.js';
-import {autoEdit, askAi, aiHealth} from './ai.js';
+import {autoEdit, askAi, aiHealth, TEXT_DENSITY, localKeys, keyLockups, timelinePhrases, numberLockups} from './ai.js';
 import {installCard, canExport} from './install.js';
 import {GENRES, FORMATS, genreOf, migrate, rememberChoice} from './templates.js';
 
@@ -263,10 +263,21 @@ async function addFiles(kind, files) {
   }
   ed.busy = true;
   updateStage();
+  const bad = [];
+  let ok = 0;
   try {
     for (const f of files) {
       toast(`Đang nạp “${esc(f.name)}”…`, 120000);
-      const src = await importFile(p, f, kind, (m) => toast(esc(m), 120000));
+      let src;
+      try {
+        src = await importFile(p, f, kind, (m) => toast(esc(m), 120000));
+      } catch (e) {
+        // 1 file lỗi không làm hỏng cả lượt: các file khác vẫn được thêm
+        bad.push([f.name, e.message]);
+        if (kind === 'main') throw e;
+        continue;
+      }
+      ok++;
       if (kind === 'main') {
         ed.mainBad = false;
         p.main = {src: src.id, segs: [{in: 0, out: src.duration}]};
@@ -284,10 +295,14 @@ async function addFiles(kind, files) {
       }
     }
     await ed.player.attach(p, ed.getBlob);
-    toast(kind === 'main' ? 'Đã thêm video chính.' : kind === 'music' ? 'Đã thêm nhạc nền.' : `Đã thêm ${files.length} cảnh phụ.`);
+    if (!bad.length) toast(kind === 'main' ? 'Đã thêm video chính.' : kind === 'music' ? 'Đã thêm nhạc nền.' : `Đã thêm ${ok} cảnh phụ.`);
   } catch (e) {
+    if (!bad.length) bad.push([files[0]?.name || 'video', e.message]);
+  }
+  if (bad.length) {
     $('#toast').classList.remove('on');
-    dialog({title: 'Chưa thêm được video', body: `<p>${esc(e.message)}</p>`, ok: 'Đã hiểu', cancel: ''});
+    const head = ok ? `<p>Đã thêm ${ok} file. Chưa thêm được ${bad.length} file:</p>` : '';
+    dialog({title: bad.length > 1 || ok ? `Chưa thêm được ${bad.length} file` : 'Chưa thêm được video', body: head + bad.map(([n, m]) => `<p><b>${esc(n)}</b><br>${esc(m)}</p>`).join(''), ok: 'Đã hiểu', cancel: ''});
   }
   ed.busy = false;
   ed.changed(true, true);
@@ -475,7 +490,9 @@ function renderInspector() {
   } else if (s?.type === 'zoom' && it) {
     h = `<h4>${it.kind === 'punch' ? 'Zoom giật (che chỗ cắt)' : it.kind === 'push' ? 'Đẩy máy chậm' : 'Zoom đẩy máy'}</h4><label class="fl">Độ phóng <output>${Math.round((it.scale - 1) * 100)}%</output><input type="range" min="1.02" max="1.25" step="0.01" value="${it.scale}" data-num="scale"></label>`;
   } else if (s?.type === 'seg' && it) {
+    const si = +s.id;
     h = `<h4>Đoạn video chính</h4><p class="hint">Kéo hai đầu đoạn để lấy thêm / bớt hình. Bấm Tách để cắt tại đầu phát.</p>
+      ${si > 0 ? `<div class="fl"><span>Chuyển cảnh vào đoạn này</span><div class="chips">${JUMP_TRANS.map(([k, l]) => `<button class="chip-b${(it.tr || 'none') === k ? ' on' : ''}" data-segfx="${k}">${l}</button>`).join('')}</div></div>` : ''}
       <button class="btn ghost wide" data-act="split">${icon(I.split, 17)} Tách tại đầu phát</button>
       <button class="btn ghost wide" data-act="restore">Khôi phục mọi đoạn đã cắt</button>
       <div class="row2"><button class="btn ghost" data-act="replaceMain">${icon(I.film, 16)} Thay video</button><button class="btn ghost danger" data-act="removeMain">${icon(I.trash, 16)} Xoá video</button></div>`;
@@ -493,6 +510,8 @@ function renderInspector() {
         <button class="qa" data-act="subs">${icon(I.sub)}<span>Phụ đề</span></button>
       </div>
       <div class="fl"><span>Thể loại video <small class="muted">— AI dựng theo kiểu này</small></span><div class="chips">${Object.entries(GENRES).map(([k, g]) => `<button class="chip-b${p.genre === k ? ' on' : ''}" data-genre="${k}" title="${esc(g.desc)}">${g.label}</button>`).join('')}</div></div>
+      <div class="fl"><span>Nhịp cắt khoảng lặng <small class="fcount">AI cắt chỗ ngừng nói</small></span><div class="seg">${Object.entries(CUT_PACE).map(([k, v]) => `<button class="${(p.cutPace || 'tight') === k ? 'on' : ''}" data-pace="${k}">${v.label}</button>`).join('')}</div></div>
+      <div class="fl"><span>Chữ điểm nhấn <small class="fcount">số liệu, giá, ý chính</small></span><div class="seg">${Object.entries(TEXT_DENSITY).map(([k, v]) => `<button class="${(p.textDensity || 'vua') === k ? 'on' : ''}" data-density="${k}">${v.label}</button>`).join('')}</div></div>
       <div class="fl"><span>Khổ hình</span><div class="fmts">${Object.entries(FORMATS).map(([k, f]) => `<button class="fmt${p.format === k ? ' on' : ''}" data-format="${k}" title="${esc(f.note)}"><i style="aspect-ratio:${f.w}/${f.h}"></i><b>${k}</b><small>${esc(f.note.split(',')[0])}</small></button>`).join('')}</div></div>
       <label class="fl tog"><input type="checkbox" data-cta="on" ${p.cta?.on ? 'checked' : ''}> Đoạn kết kêu gọi (4 giây cuối)</label>
       ${p.cta?.on ? `<label class="fl">Chữ đoạn kết<input data-cta="text" value="${esc(p.cta.text)}" maxlength="30" placeholder="${esc(genreOf(p).cta)}"></label>` : ''}
@@ -578,6 +597,18 @@ function bindInspector() {
     if (g) return setGenre(g.dataset.genre);
     const fm = e.target.closest('[data-format]');
     if (fm) return setFormatOf(fm.dataset.format);
+    const sf = e.target.closest('[data-segfx]');
+    if (sf && ed.sel?.type === 'seg') return manual(() => applyOp(ed.p, {op: 'segfx', i: +ed.sel.id, tr: sf.dataset.segfx}), {lock: false});
+    const pc = e.target.closest('[data-pace]');
+    if (pc) {
+      manual(() => (ed.p.cutPace = pc.dataset.pace), {lock: false});
+      return toast(`Nhịp cắt: ${CUT_PACE[pc.dataset.pace].label}${ed.p.aiDone ? ' — bấm Dựng lại để AI cắt lại (không tốn lượt chép lời)' : ''}`);
+    }
+    const dn = e.target.closest('[data-density]');
+    if (dn) {
+      manual(() => (ed.p.textDensity = dn.dataset.density), {lock: false});
+      return toast(`Chữ điểm nhấn: ${TEXT_DENSITY[dn.dataset.density].label}${ed.p.aiDone ? ' — bấm Dựng lại để AI làm lại chữ' : ''}`);
+    }
     const ps = e.target.closest('[data-playsfx]');
     if (ps) return playSfx(ps.dataset.playsfx, selItem()?.vol ?? 0.6);
     const b = e.target.closest('[data-set],[data-subs-color],[data-subs-style],[data-subs-hl]');
@@ -791,6 +822,8 @@ async function runAuto() {
     p.broll = [];
     p.texts = [];
     p.zooms = [];
+    p.stickers = [];
+    p.sfx = [];
     p.aiDone = false;
   }
   ed.busy = true;
@@ -1032,6 +1065,8 @@ function renderMedia() {
       ${sl('amt', 'Độ mạnh màu')}
       <h5>Lớp phủ</h5>${sl('vignette', 'Tối 4 góc')}${sl('grain', 'Hạt phim')}${sl('leak', 'Loé sáng trôi')}
       <label class="fl tog"><input type="checkbox" data-look="bars" ${lk.bars ? 'checked' : ''}> Viền điện ảnh (2 dải đen)</label>
+      <h5>Chuyển cảnh ở chỗ cắt video chính</h5><div class="chips">${JUMP_TRANS.map(([k, l]) => `<button class="chip-b" data-alljump="${k}">${l}</button>`).join('')}<button class="chip-b" data-alljump="mix">Đa dạng</button></div>
+      <p class="hint" style="margin:-4px 0 12px">Áp mỗi ~5 giây một lần, chỗ cắt không bị cảnh phụ che.</p>
       <h5>Chuyển cảnh cho mọi cảnh phụ</h5><div class="chips">${TRANSITIONS.map(([k, l]) => `<button class="chip-b" data-alltrans="${k}">${l}</button>`).join('')}<button class="chip-b" data-alltrans="mix">Đa dạng</button></div>
       <p class="hint">${lk.by === 'ai' ? 'Màu hiện tại do AI chọn theo thể loại — bạn chỉnh thì AI không đổi nữa.' : 'Màu áp cho cả video chính và cảnh phụ, chữ giữ nguyên màu.'}</p>`;
     drawFxThumbs();
@@ -1558,6 +1593,7 @@ async function boot() {
   ed.cur = new Cursor();
   window.__dv = ed; // để kiểm thử (xem CLAUDE.md)
   window.__render = {drawFrame, TEXT_STYLES, TEXT_MOTIONS, setFormat};
+  window.__ai = {localKeys, keyLockups, timelinePhrases, numberLockups};
   bindInspector();
   bindStageDrag();
   bindDrop();
@@ -1620,6 +1656,24 @@ async function boot() {
     if (tp) insertPreset(+tp.dataset.preset);
     const lf = e.target.closest('[data-lookf]');
     if (lf) setLook({filter: lf.dataset.lookf});
+    const aj = e.target.closest('[data-alljump]');
+    if (aj && ed.p.main) {
+      const p = ed.p;
+      const st = segStartsOf(p);
+      const all = JUMP_TRANS.filter(([k]) => k !== 'none').map(([k]) => k);
+      let last = -9;
+      let n = 0;
+      manual(() => {
+        p.main.segs.forEach((s, i) => {
+          delete s.tr;
+          if (i === 0 || aj.dataset.alljump === 'none' || st[i] - last < 5 || p.broll.some((b) => st[i] > b.start - 0.1 && st[i] < b.start + b.dur + 0.1)) return;
+          s.tr = aj.dataset.alljump === 'mix' ? all[n % all.length] : aj.dataset.alljump;
+          last = st[i];
+          n++;
+        });
+      }, {lock: false});
+      toast(aj.dataset.alljump === 'none' ? 'Đã bỏ chuyển cảnh ở chỗ cắt' : `Đã thêm ${n} chuyển cảnh ở chỗ cắt`);
+    }
     const at = e.target.closest('[data-alltrans]');
     if (at && ed.p.broll.length) {
       const all = TRANSITIONS.filter(([k]) => k !== 'none' && k !== 'fade').map(([k]) => k);

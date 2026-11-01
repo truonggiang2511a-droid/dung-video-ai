@@ -255,6 +255,15 @@ export const TRANSITIONS = [
   ['flash', 'Loé sáng'],
   ['glitch', 'Nhiễu'],
 ];
+// chuyển cảnh ngay tại chỗ cắt trên VIDEO CHÍNH (không cần cảnh phụ)
+export const JUMP_TRANS = [
+  ['none', 'Không'],
+  ['zoomin', 'Phóng vào'],
+  ['whip', 'Lia nhanh'],
+  ['flash', 'Loé sáng'],
+  ['shake', 'Rung'],
+  ['glitch', 'Nhiễu'],
+];
 export const FILTERS = [
   ['none', 'Gốc'],
   ['bright', 'Sáng trong'],
@@ -1024,10 +1033,50 @@ export function drawFrame(ctx, p, T, frames, opt = {}) {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
 
-  // 1. video chính + zoom đẩy máy
-  const z = zoomAt(p, T);
+  // 1. video chính + zoom đẩy máy + chuyển cảnh ngay chỗ cắt (segs[i].tr = chuyển cảnh VÀO đoạn i)
+  let z = zoomAt(p, T);
+  let jx = 0;
+  let jy = 0;
+  let jflash = 0;
+  let jtr = null;
+  let jt = 9;
+  const at = p.main ? srcAt(p, T) : null;
+  if (at && at.i > 0 && p.main.segs[at.i]?.tr) {
+    jtr = p.main.segs[at.i].tr;
+    jt = at.t - p.main.segs[at.i].in;
+    if (jt < 0.35) {
+      if (jtr === 'zoomin') z *= 1 + 0.22 * (1 - easeOut(jt / 0.28));
+      else if (jtr === 'whip') jx = (1 - easeOut(jt / 0.2)) * W * 0.45;
+      else if (jtr === 'shake') {
+        const k = Math.max(0, 1 - jt / 0.3);
+        jx = Math.sin(jt * 70) * 30 * k;
+        jy = Math.cos(jt * 55) * 20 * k;
+        z *= 1 + 0.04 * k;
+      } else if (jtr === 'flash') jflash = Math.max(0, 1 - jt / 0.16) * 0.85;
+    }
+  }
   // giữ vùng mặt người nói (~38% chiều cao) đứng yên khi zoom, không phóng vào bụng
-  if (!drawCover(ctx, frames.main, z, 0, H * 0.12 * (z - 1)) && opt.placeholder) {
+  const dyFace = H * 0.12 * (z - 1);
+  if (jtr === 'whip' && jt < 0.2 && frames.main) {
+    // lia nhanh: vệt nhoè theo hướng chạy
+    ctx.save();
+    for (let k = 3; k >= 1; k--) {
+      ctx.globalAlpha = 0.22;
+      drawCover(ctx, frames.main, z, jx + k * W * 0.06 * (1 - jt / 0.2), dyFace);
+    }
+    ctx.restore();
+  }
+  if (jtr === 'glitch' && jt < 0.22 && frames.main) {
+    const n = 8;
+    for (let i = 0; i < n; i++) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, (H * i) / n, W, H / n + 1);
+      ctx.clip();
+      drawCover(ctx, frames.main, z, Math.sin(i * 5.1 + jt * 120) * W * 0.05 * (1 - jt / 0.22), dyFace);
+      ctx.restore();
+    }
+  } else if (!drawCover(ctx, frames.main, z, jx, dyFace + jy) && opt.placeholder) {
     ctx.fillStyle = '#1b2029';
     ctx.fillRect(0, 0, W, H);
   }
@@ -1130,6 +1179,7 @@ export function drawFrame(ctx, p, T, frames, opt = {}) {
   }
   // màu video + lớp phủ (áp lên cả video chính lẫn cảnh phụ, dưới chữ)
   applyLook(ctx, p.look, T);
+  flash = Math.max(flash, jflash);
   if (flash > 0) {
     ctx.save();
     ctx.globalAlpha = clamp(flash) * 0.9;

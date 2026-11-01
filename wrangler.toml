@@ -20,3 +20,12 @@ namespace_id = "2611011"
   [ratelimits.simple]
   limit = 30
   period = 60
+
+# Trạm gọi Claude cố định ở Mỹ + sổ hạn mức lượt/tiền mỗi ngày (worker.js AiGate)
+[[durable_objects.bindings]]
+name = "AI_GATE"
+class_name = "AiGate"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["AiGate"]

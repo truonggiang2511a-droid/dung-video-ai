@@ -188,7 +188,7 @@ export class Timeline {
               tiles += `<i style="left:${x}px;background-image:url(${src.thumbs[k]})"></i>`;
             }
           }
-          return clip('seg', String(i), starts[i], s.out - s.in, 'c-main', `<div class="tiles">${tiles}</div><span>${i === 0 ? esc(src.name) : ''}</span>`);
+          return clip('seg', String(i), starts[i], s.out - s.in, 'c-main', `<div class="tiles">${tiles}</div>${s.tr && i > 0 ? `<em class="jt" title="Chuyển cảnh">✦</em>` : ''}<span>${i === 0 ? esc(src.name) : ''}</span>`);
         })
         .join('');
     } else this.rows.main.innerHTML = '';

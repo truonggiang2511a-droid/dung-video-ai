@@ -21,6 +21,8 @@ export function newProject(name, opt = {}) {
     created: Date.now(),
     updated: Date.now(),
     template: 'mau1',
+    cutPace: 'tight', // nhịp cắt khoảng lặng: natural | tight | snappy (media.js CUT_PACE)
+    textDensity: 'vua', // chữ điểm nhấn: it | vua | nhieu (ai.js TEXT_DENSITY)
     sources: {},
     main: null, // {src, segs:[{in,out}]}
     broll: [],
@@ -122,6 +124,12 @@ export function applyOp(p, o) {
     case 'music':
       p.music = o.set ? Object.assign(p.music || {}, o.set) : null;
       break;
+    case 'segfx':
+      if (p.main?.segs[o.i]) {
+        if (!o.tr || o.tr === 'none') delete p.main.segs[o.i].tr;
+        else p.main.segs[o.i].tr = o.tr;
+      }
+      break;
     case 'look':
       p.look = Object.assign(p.look || {filter: 'none', amt: 0.6, vignette: 0, grain: 0}, o.set);
       break;
@@ -186,6 +194,8 @@ export function describeOp(p, o) {
       return o.set ? 'Chỉnh nhạc nền' : 'Bỏ nhạc nền';
     case 'cta':
       return 'Đoạn kết kêu gọi nhắn tin';
+    case 'segfx':
+      return 'Chuyển cảnh tại chỗ cắt';
     case 'look':
       return o.set.filter ? 'Đổi màu video' : 'Chỉnh hiệu ứng toàn video';
     default:
