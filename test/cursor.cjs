@@ -23,6 +23,7 @@ const M = '/home/claude/testmedia/';
   const t0 = Date.now();
   const samples = [];
   let shots = 0;
+  const seen = new Set();
   while (Date.now() - t0 < 240000) {
     const s = await p.evaluate(() => {
       const c = document.querySelector('.ai-cursor');
@@ -32,6 +33,7 @@ const M = '/home/claude/testmedia/';
     });
     samples.push({t: (Date.now() - t0) / 1000, ...s});
     if (s.on && shots < 4 && samples.filter((x) => x.on).length % 6 === 1) await p.screenshot({path: `test/cur-${w}-${shots++}.png`});
+    for (const k of ['Ghép', 'Zoom giật', 'Thêm chữ']) if (s.tip.includes(k) && !seen.has(k)) seen.add(k), await p.screenshot({path: `test/cur-${w}-${k.replace(/ /g, '')}.png`});
     if (s.done && !s.busy) break;
     await p.waitForTimeout(250);
   }

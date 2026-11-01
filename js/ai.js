@@ -497,6 +497,7 @@ async function animateOne(ed, o, text) {
       const src = p.sources[o.item.src];
       if (src?.thumbs?.[0]) ghost.style.backgroundImage = `url(${src.thumbs[0]})`;
       ghost.textContent = src?.name || '';
+      ghost.style.transform = `translate(${cur.x - 8}px, ${cur.y - 22}px)`;
       document.body.appendChild(ghost);
       const to = tl.pointAt('broll', T + 0.2);
       const x0 = cur.x;
