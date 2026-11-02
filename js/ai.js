@@ -1284,7 +1284,7 @@ export async function tagBrolls(ed, onEach) {
     for (const s of batch) {
       onEach?.(s, null);
       try {
-        const img = await contactSheet(await ed.getBlob(s.fileKey));
+        const img = await contactSheet(await ed.getBlob(s.proxyKey || s.fileKey));
         if (img) items.push({id: s.id, img});
       } catch (e) {}
     }

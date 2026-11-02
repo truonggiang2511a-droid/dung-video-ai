@@ -40,6 +40,7 @@ function probeAudio(blob) {
 
 // Trình duyệt có hiện được hình của video này không (vd. HEVC/H.265 của iPhone trên Chrome máy tính thường KHÔNG)
 function canShow(blob) {
+  if (globalThis.DV_NO_VIDEO_TAG) return Promise.resolve(false); // kiểm thử: giả máy không phát được file (như HEVC trên Chrome)
   return new Promise((res) => {
     const v = document.createElement('video');
     v.muted = true;
@@ -56,7 +57,7 @@ function canShow(blob) {
       v.load();
       res(ok);
     };
-    const t = setTimeout(() => fin(v.videoWidth > 0 && v.readyState >= 2), 12000);
+    const t = setTimeout(() => fin(v.videoWidth > 0 && v.readyState >= 2), 6000);
     v.onloadeddata = () => fin(v.videoWidth > 0);
     v.onerror = () => fin(false);
     v.src = url;
@@ -68,7 +69,7 @@ const CODEC_NAME = {hevc: 'HEVC (H.265)', avc: 'H.264', vp9: 'VP9', av1: 'AV1', 
 // Bảo đảm video phát được trong trình duyệt này; không được thì tự đổi sang H.264 (nếu máy giải mã được), không thì báo cách xử lý.
 // force = true: luôn đổi (nút “Sửa video” cho dự án cũ).
 // Bản đổi: khung gốc mỗi 1 giây (mặc định thư viện là 5 giây → tua rất chậm, xem nhanh bị khựng), cạnh dài tối đa 1920 (đủ cho xuất 1080p).
-export async function ensurePlayable(file, onMsg, force = false) {
+export async function ensurePlayable(file, onMsg, force = false, lazy = false) {
   const meta = await probeVideo(file).catch(() => null);
   if (!force && meta && meta.w > 0 && (await canShow(file))) return {file, meta};
   const m = await engine();
@@ -100,6 +101,12 @@ export async function ensurePlayable(file, onMsg, force = false) {
     }
     throw new Error(tip);
   }
+  // 2/11 (Giang: “bỏ video 4K HEVC lên là hiện hình luôn”): KHÔNG bắt khách chờ đổi định dạng — giữ FILE GỐC (xuất video lấy file gốc,
+  // giữ đủ chất lượng), hình xem trước giải mã từng khung bằng WebCodecs, bản xem nhanh 720p đổi chạy nền (makeProxy)
+  if (lazy) {
+    const dur = await input.computeDuration().catch(() => 0);
+    return {file, meta: {duration: dur || meta?.duration || 0, w: track.displayWidth || track.codedWidth, h: track.displayHeight || track.codedHeight}, proxy: true};
+  }
   // giải mã được bằng WebCodecs nhưng thẻ <video> không hiện → đổi sang H.264 ngay trên máy
   m.useAac();
   const dw = track.displayWidth || track.codedWidth;
@@ -120,8 +127,66 @@ export async function ensurePlayable(file, onMsg, force = false) {
   return {file: out, meta: meta2};
 }
 
+// BẢN XEM NHANH (proxy) cho video trình duyệt không phát được (4K HEVC HDR iPhone trên Chrome máy tính): H.264 chạy nền, chỉ để XEM —
+// xuất video vẫn lấy file gốc. Đo 2/11 (Chromium không GPU, 30 s 4K60): thu đúng 1/2 (cạnh dài 1920) 103 s · 1280 151 s · 960 300 s ·
+// ép 30 khung/giây CHẬM hơn (118 s) → 4K thu đúng 1/2, giữ số khung gốc. Thời gian gần như do giải mã 4K quyết định (phải giải mã đủ mọi khung).
+export async function makeProxy(blob, kind, onProgress, hold = {}) {
+  const m = await engine();
+  m.useAac();
+  const input = new m.Input({source: new m.BlobSource(blob), formats: m.ALL_FORMATS});
+  const track = await input.getPrimaryVideoTrack();
+  const dw = track.displayWidth || track.codedWidth;
+  const dh = track.displayHeight || track.codedHeight;
+  const big = Math.max(dw, dh);
+  const long = big >= 2560 ? Math.min(1920, big / 2) : Math.min(1280, big);
+  const k = Math.min(1, long / big);
+  const even = (x) => Math.max(2, Math.round(x / 2) * 2);
+  const video = {codec: 'avc', quality: m.QUALITY_MEDIUM, keyFrameInterval: 1};
+  if (k < 1) Object.assign(video, {width: even(dw * k), height: even(dh * k), fit: 'contain'});
+  const target = new m.BufferTarget();
+  const output = new m.Output({format: new m.Mp4OutputFormat({fastStart: 'in-memory'}), target});
+  const conv = await m.Conversion.init({input, output, video, audio: kind === 'main' ? {codec: 'aac'} : {discard: true}});
+  if (!conv.isValid) throw new Error('Máy này không tạo được bản xem nhanh');
+  conv.onProgress = (x) => onProgress?.(x);
+  hold.conv = conv;
+  await conv.execute();
+  return new File([target.buffer], 'xemnhanh.mp4', {type: 'video/mp4'});
+}
+// ảnh nhỏ timeline bằng WebCodecs (khi thẻ <video> không đọc được file)
+export async function mbThumbs(blob, n, height = 96) {
+  const m = await engine();
+  const input = new m.Input({source: new m.BlobSource(blob), formats: m.ALL_FORMATS});
+  const track = await input.getPrimaryVideoTrack();
+  const dur = await input.computeDuration();
+  const w = Math.max(2, Math.round((height * (track.displayWidth || 9)) / (track.displayHeight || 16)));
+  const sink = new m.CanvasSink(track, {width: w, height, fit: 'fill', poolSize: 1});
+  const keys = new m.EncodedPacketSink(track);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    // lấy đúng khung gốc gần nhất → chỉ giải mã 1 khung/ảnh (4K HEVC: giải mã tới giữa nhóm khung rất chậm)
+    let t = Math.min(dur - 0.05, ((i + 0.5) / n) * dur);
+    const kp = await keys.getKeyPacket(t, {metadataOnly: true}).catch(() => null);
+    if (kp) t = kp.timestamp;
+    const r = await sink.getCanvas(t);
+    if (r) out.push(r.canvas.toDataURL ? r.canvas.toDataURL('image/jpeg', 0.6) : await blobUrl(await r.canvas.convertToBlob({type: 'image/jpeg', quality: 0.6})));
+  }
+  return out;
+}
+const blobUrl = (b) => new Promise((r) => {
+  const fr = new FileReader();
+  fr.onload = () => r(fr.result);
+  fr.readAsDataURL(b);
+});
+
 // Chụp vài khung nhỏ để vẽ dải ảnh trên timeline
 export async function thumbs(blob, n, height = 96) {
+  try {
+    return await Promise.race([videoThumbs(blob, n, height), new Promise((_, j) => setTimeout(() => j(new Error('chậm')), 8000))]);
+  } catch (e) {
+    return mbThumbs(blob, n, height); // HEVC 4K iPhone trên Chrome máy tính: giải mã bằng WebCodecs
+  }
+}
+async function videoThumbs(blob, n, height = 96) {
   const v = document.createElement('video');
   v.muted = true;
   v.playsInline = true;
@@ -132,6 +197,10 @@ export async function thumbs(blob, n, height = 96) {
     v.onloadeddata = r;
     v.onerror = j;
   });
+  if (!v.videoWidth) {
+    URL.revokeObjectURL(url);
+    throw new Error('không có hình');
+  }
   const c = document.createElement('canvas');
   const w = Math.round((height * v.videoWidth) / v.videoHeight) || 54;
   c.width = w;
@@ -511,17 +580,24 @@ export async function importFile(p, file, kind, onMsg, extra = {}) {
   const isAudio = kind === 'music' || /^audio\//.test(file.type);
   let meta;
   if (isAudio) meta = await probeAudio(file);
-  else ({file, meta} = await ensurePlayable(file, onMsg));
+  let proxy = false;
+  const _t0 = performance.now();
+  if (!isAudio) ({file, meta, proxy} = await ensurePlayable(file, onMsg, false, !globalThis.DV_OLD_IMPORT));
   const id = uid('s');
   const fileKey = p.id + '/' + id;
+  const _t1 = performance.now();
   await store.putFile(fileKey, file);
+  if (proxy) console.info(`Nạp file: kiểm ${((_t1 - _t0) / 1000).toFixed(1)} s, lưu ${((performance.now() - _t1) / 1000).toFixed(1)} s`);
   const src = {id, kind, name: (file.name || 'video').replace(/\.[^.]+$/, ''), fileKey, duration: meta.duration, w: meta.w || 0, h: meta.h || 0, thumbs: [], peaks: null, mtime: file.lastModified || 0, ...extra};
+  if (proxy) src.proxy = 'pending';
+  const _t = performance.now(); // bản xem nhanh đổi chạy nền (main.js runProxies), file gốc giữ để xuất
   if (!isAudio) {
     try {
-      src.thumbs = await thumbs(file, kind === 'main' ? 14 : 1);
+      src.thumbs = proxy ? await mbThumbs(file, kind === 'main' ? 14 : 1) : await thumbs(file, kind === 'main' ? 14 : 1);
     } catch (e) {
       src.thumbs = [];
     }
+    if (proxy) console.info(`Ảnh timeline (WebCodecs): ${((performance.now() - _t) / 1000).toFixed(1)} s`);
   }
   p.sources[id] = src;
   return src;

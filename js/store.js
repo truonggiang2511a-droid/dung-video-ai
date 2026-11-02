@@ -50,7 +50,10 @@ export const store = {
   },
   async deleteProject(p) {
     await tx('projects', 'readwrite', (s) => req(s.delete(p.id)));
-    for (const src of Object.values(p.sources || {})) await this.deleteFile(src.fileKey);
+    for (const src of Object.values(p.sources || {})) {
+      await this.deleteFile(src.fileKey);
+      if (src.proxyKey) await this.deleteFile(src.proxyKey);
+    }
   },
   async putFile(key, blob) {
     return tx('files', 'readwrite', (s) => req(s.put(blob, key)));

@@ -24,6 +24,58 @@ function makeVideo(url, muted = true) {
   return el;
 }
 
+// KHUNG TĨNH khi trình duyệt không phát được file (4K HEVC iPhone trên Chrome máy tính) và bản xem nhanh còn đang đổi:
+// giải mã đúng 1 khung bằng WebCodecs mỗi lần tua (1 yêu cầu một lúc, yêu cầu mới thay yêu cầu cũ) → bỏ video lên là thấy hình
+class Still {
+  constructor(blob, long, onFrame) {
+    this.cv = document.createElement('canvas');
+    this.g = this.cv.getContext('2d');
+    this.ok = false;
+    this.want = null;
+    this.busy = false;
+    this.onFrame = onFrame;
+    this.ready = (async () => {
+      const m = await engine();
+      const input = new m.Input({source: new m.BlobSource(blob), formats: m.ALL_FORMATS});
+      const track = await input.getPrimaryVideoTrack();
+      const dw = track.displayWidth || track.codedWidth;
+      const dh = track.displayHeight || track.codedHeight;
+      const k = Math.min(1, long / Math.max(dw, dh));
+      this.cv.width = Math.max(2, Math.round(dw * k));
+      this.cv.height = Math.max(2, Math.round(dh * k));
+      this.sink = new m.CanvasSink(track, {width: this.cv.width, height: this.cv.height, fit: 'fill', poolSize: 1});
+    })().catch((e) => console.warn('Không giải mã được khung tĩnh', e));
+  }
+  at(t) {
+    if (this.shown != null && Math.abs(this.shown - t) < 0.02) return;
+    this.want = t;
+    if (!this.busy) this._run();
+  }
+  async _run() {
+    this.busy = true;
+    try {
+      await this.ready;
+      while (this.sink && this.want != null && !this.dead) {
+        const t = this.want;
+        this.want = null;
+        const r = await this.sink.getCanvas(Math.max(0, t));
+        if (r && !this.dead) {
+          this.g.drawImage(r.canvas, 0, 0, this.cv.width, this.cv.height);
+          this.ok = true;
+          this.shown = t;
+          this.onFrame();
+        }
+      }
+    } catch (e) {
+      console.warn('Khung tĩnh lỗi', e);
+    }
+    this.busy = false;
+  }
+  frame() {
+    return this.ok ? {img: this.cv, w: this.cv.width, h: this.cv.height} : null;
+  }
+}
+
 // Giải mã tiếng video chính thành 1 kênh 32 kHz để xem nhanh (xuất video vẫn dùng tiếng gốc chất lượng đầy đủ)
 async function decodePreviewAudio(blob) {
   const m = await engine();
@@ -85,6 +137,8 @@ export class Player {
     this.bufs = {}; // id nguồn → AudioBuffer (null = không có tiếng), undefined = đang giải mã
     this.holds = {}; // id nguồn → canvas giữ khung cuối
     this.imgs = {}; // id nguồn ảnh → {img: canvas đã thu nhỏ, w, h}
+    this.stills = {}; // id nguồn chưa có bản xem nhanh → Still (khung tĩnh WebCodecs)
+    this.onNeedProxy = null; // bấm phát khi video chính còn đang đổi bản xem nhanh
     this.T = 0;
     this.playing = false;
     this.boxes = [];
@@ -128,9 +182,18 @@ export class Player {
     ensureProjectFonts(p).then(() => (this.dirty = true));
     const want = new Set(Object.keys(p.sources));
     for (const id of Object.keys(this.urls)) if (!want.has(id)) this._drop(id);
+    this.getBlob = getBlob;
     for (const [id, src] of Object.entries(p.sources)) {
       if (this.urls[id]) continue;
-      const blob = await getBlob(src.fileKey);
+      if (src.proxy === 'pending' && src.kind !== 'music') {
+        // trình duyệt không phát được file gốc, bản xem nhanh đang đổi chạy nền → khung tĩnh giải mã từng khung
+        const blob = await getBlob(src.fileKey);
+        if (!blob || this.urls[id]) continue;
+        this.urls[id] = 'still';
+        this.stills[id] = new Still(blob, Math.max(W, H) * this.k * 1.2, () => (this.dirty = true));
+        continue;
+      }
+      const blob = await getBlob(src.proxyKey || src.fileKey);
       if (!blob) continue;
       const url = URL.createObjectURL(blob);
       this.urls[id] = url;
@@ -173,6 +236,12 @@ export class Player {
     const url = this.urls[id];
     if (!url) return;
     this.mainId = id;
+    if (url === 'still') {
+      // chưa có bản xem nhanh: không tạo thẻ video, không giải mã tiếng (đợi bản xem nhanh rồi reload)
+      this.mainOk = true;
+      this.mainErr = false;
+      return;
+    }
     this.mainOk = false;
     this.mainErr = false;
     this.mains = [makeVideo(url), makeVideo(url), makeVideo(url)];
@@ -202,7 +271,8 @@ export class Player {
     }, 8000);
     this.bufs[id] = undefined;
     try {
-      const blob = await getBlob(this.p.sources[id].fileKey);
+      const src = this.p.sources[id];
+      const blob = await getBlob(src.proxyKey || src.fileKey);
       const b = await decodePreviewAudio(blob);
       this._audioReady(id, b);
     } catch (e) {
@@ -234,7 +304,9 @@ export class Player {
       el.load();
       el.remove();
     }
-    if (this.urls[id]) URL.revokeObjectURL(this.urls[id]);
+    if (this.urls[id] && this.urls[id] !== 'still') URL.revokeObjectURL(this.urls[id]);
+    if (this.stills[id]) this.stills[id].dead = true;
+    delete this.stills[id];
     delete this.els[id];
     delete this.urls[id];
     delete this.bufs[id];
@@ -258,6 +330,20 @@ export class Player {
     this.mainId = null;
   }
 
+  // bản xem nhanh của 1 nguồn vừa xong → gỡ khung tĩnh, gắn lại bằng bản xem nhanh (giữ nguyên vị trí đang xem)
+  async reload(id) {
+    if (!this.p || !this.getBlob) return;
+    const wasMain = id === this.mainId;
+    this._drop(id);
+    if (wasMain) this.mainId = null;
+    await this.attach(this.p, this.getBlob);
+    this.dirty = true;
+  }
+  // video chính còn ở khung tĩnh (chưa có bản xem nhanh) → chưa phát được
+  get stillMain() {
+    return !!(this.mainId && this.stills[this.mainId]);
+  }
+
   detach() {
     this.pause();
     for (const id of Object.keys(this.urls)) this._drop(id);
@@ -267,6 +353,7 @@ export class Player {
     this.bufs = {};
     this.holds = {};
     this.imgs = {};
+    this.stills = {};
     this.p = null;
   }
 
@@ -438,6 +525,10 @@ export class Player {
   // ---------- điều khiển ----------
   play() {
     if (!this.p || !this.p.main) return;
+    if (this.stillMain) {
+      this.onNeedProxy?.();
+      return;
+    }
     if (this.T >= this.D - 0.05) this.T = 0;
     const ac = this._ctx();
     if (ac && ac.state !== 'running') ac.resume().catch(() => {});
@@ -628,7 +719,12 @@ export class Player {
   frames() {
     const p = this.p;
     const fr = {main: null, broll: {}};
-    if (p.main && this.active) {
+    const st = p.main && this.stills[p.main.src];
+    if (st) {
+      const at = srcAt(p, this.T);
+      if (at) st.at(at.t);
+      fr.main = st.frame();
+    } else if (p.main && this.active) {
       const el = this.active;
       const at = srcAt(p, this.T);
       const ok = el.readyState >= 2 && !el.seeking && at && el.seg === at.i;
@@ -637,6 +733,11 @@ export class Player {
     for (const b of activeBrolls(p, this.T)) {
       if (this.imgs[b.src]) {
         fr.broll[b.id] = this.imgs[b.src];
+        continue;
+      }
+      if (this.stills[b.src]) {
+        this.stills[b.src].at(b.in + (this.T - b.start));
+        fr.broll[b.id] = this.stills[b.src].frame();
         continue;
       }
       const el = this.els[b.src];
@@ -651,6 +752,7 @@ export class Player {
     const fr = {main: null, broll: {}};
     const h = p?.main && this.holds[p.main.src];
     if (h?.ok) fr.main = {img: h.cv, w: h.cv.width, h: h.cv.height};
+    else if (p?.main && this.stills[p.main.src]?.ok) fr.main = this.stills[p.main.src].frame();
     if (!fr.main && p?.main) return this.frames();
     return fr;
   }

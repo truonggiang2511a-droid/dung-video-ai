@@ -6,7 +6,7 @@ import {newProject, applyOp, History, find, newText, uid, ITEM_TYPES, syncAttach
 import {SFX, SFX_MAP, playSfx} from './sfx.js';
 import {MOTIONS, searchLib, loadIndex, pruneAnims} from './library.js';
 import {FONT_CATS, ensureFont, ensureProjectFonts} from './fonts.js';
-import {importFile, probeVideo, ensurePlayable, thumbs, CUT_PACE} from './media.js';
+import {importFile, probeVideo, ensurePlayable, thumbs, makeProxy, CUT_PACE} from './media.js';
 import {stockSearch, stockImport} from './stock.js';
 import {Player} from './player.js';
 import {Timeline} from './timeline.js';
@@ -216,9 +216,11 @@ async function openEditor(p) {
   history.replaceState(null, '', '#' + p.id);
   setTimeout(renderVars, 900);
   renderSkillBtn();
+  runProxies();
 }
 async function closeEditor() {
   ed.player.pause();
+  stopProxies();
   if (ed.p && !ed.p.main && !Object.keys(ed.p.sources).length) await store.deleteProject(ed.p);
   else if (ed.p) await store.saveProject(ed.p);
   ed.player.detach();
@@ -265,6 +267,9 @@ function renderStatus() {
       <button class="btn ghost xs" data-act="skip">${icon(I.ff, 14)} Tua nhanh</button><i class="st-bar" style="width:${Math.round((k / aiSteps.length) * 100 + 100 / aiSteps.length / 2)}%"></i>`;
   } else if (p.main && ed.mainBad) {
     h = `<span class="st-ic warn" aria-hidden="true">!</span><span class="st-t"><b>Video chính chưa hiện hình</b> (thường do video iPhone dạng HEVC).</span><button class="btn ai xs" data-act="fixMain">Sửa video</button>`;
+  } else if (px.job && p.sources[px.job]) {
+    const pct = Math.round(px.pct * 100);
+    h = `<span class="st-ic spin" aria-hidden="true"></span><span class="st-t"><b>Đang tạo bản xem nhanh ${esc(px.name)} ${pct}%</b>${px.left > 1 ? ` · còn ${px.left} video` : ''} — vẫn tua xem từng khung, bấm <b>AI dựng</b> được ngay.</span><i class="st-bar" style="width:${pct}%"></i>`;
   } else if (!p.main) {
     h = `<span class="st-t">Kéo thả video vào timeline, hoặc bấm <b>Thêm video chính</b> bên dưới.</span>`;
   } else if (!p.aiDone && !p.broll.length && !Object.values(p.sources).some((x) => x.kind === 'broll')) {
@@ -349,6 +354,70 @@ async function addFiles(kind, files) {
   }
   ed.busy = false;
   ed.changed(true, true);
+  runProxies();
+}
+
+// ---------- BẢN XEM NHANH CHẠY NỀN (2/11, Giang: “bỏ video 4K HEVC lên là hiện hình luôn”) ----------
+// File trình duyệt không phát được (src.proxy = 'pending') → vẫn thấy hình ngay bằng khung tĩnh (player Still), AI dựng chạy ngay
+// (chỉ cần tiếng); bản 720p30 đổi lần lượt ở nền, video chính trước. Xuất video luôn lấy file gốc.
+const px = {run: false, job: null, pct: 0, name: '', hold: null};
+async function runProxies() {
+  if (px.run) return;
+  px.run = true;
+  const p = ed.p;
+  try {
+    for (;;) {
+      if (ed.p !== p) break;
+      const list = Object.values(p.sources).filter((x) => x.proxy === 'pending' && (x.kind === 'main' || x.kind === 'broll'));
+      if (!list.length) break;
+      const src = list.find((x) => x.id === p.main?.src) || list[0];
+      px.job = src.id;
+      px.name = src.kind === 'main' ? 'video chính' : `cảnh “${src.name}”`;
+      px.pct = 0;
+      px.left = list.length;
+      renderStatus();
+      const t0 = performance.now();
+      try {
+        const blob = await ed.getBlob(src.fileKey);
+        px.hold = {};
+        let last = 0;
+        const file = await makeProxy(blob, src.kind, (x) => {
+          px.pct = x;
+          if (performance.now() - last > 400) {
+            last = performance.now();
+            renderStatus();
+          }
+        }, px.hold);
+        if (ed.p !== p || !p.sources[src.id]) break;
+        const key = src.fileKey + '#xn';
+        await store.putFile(key, file);
+        src.proxyKey = key;
+        src.proxy = 'ready';
+        console.info(`Bản xem nhanh ${src.name}: ${((performance.now() - t0) / 1000).toFixed(1)} s, ${(file.size / 1e6).toFixed(1)} MB`);
+        await store.saveProject(p);
+        await ed.player.reload(src.id);
+        if (src.kind === 'main') toast('Bản xem nhanh xong — bấm phát để xem.');
+      } catch (e) {
+        if (ed.p !== p) break;
+        console.warn('Không tạo được bản xem nhanh', e);
+        src.proxy = 'fail'; // không làm lại mãi; khách vẫn có nút Sửa video
+        if (src.kind === 'main') ed.mainBad = true;
+        await store.saveProject(p);
+      }
+    }
+  } finally {
+    px.run = false;
+    px.job = null;
+    px.hold = null;
+    if (ed.p) renderStatus();
+  }
+}
+function stopProxies() {
+  try {
+    px.hold?.conv?.cancel();
+  } catch (e) {
+    /* đã xong */
+  }
 }
 
 // Xoá hẳn video chính (cảnh phụ vẫn giữ trong kho để dùng lại)
@@ -381,10 +450,14 @@ async function fixMain() {
   ed.busy = true;
   updateStage();
   try {
+    stopProxies();
     const blob = await ed.getBlob(src.fileKey);
     const {file, meta} = await ensurePlayable(blob, (m) => toast(esc(m), 120000), true);
     await store.putFile(src.fileKey, file);
     Object.assign(src, {w: meta.w, h: meta.h});
+    if (src.proxyKey) store.deleteFile(src.proxyKey);
+    delete src.proxy;
+    delete src.proxyKey;
     try {
       src.thumbs = await thumbs(file, 14);
     } catch (e) {
@@ -2086,6 +2159,7 @@ async function boot() {
     $('#btnPlay').setAttribute('aria-label', on ? 'Tạm dừng' : 'Phát');
   };
   ed.player.onEnd = () => renderStatus();
+  ed.player.onNeedProxy = () => toast(`Đang tạo bản xem nhanh (${Math.round(px.pct * 100)}%) — xong là phát mượt. Trong lúc chờ vẫn tua xem từng khung, AI dựng được ngay.`, 4000);
   ed.player.onMainError = () => {
     ed.mainBad = true;
     renderStatus();
