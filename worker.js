@@ -190,6 +190,12 @@ NGOÀI RA:
 - "steps": CHỈ khi người nói LIỆT KÊ từ 2 bước / ý / điều cần kiểm tra / nguyên liệu liền nhau (vd "thứ nhất… thứ hai…", "bước 1… bước 2…", "cần thịt, trứng, nước dừa"): mỗi mục "start" = giây câu nói mục đó, "text" = 1–4 từ NGUYÊN VĂN trong lời (viết thường, không bịa). Tối đa 6 mục. "steps_title" = tiêu đề ≤ 22 ký tự VIẾT HOA (vd "3 BƯỚC MUA NHÀ"), số trong tiêu đề phải có trong lời hoặc đúng bằng số mục; không chắc thì "". "steps_kind": "buoc" | "kiemtra" | "nguyenlieu". Không có liệt kê thì "steps": [].
 - "versus": CHỈ khi người nói so sánh rõ cách SAI với cách ĐÚNG: {"start": giây câu nói cách sai, "sai": 2–5 từ NGUYÊN VĂN, "dung": 2–5 từ NGUYÊN VĂN}; không có thì null.
 Chỉ trả JSON: {"items":[{"start":0,"lead":"","main":""}],"hook":"","pack":"","pics":[{"start":0,"tu":""}],"place":"","sfx":[{"start":0,"key":""}],"stock":[{"start":0,"q":""}],"steps":[{"start":0,"text":""}],"steps_title":"","steps_kind":"buoc","versus":null}`;
+const BR_SYS = `Bạn là người dựng video ngắn tiếng Việt. Có lời người nói (mỗi dòng: [giây] câu) và danh sách CẢNH PHỤ (số: mô tả cảnh quay).
+Với MỖI cảnh phụ, chọn câu nói mà cảnh đó minh hoạ đúng nghĩa nhất (người nói nhắc tới đúng vật / phòng / món / hành động / không khí trong cảnh). "start" = giây của câu đó (đúng số trong ngoặc vuông).
+- Cảnh không hợp câu nào thì bỏ qua (không ép). Không chọn câu trong 2 giây đầu và 4 giây cuối.
+- Hai cảnh khác nhau không chọn cùng một câu trừ khi câu đó nhắc tới cả hai.
+- Ưu tiên khớp nghĩa (vd "chỗ nấu nướng rộng" ↔ cảnh bếp; "đón nắng" ↔ ban công; "lên xe" ↔ cảnh đường phố), không chỉ khớp chữ.
+Chỉ trả JSON: {"broll":[{"i":0,"start":0}]}`;
 // ---------- Claude dựng / sửa ----------
 const ICON_LIST = 'house|pin|ruler|tag|doc|school|sofa|car|tree|star|bed|key|heart|fire|check|bulb|chat|thumb|clock|cart|gift|truck|food|coffee|book|chart|camera|plane';
 const GENRE_RULES = {
@@ -245,6 +251,12 @@ function buildPrompt(body) {
     const system = HL_SYS.replace('COUNT', count).replace('GAP', gap).replace('PICS', Math.max(1, Math.round(dur / 6))).replace('SFXN', Math.max(1, Math.round(dur / 12))).replace('STOCKN', Math.max(1, Math.min(4, Math.round(dur / 15)))) + (body.genre ? `\nThể loại video: ${String(body.genre).slice(0, 200)}.` : '') + (packs ? `\nPHONG CÁCH:\n${packs}` : '');
     return {system, user: `Lời người nói:\n${lines}`, max: 2000, count};
   }
+  if (body.mode === 'broll') {
+    // GHÉP CẢNH PHỤ THEO NGHĨA: đọc lời + mô tả từng cảnh phụ (AI nhìn cảnh / khách gắn nhãn / tên file) → câu hợp nhất cho mỗi cảnh
+    const lines = (Array.isArray(body.phrases) ? body.phrases : []).slice(0, 150).map(([s, t]) => `[${(+s).toFixed(1)}] ${String(t).slice(0, 200)}`).join('\n');
+    const list = (Array.isArray(body.brolls) ? body.brolls : []).slice(0, 30).map((b, i) => `${i}: ${String(b.desc || '').slice(0, 160)}`).join('\n');
+    return {system: BR_SYS + (body.genre ? `\nThể loại video: ${String(body.genre).slice(0, 200)}.` : ''), user: `Lời người nói:\n${lines}\n\nCẢNH PHỤ:\n${list}`, max: 900};
+  }
   const proj = JSON.stringify(body.project).slice(0, 120000); // giữ prompt < 100k token (Haiku 5.5 trên 100k token giá ×5)
   const user = body.mode === 'plan'
     ? `Chế độ: plan (dựng từ đầu). Dự án:\n${proj}`
@@ -273,8 +285,9 @@ async function ai(body, env, url, ip, claude, cf) {
   if (!out) throw new Error(note || 'AI chưa bật');
   if (body.mode === 'highlight') {
     const arr = (x, n) => (Array.isArray(x) ? x.slice(0, n) : []);
-    return {items: arr(out.items, count + 3), hook: String(out.hook || '').slice(0, 40), pack: String(out.pack || '').slice(0, 30), place: String(out.place || '').slice(0, 40), pics: arr(out.pics, 30), sfx: arr(out.sfx, 15), stock: arr(out.stock, 6), provider, fallback: note || undefined};
+    return {items: arr(out.items, count + 3), hook: String(out.hook || '').slice(0, 40), pack: String(out.pack || '').slice(0, 30), place: String(out.place || '').slice(0, 40), pics: arr(out.pics, 30), sfx: arr(out.sfx, 15), stock: arr(out.stock, 6), steps: arr(out.steps, 8), steps_title: String(out.steps_title || '').slice(0, 30), steps_kind: String(out.steps_kind || '').slice(0, 12), versus: out.versus && typeof out.versus === 'object' ? {start: +out.versus.start || 0, sai: String(out.versus.sai || '').slice(0, 60), dung: String(out.versus.dung || '').slice(0, 60)} : null, provider, fallback: note || undefined};
   }
+  if (body.mode === 'broll') return {broll: (Array.isArray(out.broll) ? out.broll : []).slice(0, 30).map((x) => ({i: +x.i, start: +x.start})).filter((x) => x.i >= 0 && x.start >= 0), provider, fallback: note || undefined};
   return {note: out.note || '', reply: out.reply || '', ops: Array.isArray(out.ops) ? out.ops.slice(0, 120) : [], provider, fallback: note || undefined};
 }
 async function claudeJson(env, system, user, max, ip) {

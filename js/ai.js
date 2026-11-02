@@ -449,9 +449,12 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
     const ment = clips
       .map((c) => {
         // cảnh trám Pixabay: đặt đúng câu AI chọn (src.stockAt), không đoán theo từ khoá
-        if (typeof c.x.stockAt === 'number') {
-          const ph = phrases.filter((x) => x.s >= b0 - 0.3 && x.s < b1 - 1.2).sort((u, v) => Math.abs(u.s - c.x.stockAt) - Math.abs(v.s - c.x.stockAt))[0];
-          return {c, ph: ph && Math.abs(ph.s - c.x.stockAt) < 2.5 ? ph : null};
+        // cảnh AI ghép theo nghĩa (src.brollAt, Claude đọc lời + mô tả cảnh) — cũng đặt đúng câu đó
+        const at = typeof c.x.stockAt === 'number' ? c.x.stockAt : typeof c.x.brollAt === 'number' ? c.x.brollAt : null;
+        if (at !== null) {
+          const ph = phrases.filter((x) => x.s >= b0 - 0.3 && x.s < b1 - 1.2).sort((u, v) => Math.abs(u.s - at) - Math.abs(v.s - at))[0];
+          if (ph && Math.abs(ph.s - at) < 2.5) return {c, ph};
+          if (c.x.stockAt !== undefined) return {c, ph: null};
         }
         let ph = null;
         let best = 0;
@@ -1320,6 +1323,24 @@ export async function autoEdit(ed, log) {
     if (got) log('ke', 'ok', `AI đã nhận ra ${got} cảnh phụ`);
     cur.say('');
   }
+  // 4b. GHÉP CẢNH PHỤ THEO NGHĨA (Claude đọc lời + mô tả cảnh): chạy song song lúc chờ AI chọn chữ; hỏng thì về khớp từ khoá
+  const own = Object.values(p.sources).filter((s) => s.kind === 'broll' && !s.stock);
+  for (const s of own) delete s.brollAt;
+  let brReq = null;
+  if (h.ai && own.length && timelineWords(p).length > 8) {
+    const desc = (s) => [s.tag, ...(s.keywords || []), String(s.name || '').replace(/[_\-.]+/g, ' ')].filter(Boolean).join(' · ');
+    brReq = api('ai', {mode: 'broll', phrases: timelinePhrases(p), brolls: own.map((s) => ({desc: desc(s)})), genre: genreOf(p).ai || genreOf(p).name})
+      .then((r) => {
+        const D0 = duration(p);
+        let n = 0;
+        for (const x of r?.broll || []) {
+          const s = own[x.i];
+          if (s && x.start >= 1.5 && x.start < D0 - 3 && s.brollAt === undefined) (s.brollAt = +x.start), n++;
+        }
+        if (n) log('ke', 'run', `AI ghép ${n} cảnh phụ theo nghĩa câu nói`);
+      })
+      .catch(() => null);
+  }
   log('ke', 'run', 'Lên kịch bản dựng: cảnh phụ, chữ, hiệu ứng');
   // AI (Claude, hoặc AI miễn phí Cloudflare khi Claude tắt/hết hạn mức) đọc lời nói và chọn CHỮ Ý CHÍNH;
   // còn nhịp cắt, cảnh phụ, chuyển cảnh, zoom, âm thanh do bộ dựng chuyên nghiệp trên máy làm (đúng thời điểm, không tốn tiền)
@@ -1405,6 +1426,7 @@ export async function autoEdit(ed, log) {
   try {
     animBy = new Map(((await loadIndex('anim')).items || []).filter((x) => x.fk).map((x) => [x.fk, x.key]));
   } catch (e) {}
+  if (brReq) await Promise.race([brReq, new Promise((r) => setTimeout(r, 8000))]);
   const ops = localPlan(p, {keys, hook: extraAi.hook || '', pics: extraAi.pics, sfx: extraAi.sfx, place: extraAi.place || '', animBy, steps: extraAi.steps || null, versus: extraAi.versus || null});
   // AI TỰ KIỂM (chạy ngầm, không tốn tiền): dựng thử từng chữ → tràn khung / chồng thẻ / chìm nền / hình đè → tự đổi
   let fixes = [];
