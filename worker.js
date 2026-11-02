@@ -389,7 +389,9 @@ async function stockSearch(url, env) {
       ? {id: h.id, type: 'image', page: h.pageURL, user: h.user, tags: h.tags, thumb: h.previewURL, view: h.webformatURL, url: h.largeImageURL, w: h.imageWidth, h: h.imageHeight}
       : (() => {
           const v = h.videos || {};
-          const pick = v.small?.url ? v.small : v.tiny?.url ? v.tiny : v.medium;
+          // bản nhỏ ≤ 15 MB cho điện thoại tải nhanh (bản “small” có khi 1080p nặng 50 MB → lấy “tiny”)
+          const cands = [v.small, v.tiny, v.medium].filter((x) => x?.url);
+          const pick = cands.find((x) => !x.size || x.size <= 15e6) || cands.sort((a, b) => a.size - b.size)[0];
           return pick?.url ? {id: h.id, type: 'video', page: h.pageURL, user: h.user, tags: h.tags, dur: h.duration, thumb: (v.tiny || pick).thumbnail || '', url: pick.url, w: pick.width, h: pick.height, size: pick.size} : null;
         })(),
   ).filter(Boolean);

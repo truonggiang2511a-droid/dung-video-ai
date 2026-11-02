@@ -6,7 +6,9 @@ const {spawn} = require('child_process');
 const fs = require('fs');
 const M = '/home/claude/testmedia/';
 (async () => {
-  const srv = spawn('node', [__dirname + '/mock-server.cjs', '8791'], {stdio: 'ignore'});
+  // URL=… → chạy web thật (Pixabay + Claude thật), GENRE=chung để thử video người nói
+  const LIVE = process.env.URL;
+  const srv = LIVE ? {kill() {}} : spawn('node', [__dirname + '/mock-server.cjs', '8791'], {stdio: 'ignore'});
   await new Promise((r) => setTimeout(r, 700));
   const w = +(process.argv[2] || 390), h = +(process.argv[3] || 844);
   const mob = w < 900;
@@ -15,11 +17,11 @@ const M = '/home/claude/testmedia/';
   const errs = [];
   p.on('pageerror', (e) => errs.push(e.message));
   try {
-    await p.goto('http://localhost:8791/');
+    await p.goto(LIVE || 'http://localhost:8791/');
     await p.waitForTimeout(800);
     const fc = p.waitForEvent('filechooser');
     if (await p.locator('#home').isVisible()) {
-      await p.click('[data-hgenre="bds"]');
+      await p.click(`[data-hgenre="${process.env.GENRE || 'bds'}"]`);
       await p.click('#btnNew');
     } else await p.click('.drop.main');
     await (await fc).setFiles(M + 'speech_mid_g30.mp4');
@@ -31,7 +33,7 @@ const M = '/home/claude/testmedia/';
       const ts = (texts[i] || '').split(' ');
       ts.forEach((t, j) => words.push({w: t, s: +(a + ((bb - a) * j) / ts.length).toFixed(2), e: +(a + ((bb - a) * (j + 0.85)) / ts.length).toFixed(2)}));
     });
-    await p.evaluate(([ws]) => Object.assign(window.__dv.p, {transcript: {words: ws}, genre: 'bds'}), [words]);
+    await p.evaluate(([ws, g]) => Object.assign(window.__dv.p, {transcript: {words: ws}, genre: g}), [words, process.env.GENRE || 'bds']);
     await p.click('#btnAi');
     let shot = false;
     const tips = [];
@@ -102,7 +104,7 @@ const M = '/home/claude/testmedia/';
         exp = 'test/stock-out.mp4';
       }
     }
-    const log = await (await fetch('http://localhost:8791/api/_log')).json();
+    const log = LIVE ? [] : await (await fetch('http://localhost:8791/api/_log')).json();
     console.log(JSON.stringify({w, ...r1, ...r2, apiLog: log, tips: tips.filter((x) => /Pixabay|cảnh trám|cảnh quay/.test(x)), errs, exp}, null, 1));
   } finally {
     await b.close();
