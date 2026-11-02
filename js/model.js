@@ -78,6 +78,19 @@ function uncutRange(p, a, b) {
   p.main.segs = out;
 }
 
+// Hình gắn chữ (sticker.attach = id chữ): thời gian luôn theo chữ; chữ bị xoá thì hình đi kèm xoá theo
+export function syncAttached(p) {
+  if (!p?.stickers) return;
+  p.stickers = p.stickers.filter((st) => {
+    if (!st.attach) return true;
+    const tx = (p.texts || []).find((x) => x.id === st.attach);
+    if (!tx) return false;
+    const lag = st.lag ?? 0.2;
+    st.start = +(tx.start + lag).toFixed(2);
+    st.dur = +Math.max(0.5, tx.dur - lag).toFixed(2);
+    return true;
+  });
+}
 export function applyOp(p, o) {
   switch (o.op) {
     case 'cut':

@@ -60,6 +60,7 @@ export class Cursor {
       return;
     }
     this.tip.innerHTML = (this.step ? `<b>${this.step}</b>` : '<i></i>') + text;
+    this.tip.classList.toggle('wrap', text.length > 56); // lý do chọn tài nguyên dài → cho xuống dòng, không cắt chữ
     this.tip.classList.add('on');
     this._place();
   }

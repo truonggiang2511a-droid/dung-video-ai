@@ -584,7 +584,7 @@ function textBlock(ctx, style, color, w, size, t) {
   ctx.restore();
 }
 
-function drawLockup(ctx, it, t, boxes) {
+function drawLockup(ctx, it, t, boxes, noIcon = false) {
   const dur = it.dur;
   const out = clamp((dur - t) / 0.3);
   if (out <= 0) return;
@@ -760,7 +760,7 @@ function drawLockup(ctx, it, t, boxes) {
   }
 
   // icon động
-  if (it.icon && ICONS[it.icon] && iconP > 0) {
+  if (it.icon && ICONS[it.icon] && iconP > 0 && !noIcon) {
     const bob = Math.sin(t * 3) * 8;
     const isz = 170 * (it.size || 1);
     const ix = cx + Math.min(W / 2 - 110, mw / 2 + 40) * (it.iconSide === 'left' ? -1 : 1);
@@ -1741,14 +1741,36 @@ function mixHex(a, b, k) {
   const ch = (s) => Math.round(((pa >> s) & 255) * (1 - k) + ((pb >> s) & 255) * k);
   return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
 }
-function drawSticker(ctx, it, t, boxes) {
+// Hình đi kèm chữ (it.attach = id chữ): luôn nằm SÁT chữ — bên phải chữ nếu đủ chỗ, không thì bên trái, không thì góc trên-phải
+// của chữ. Tính lại mỗi khung theo hộp chữ thật (khách kéo chữ thì hình đi theo). side: 'left' để ưu tiên bên trái.
+export function companionPos(box, base, side) {
+  const m = 18;
+  const room = (x) => x - base / 2 >= m && x + base / 2 <= W - m;
+  const right = box.x + box.w + base * 0.42;
+  const left = box.x - base * 0.42;
+  const midY = box.y + box.h * 0.42;
+  let cx;
+  let cy = midY;
+  if (side !== 'left' && room(right)) cx = right;
+  else if (room(left)) cx = left;
+  else if (room(right)) cx = right;
+  else {
+    // chữ rộng gần hết khung: đặt góc trên của chữ (lệch phía side), chồng nhẹ lên mép chữ
+    cx = side === 'left' ? Math.max(m + base / 2, box.x + base * 0.3) : Math.min(W - m - base / 2, box.x + box.w - base * 0.3);
+    cy = box.y - base * 0.12;
+  }
+  cy = Math.max(m + base / 2, Math.min(H - m - base / 2, cy));
+  return {x: cx, y: cy};
+}
+function drawSticker(ctx, it, t, boxes, anchor) {
   if (it.kind === 'gfx') return drawGfx(ctx, it, t, boxes);
   const out = clamp((it.dur - t) / 0.25);
   if (out <= 0) return;
   const img = it.kind === 'anim' ? animFrame(it, t) : stickerImage(it);
   const base = Math.min(W, H) * 0.24 * (it.size || 1);
-  let cx = (it.x ?? 0.78) * W;
-  let cy = (it.y ?? 0.3) * H;
+  const at = anchor ? companionPos(anchor, base, it.side) : null;
+  let cx = at ? at.x : (it.x ?? 0.78) * W;
+  let cy = at ? at.y : (it.y ?? 0.3) * H;
   let s = 1;
   let rot = 0;
   let alpha = 1;
@@ -2237,14 +2259,27 @@ export function drawFrame(ctx, p, T, frames, opt = {}) {
   // 3. chữ
   let lockActive = false;
   const ctaOn = p.cta?.on && T >= Math.max(0, D - (p.cta.len || 4));
+  // mỗi chữ chỉ 1 thứ đi kèm: có hình gắn (emoji / emoji động / icon) thì không vẽ icon liền chữ
+  const withPic = new Set();
+  for (const it of p.stickers || []) if (it.attach) withPic.add(it.attach);
   for (const it of p.texts || []) {
     if (T < it.start || T >= it.start + it.dur) continue;
     lockActive = true;
-    drawLockup(ctx, it, T - it.start, boxes);
+    drawLockup(ctx, it, T - it.start, boxes, withPic.has(it.id));
   }
 
-  // 3b. hình minh hoạ / icon động
+  // 3b. hình minh hoạ / icon động (hình gắn chữ: thời gian + vị trí theo chữ)
   for (const it of p.stickers || []) {
+    if (it.attach) {
+      const tx = (p.texts || []).find((x) => x.id === it.attach);
+      if (!tx) continue;
+      const s0 = tx.start + (it.lag ?? 0.2);
+      const e0 = tx.start + tx.dur;
+      if (T < s0 || T >= e0) continue;
+      const box = boxes.find((b) => b.id === tx.id);
+      drawSticker(ctx, {...it, dur: e0 - s0}, T - s0, boxes, box);
+      continue;
+    }
     if (T < it.start || T >= it.start + it.dur) continue;
     drawSticker(ctx, it, T - it.start, boxes);
   }

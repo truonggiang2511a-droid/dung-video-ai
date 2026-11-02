@@ -31,7 +31,7 @@ const M = '/home/claude/testmedia/';
   await p.waitForTimeout(2500);
   await p.screenshot({path: 'test/s3-ai-cut.png'});
   // chờ tới lúc ghép cảnh để chụp con trỏ đang kéo
-  await p.waitForFunction(() => /Ghép cảnh/.test(document.querySelector('#status')?.textContent || ''), null, {timeout: 60000});
+  await p.waitForFunction(() => /ghép cảnh/i.test(document.querySelector('#status')?.textContent || ''), null, {timeout: 60000});
   await p.waitForTimeout(700);
   await p.screenshot({path: 'test/s4-ai-broll.png'});
   await p.waitForFunction(() => window.__dv.p.aiDone && !window.__dv.busy, null, {timeout: 90000});

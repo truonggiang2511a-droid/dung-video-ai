@@ -7,6 +7,8 @@ import {SFX_MAP} from './sfx.js';
 import {MOTIONS, stickerForPhrase, searchLib, loadIndex} from './library.js';
 import {PACKS, packsFor, packText, gfxStyle, rotatePack} from './styles.js';
 import {recipeOf, recipesFor, industryPlan} from './recipes.js';
+import {reviewPlan, kitTour} from './kho-tour.js';
+import {ensureFont} from './fonts.js';
 
 // ---------- Gọi máy chủ ----------
 let health = null;
@@ -340,7 +342,7 @@ export function brollKeys(src) {
 }
 export const brollTokens = (src) => brollKeys(src).map((x) => x.k);
 
-export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks = null, place = ''} = {}) {
+export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks = null, place = '', animBy = null} = {}) {
   const D = duration(p);
   const ops = [];
   if (D < 1) return ops;
@@ -558,56 +560,53 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
   }
   ops.push(...jumpOps);
 
-  // hình minh hoạ đúng lời nói (vd “giá” → túi tiền, “ngon” → mặt thưởng thức): tối đa 1 hình / 4,5 s, né cụm chữ
+  // HÌNH ĐI KÈM CHỮ (Giang chốt 2/11 12:09): mỗi chữ CHỈ 1 thứ đi kèm — emoji động / hình / icon BĐS gắn SÁT chữ (sticker.attach,
+  // render.js tự đặt cạnh chữ mỗi khung), HOẶC icon liền chữ; không có hình đứng riêng xa chữ.
+  // Ưu tiên: icon BĐS mẫu 1 (lời khớp skill) → hình AI chọn theo nghĩa câu (bản động nếu có) → bảng từ khoá → giữ icon liền chữ.
   const lks = [...ops.filter((o) => o.list === 'texts').map((o) => o.item), ...ind.gfx.filter((x) => x.key !== 'room')];
   const stks = [];
-  let lastKey = '';
-  let lastT = -9;
-  let side = 0;
-  // Bất động sản: bộ icon BĐS mẫu 1 theo từ khoá trong lời (giống skill batdongsan-editor: icons_auto) — đặt trước, mỗi icon 1 lần
-  if ((p.genre || 'chung') === 'bds') {
-    const used = new Set();
-    for (const ph of phrases) {
-      if (ph.s < Math.max(0.6, hookEnd) || ph.s > D - ctaLen - 0.8 || stks.some((s) => Math.abs(s.start - ph.s) < 4.5)) continue;
-      const txt = ' ' + words.filter((w) => w.s >= ph.s - 0.01 && w.s <= ph.e + 0.01).map((w) => w.w.toLowerCase().replace(/[.,!?…:;"“”]/g, '')).join(' ') + ' ';
-      const hit = BDS_ICON_WORDS.find(([k, v]) => !used.has(v) && txt.includes(' ' + k + ' '));
-      if (!hit) continue;
-      used.add(hit[1]);
-      const w0 = words.find((w) => w.s >= ph.s - 0.01 && (' ' + w.w.toLowerCase() + ' ').includes(' ' + hit[0].split(' ')[0]));
-      const at = w0 ? w0.s : ph.s;
-      const busyText = lks.some((t) => at < t.start + t.dur && at + 2.4 > t.start);
-      const it = {id: uid('s'), kind: 'icon', key: 'bds-' + hit[1], label: hit[0], start: +at.toFixed(2), dur: 2.4, x: side++ % 2 ? 0.2 : 0.8, y: busyText ? 0.52 : 0.42, size: 0.8, motion: ['pop', 'bounce', 'wiggle', 'pulse'][stks.length % 4], color: '#ff6a3d', locked: false};
-      stks.push(it);
-      ops.push({op: 'add', list: 'stickers', item: it});
+  const usedKeys = new Set();
+  const usedPics = new Set();
+  const toAnim = (key) => (animBy?.has(key) ? {kind: 'anim', key: animBy.get(key)} : {kind: 'emoji', key});
+  const AMBIG = {moi: 'mới', nong: 'nóng', dep: 'đẹp', yeu: 'yêu', buon: 'buồn', nha: 'nhà', tien: 'tiền', gia: 'giá'};
+  const low = (x) => ' ' + String(x || '').toLowerCase().normalize('NFC').replace(/[.,!?…:;"“”]/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
+  const textItems = ops.filter((o) => o.list === 'texts').map((o) => o.item).sort((u, v) => u.start - v.start);
+  textItems.forEach((t) => {
+    if (t.start > D - ctaLen - 0.5) return;
+    // lời nói ĐÚNG lúc chữ hiện (không lấy câu sau — trước đây “52 m²” bị gắn túi tiền vì câu sau nói “giá bán”)
+    const said = low(words.filter((w) => w.s >= t.start - 1 && w.s <= t.start + 0.7).map((w) => w.w).join(' '));
+    const own = low(`${t.lead || ''} ${t.main || ''}`);
+    const hasIcon = ['ruler', 'tag', 'fire', 'bed', 'house'].includes(t.icon); // icon chung chung (ngôi sao…) thì vẫn được thay // chữ số liệu đã có icon liền chữ hợp nghĩa (thước đo, nhãn giá…) → chỉ thay khi hình khớp CHÍNH chữ đó
+    let pick = null;
+    if ((p.genre || 'chung') === 'bds') {
+      const hit = BDS_ICON_WORDS.find(([k, v]) => !usedKeys.has('bds-' + v) && (own.includes(' ' + k + ' ') || said.includes(' ' + k + ' ')));
+      if (hit) pick = {kind: 'icon', key: 'bds-' + hit[1], label: hit[0], color: '#ff6a3d', why: `lời nói có “${hit[0]}” → icon BĐS mẫu 1 cùng nghĩa, gắn sát chữ`};
     }
-  }
-  // AI (Claude) đã chọn hình theo nghĩa câu nói → dùng trước; còn thiếu chỗ thì bảng từ khoá bổ sung
-  for (const pc of pics || []) {
-    if (pc.start < Math.max(0.6, hookEnd) || pc.start > D - ctaLen - 0.8 || stks.some((s) => Math.abs(s.start - pc.start) < 4.5)) continue;
-    const busyText = lks.some((t) => pc.start < t.start + t.dur && pc.start + 2.4 > t.start);
-    const it = {id: uid('s'), kind: pc.kind || 'emoji', key: pc.key, label: pc.label, start: +pc.start.toFixed(2), dur: 2.4, x: side++ % 2 ? 0.2 : 0.8, y: busyText ? 0.52 : 0.42, size: 0.9, motion: ['bounce', 'pop', 'wiggle', 'float'][stks.length % 4], locked: false};
+    if (!pick) {
+      const j = (pics || []).findIndex((x, k) => !usedPics.has(k) && !usedKeys.has(x.key) && x.start >= t.start - 1 && x.start <= t.start + (hasIcon ? 0.7 : t.dur - 0.3));
+      if (j >= 0) {
+        usedPics.add(j);
+        const pc = pics[j];
+        pick = {kind: pc.kind || 'emoji', key: pc.key, label: pc.label, why: `AI hiểu câu nói “${pc.label}” → ${pc.kind === 'anim' ? 'emoji động' : 'hình'} cùng nghĩa`};
+      }
+    }
+    if (!pick) {
+      const mo = stickerForPhrase(own);
+      // chữ số liệu: chỉ theo CHÍNH chữ đó (lời quanh đó dễ lạc nghĩa: “mặt TIỀN rộng 5 mét” ≠ tiền bạc); chữ ý chính mới xét lời quanh
+      const m = mo || (hasIcon || /\d/.test(t.main || '') ? null : stickerForPhrase(said));
+      if (m && !(AMBIG[m.w] && !(own + said).includes(' ' + AMBIG[m.w] + ' '))) {
+        const k = toAnim(m.key);
+        if (!usedKeys.has(k.key)) pick = {...k, label: mo ? (t.main || '').toLowerCase() : m.w, why: `chữ “${(t.main || '').toLowerCase()}” → ${k.kind === 'anim' ? 'emoji động' : 'hình'} minh hoạ đúng ý`};
+      }
+    }
+    if (!pick) return; // không có hình hợp nghĩa → giữ icon liền chữ (nếu có)
+    usedKeys.add(pick.key);
+    t.icon = '';
+    const it = {id: uid('s'), kind: pick.kind, key: pick.key, label: pick.label, attach: t.id, lag: 0.2, start: +(t.start + 0.2).toFixed(2), dur: +Math.max(0.5, t.dur - 0.2).toFixed(2), x: 0.82, y: t.y ?? 0.2, size: pick.kind === 'icon' ? 0.55 : 0.6, motion: pick.kind === 'anim' ? 'pop' : ['bounce', 'pop', 'wiggle'][stks.length % 3], locked: false};
+    if (pick.color) it.color = pick.color;
     stks.push(it);
-    ops.push({op: 'add', list: 'stickers', item: it});
-  }
-  // bảng từ khoá chỉ dùng khi AI không chọn hình (bảng từ khoá hay bắt nhầm nghĩa, vd “môi” trong “môi giới”)
-  for (const ph of pics?.length ? [] : phrases) {
-    if (ph.s < Math.max(0.6, hookEnd) || ph.s > D - ctaLen - 0.8 || ph.s - lastT < 4.5 || stks.some((s) => Math.abs(s.start - ph.s) < 4.5)) continue;
-    const m = stickerForPhrase(ph.text);
-    if (!m || m.key === lastKey) continue;
-    const first = m.w.split(' ')[0];
-    const w = words.find((x) => x.s >= ph.s - 0.01 && x.s <= ph.e + 0.01 && plain(x.w).replace(/[^a-z0-9]/g, '') === first);
-    const at = w ? w.s : ph.s;
-    const busyText = lks.some((t) => at < t.start + t.dur && at + 2.4 > t.start);
-    const label = w ? words.slice(words.indexOf(w), words.indexOf(w) + m.w.split(' ').length).map((x) => x.w.replace(/[.,!?…:;]$/, '')).join(' ').toLowerCase() : m.w;
-    // từ 1 âm tiết dễ trùng khi bỏ dấu (“mới” / “môi” giới, “nóng” / “nông”) → phải đúng dấu
-    const AMBIG = {moi: 'mới', nong: 'nóng', dep: 'đẹp', yeu: 'yêu', buon: 'buồn', nha: 'nhà', tien: 'tiền', gia: 'giá'};
-    if (AMBIG[m.w] && label.replace(/[^\p{L}]/gu, '') !== AMBIG[m.w]) continue;
-    const it = {id: uid('s'), kind: 'emoji', key: m.key, label, start: +at.toFixed(2), dur: +clamp(ph.e - at + 0.9, 1.8, 3).toFixed(2), x: side++ % 2 ? 0.2 : 0.8, y: busyText ? 0.52 : 0.42, size: 0.9, motion: ['bounce', 'pop', 'wiggle', 'float'][stks.length % 4], locked: false};
-    stks.push(it);
-    ops.push({op: 'add', list: 'stickers', item: it});
-    lastKey = m.key;
-    lastT = at;
-  }
+    ops.push({op: 'add', list: 'stickers', item: it, why: pick.why});
+  });
 
   // hiệu ứng âm thanh: vút khi chuyển cảnh nhấn, “ka-ching” khi hiện giá, bụp khi hiện số, bong bóng khi hiện hình, thông báo ở câu kết
   const sfxAt = [];
@@ -1298,15 +1297,29 @@ export async function autoEdit(ed, log) {
     }
     log('ke', 'run', `Phong cách “${PACKS[p.pack]?.name || ''}”`);
   }
-  const ops = localPlan(p, {keys, hook: extraAi.hook || '', pics: extraAi.pics, sfx: extraAi.sfx, place: extraAi.place || ''});
-  log('ke', 'ok', `Kịch bản dựng: ${ops.length} thao tác`);
+  let animBy = null;
+  try {
+    animBy = new Map(((await loadIndex('anim')).items || []).filter((x) => x.fk).map((x) => [x.fk, x.key]));
+  } catch (e) {}
+  const ops = localPlan(p, {keys, hook: extraAi.hook || '', pics: extraAi.pics, sfx: extraAi.sfx, place: extraAi.place || '', animBy});
+  // AI TỰ KIỂM (chạy ngầm, không tốn tiền): dựng thử từng chữ → tràn khung / chồng thẻ / chìm nền / hình đè → tự đổi
+  let fixes = [];
+  try {
+    await Promise.all([...new Set(ops.filter((o) => o.list === 'texts').map((o) => o.item.font))].map((k) => ensureFont(k).catch(() => {})));
+    fixes = await reviewPlan(p, ops);
+  } catch (e) {
+    console.warn('reviewPlan', e);
+  }
+  log('ke', 'ok', `Kịch bản dựng: ${ops.length} thao tác${fixes.length ? ` · tự kiểm sửa ${fixes.length} chỗ` : ''}`);
 
-  // 5. diễn từng thao tác
-  log('dung', 'run', 'Ghép cảnh phụ, thêm chữ, đẩy máy');
-  const order = {broll: 0, texts: 1, stickers: 2, zooms: 3, sfx: 4};
-  ops.sort((a, b) => (order[a.list] ?? 3) - (order[b.list] ?? 3) || (a.item?.start || 0) - (b.item?.start || 0));
+  // 5. con trỏ vào Kho lấy phong cách, màu, chữ mẫu, emoji động/icon, âm thanh + diễn lại chỗ tự kiểm; rồi diễn phần còn lại
+  log('dung', 'run', 'Lấy từ kho, ghép cảnh, thêm chữ');
   ed.cur.step = 'Bước 5/5';
-  await animateOps(ed, ops, {fastAfter: 14, budget: 18});
+  const toured = await kitTour(ed, ops, {fixes, packBy: p.packBy, budget: 16});
+  const rest = ops.filter((o) => !toured.has(o));
+  const order = {broll: 0, texts: 1, stickers: 2, zooms: 3, sfx: 4};
+  rest.sort((a, b) => (order[a.list] ?? 3) - (order[b.list] ?? 3) || (a.item?.start || 0) - (b.item?.start || 0));
+  await animateOps(ed, rest, {fastAfter: 14, budget: 16});
   ed.cur.step = '';
   log('dung', 'ok', 'Xong phần dựng');
   p.aiDone = true;

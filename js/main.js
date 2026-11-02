@@ -2,7 +2,7 @@
 import {loadFonts, duration, COLORS, ICONS, FONTS, W, H, SUB_STYLES, TEXT_STYLES, TEXT_MOTIONS, TEXT_PRESETS, TRANSITIONS, FILTERS, JUMP_TRANS, applyLook, tlOfSrc, srcAt, segStarts as segStartsOf, drawFrame, setFormat, GFX, GFX_MAP, HOOK_VARIANTS} from './render.js';
 import {PACKS, packsFor, restyle, gfxStyle, packText} from './styles.js';
 import {store} from './store.js';
-import {newProject, applyOp, History, find, newText, uid, ITEM_TYPES} from './model.js';
+import {newProject, applyOp, History, find, newText, uid, ITEM_TYPES, syncAttached} from './model.js';
 import {SFX, SFX_MAP, playSfx} from './sfx.js';
 import {MOTIONS, searchLib, loadIndex, pruneAnims} from './library.js';
 import {FONT_CATS, ensureFont, ensureProjectFonts} from './fonts.js';
@@ -84,6 +84,7 @@ const ed = {
   },
   changed(save = true, contentEdit = false) {
     const p = ed.p;
+    syncAttached(p);
     p._rev = (p._rev || 0) + 1;
     if (contentEdit && p.approved) p.approved = false;
     ed.tl.render(p);
@@ -713,7 +714,11 @@ function bindInspector() {
         if (!d) return;
         Object.assign(it, {sfx: d.key, name: d.name, dur: d.len});
         playSfx(d.key, it.vol ?? 0.5);
-      } else it[k] = b.dataset.v;
+      } else {
+        it[k] = b.dataset.v;
+        // khách chọn icon động cho chữ → bỏ emoji đang gắn chữ đó (mỗi chữ chỉ 1 thứ đi kèm)
+        if (k === 'icon' && b.dataset.v && ed.sel?.type === 'text') ed.p.stickers = ed.p.stickers.filter((st) => st.attach !== it.id);
+      }
     });
   });
 }
@@ -1849,7 +1854,9 @@ function bindStageDrag() {
     if (ed.sel?.id !== id) select({type: box.type || 'text', id});
     ed.player.pause();
     cv.setPointerCapture(e.pointerId);
-    drag = {id, x0: pt.x, y0: pt.y, ix: it.x ?? (box.type === 'sticker' ? 0.78 : 0.5), iy: it.y ?? (box.type === 'sticker' ? 0.3 : 0.2), moved: false};
+    // hình gắn chữ: vị trí đang thấy = tâm hộp (tính theo chữ), không phải it.x/y đã lưu
+    const att = !!it.attach;
+    drag = {id, x0: pt.x, y0: pt.y, ix: att ? (box.x + box.w / 2) / W : it.x ?? (box.type === 'sticker' ? 0.78 : 0.5), iy: att ? (box.y + box.h / 2) / H : it.y ?? (box.type === 'sticker' ? 0.3 : 0.2), moved: false};
   });
   cv.addEventListener('pointermove', (e) => {
     if (!drag) return;
@@ -1860,6 +1867,8 @@ function bindStageDrag() {
       if (Math.hypot(pt.x - drag.x0, pt.y - drag.y0) < 12) return;
       drag.moved = true;
       ed.history.push(ed.p);
+      // khách tự kéo hình gắn chữ ra chỗ khác → tách khỏi chữ (giữ thời gian hiện tại)
+      if (it.attach) delete it.attach;
     }
     it.x = Math.max(0.1, Math.min(0.9, drag.ix + (pt.x - drag.x0) / W));
     it.y = Math.max(0.06, Math.min(0.94, drag.iy + (pt.y - drag.y0) / H));
@@ -2002,6 +2011,49 @@ async function boot() {
   ed.cur = new Cursor();
   // điện thoại: chú thích từng bước nằm gọn trong thanh trạng thái, ngón tay tự do thao tác trên timeline
   bindSheetSwipe();
+  // cho AI (kho-tour.js) mở Kho / bảng Phong cách để con trỏ vào lấy tài nguyên như người thật
+  const mobile = () => matchMedia('(max-width: 899px)').matches;
+  const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  // tấm sửa điện thoại trượt lên mất ~0,3 s — phải chờ xong mới đo vị trí nút (không thì con trỏ chỉ ra ngoài màn hình)
+  const settle = async (wasOpen) => {
+    await frame();
+    if (mobile() && !wasOpen) await new Promise((r) => setTimeout(r, 340));
+  };
+  ed.ui = {
+    async showPacks() {
+      select(null);
+      const was = $('#side').classList.contains('open');
+      if (mobile()) $('#side').classList.add('peek');
+      openPane('edit');
+      await settle(was);
+      $('#insp .pk-grid')?.closest('.fl')?.scrollIntoView({block: 'start'});
+      await frame();
+    },
+    async openLib(tab) {
+      ed.libTab = tab;
+      ed.libQ = '';
+      const was = $('#side').classList.contains('open');
+      if (mobile()) $('#side').classList.add('peek');
+      if ($('[data-pane="media"]').hidden || !$('#side').classList.contains('open')) openPane('media');
+      else renderMedia();
+      if (['emoji', 'anim', 'icon'].includes(tab)) await fillLib();
+      await settle(was);
+      $('#media')?.closest('.side-pane')?.scrollTo?.({top: 0});
+      await frame();
+    },
+    async query(q) {
+      ed.libQ = q;
+      await fillLib();
+      await frame();
+    },
+    async done() {
+      ed.libQ = '';
+      $('#side').classList.remove('peek');
+      if (mobile()) openSheet(false);
+      else openPane('edit');
+      await frame();
+    },
+  };
   bindSkills();
   ed.cur.dockEl = () => (matchMedia('(max-width: 899px)').matches ? $('#status') : null);
   window.__dv = ed; // để kiểm thử (xem CLAUDE.md)
