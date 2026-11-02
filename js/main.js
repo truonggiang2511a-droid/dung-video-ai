@@ -135,7 +135,6 @@ function renderGenreChips() {
 }
 async function renderHome() {
   renderGenreChips();
-  renderHomeRecipes();
   const list = await store.listProjects();
   const box = $('#plist');
   if (!list.length) {
@@ -174,12 +173,6 @@ function newVideo() {
     inp.value = '';
     if (!fs.length) return;
     const p = newProject();
-    let rk = '';
-    try {
-      rk = localStorage.getItem('dv.recipe.' + p.genre) || '';
-    } catch (e) {}
-    const r = rk && recipesFor(p.genre).find((x) => x.key === rk);
-    if (r) Object.assign(p, {recipe: r.key, recipeBy: 'user', pack: r.pack, packBy: 'user', cam: r.cam});
     await store.saveProject(p);
     await openEditor(p);
     await addVideos(fs);
@@ -578,8 +571,6 @@ function renderInspector() {
         <button class="qa" data-act="subs">${icon(I.sub)}<span>Phụ đề</span></button>
       </div>
       <div class="fl"><span>Thể loại video <small class="muted">— AI dựng theo kiểu này</small></span><div class="chips">${Object.entries(GENRES).map(([k, g]) => `<button class="chip-b${p.genre === k ? ' on' : ''}" data-genre="${k}" title="${esc(g.desc)}">${g.label}</button>`).join('')}</div></div>
-      <div class="fl rc-sec"><span>Công thức dựng <small class="fcount">${p.recipe ? (p.recipeBy === 'user' ? 'bạn chọn' : 'AI chọn') + ' · ' + esc(recipeOf(p).name) : 'AI chọn khi dựng'}</small></span>
-        ${recipeCards(p.genre, p.recipeBy === 'user' ? p.recipe : '', 'data-recipe')}</div>
       <div class="fl"><span>Phong cách <small class="fcount">${p.pack ? (p.packBy === 'user' ? 'bạn chọn' : 'AI chọn') + ' · ' + esc(PACKS[p.pack]?.name || '') : 'AI chọn khi dựng'}</small></span>
         <div class="pk-grid">${packsFor(p.genre).map((x) => `<button class="pk-it${p.pack === x.key ? ' on' : ''}" data-pack="${x.key}" title="${esc(x.desc)}"><canvas width="120" height="${Math.round((120 * H) / W)}" data-pkp="${x.key}"></canvas><small>${esc(x.name)}</small></button>`).join('')}</div>
         ${p.packBy === 'user' ? '<button class="lnk" data-pack="auto">Để AI chọn phong cách</button>' : ''}</div>
@@ -601,7 +592,6 @@ function renderInspector() {
   if (pane) pane.scrollTop = top;
   if (h.includes('data-fload')) watchFontPreviews();
   if (h.includes('data-pkp')) drawPackThumbs();
-  if (h.includes('data-rcp')) drawRecipeThumbs();
 }
 function subsPanel() {
   const st = ed.p.subs;
@@ -686,34 +676,8 @@ function bindInspector() {
       manual(() => (ed.p.cutPace = pc.dataset.pace), {lock: false});
       return toast(`Nhịp cắt: ${CUT_PACE[pc.dataset.pace].label}${ed.p.aiDone ? ' — bấm Dựng lại để AI cắt lại (không tốn lượt chép lời)' : ''}`);
     }
-    const rc = e.target.closest('[data-recipe]');
-    if (rc) return pickRecipe(rc.dataset.recipe);
-    const hr = e.target.closest('[data-hrecipe]');
-    if (hr) {
-      try {
-        localStorage.setItem('dv.recipe.' + lastChoice().genre, hr.dataset.hrecipe);
-      } catch (er) {}
-      return renderHomeRecipes();
-    }
-    const vr = e.target.closest('[data-var]');
-    if (vr) {
-      if (vr.dataset.var === 'close') {
-        ed.p.varsSeen = true;
-        return renderVars();
-      }
-      return pickRecipe(vr.dataset.var);
-    }
     const pk = e.target.closest('[data-pack]');
-    if (pk) {
-      const k = pk.dataset.pack;
-      if (k === 'auto') {
-        manual(() => (ed.p.packBy = null), {lock: false});
-        return toast('AI sẽ tự chọn phong cách ở lần dựng sau');
-      }
-      manual(() => restyle(ed.p, k, 'user'), {lock: false});
-      ensureProjectFonts(ed.p).then(() => (ed.player.dirty = true));
-      return toast(`Phong cách: ${PACKS[k].name}${ed.p.aiDone ? ' — đã áp cho chữ, phụ đề, chuyển cảnh, màu (chỗ bạn sửa tay giữ nguyên)' : ' — AI sẽ dựng theo kiểu này'}`);
-    }
+    if (pk) return pickPack(pk.dataset.pack);
     const dn = e.target.closest('[data-density]');
     if (dn) {
       manual(() => (ed.p.textDensity = dn.dataset.density), {lock: false});
@@ -835,11 +799,6 @@ async function act(a, el) {
       return undoRedo(1);
     case 'deselect':
       return select(null);
-    case 'recipes':
-      select(null);
-      openSheet(true);
-      requestAnimationFrame(() => $('#insp .rc-sec')?.scrollIntoView({block: 'start'}));
-      return;
     case 'packs':
       select(null);
       openSheet(true);
@@ -1142,7 +1101,7 @@ const skillUi = {open: false, q: null, hi: 0, items: []};
 function renderSkillBtn() {
   const b = $('#skillName');
   if (!b || !ed.p) return;
-  b.textContent = ed.p.recipeBy === 'user' && ed.p.recipe ? recipeOf(ed.p).name : 'AI tự chọn';
+  b.textContent = ed.p.recipeBy === 'user' && ed.p.recipe ? recipeOf(ed.p).name : 'Chưa gọi';
 }
 function skillList(q) {
   const p = ed.p;
@@ -1151,7 +1110,7 @@ function skillList(q) {
   const f = foldVi(q || '');
   const ok = (r) => !f || foldVi(`${r.name} ${r.desc} ${SKILL_NAMES[r.from] || r.from} ${r.from} ${GENRES[r.genre]?.label}`).includes(f);
   const groups = [];
-  if (!f || foldVi('ai tu chon').includes(f)) groups.push({h: '', items: [{key: '', genre: p.genre, name: 'AI tự chọn', desc: 'AI đọc lời nói rồi chọn công thức hợp nhất', on: !cur}]});
+  if (cur && (!f || foldVi('khong dung skill').includes(f))) groups.push({h: '', items: [{key: '', genre: p.genre, name: 'Không dùng skill', desc: 'AI dựng theo phong cách bạn chọn ở bảng Video', on: false}]});
   for (const g of gs) {
     const items = recipesFor(g).filter(ok).map((r) => ({...r, on: cur === r.key}));
     if (items.length) groups.push({h: g === (p.genre || 'chung') ? `${GENRES[g]?.label || g} · thể loại đang dựng` : GENRES[g]?.label || g, items});
@@ -1522,56 +1481,13 @@ function drawPackThumbs() {
     Promise.all([ensureFont(pack.font), ensureFont(pack.subs.font)]).then(() => (go(), thumbStore(c, k)));
   }
 }
-// ---------- CÔNG THỨC DỰNG (kiểu “skill” HyperFrames): thẻ chọn ở màn Dự án, bảng Video, và 3 phương án sau khi AI dựng ----------
-function recipeCards(genre, cur, attr, withAuto = true) {
-  const list = recipesFor(genre);
-  const w = 112;
-  const hh = Math.round((w * H) / W);
-  const auto = withAuto ? `<button class="rc-it${!cur ? ' on' : ''}" ${attr}=""><span class="rc-auto">${icon(I.sparkle, 22)}</span><b>AI tự chọn</b><small>Hợp nội dung video nhất</small></button>` : '';
-  return `<div class="rc-grid">${auto}${list.map((r) => `<button class="rc-it${cur === r.key ? ' on' : ''}" ${attr}="${r.key}" title="${esc(r.desc)}"><canvas width="${w}" height="${hh}" data-rcp="${r.key}" data-rcg="${esc(genre || 'chung')}"></canvas><b>${esc(r.name)}</b><small>${esc(r.desc)}</small><em>Skill · ${esc(SKILL_NAMES[r.from] || r.from)}</em></button>`).join('')}</div>`;
-}
-// ảnh xem trước: đồ hoạ đặc trưng của công thức + phụ đề theo phong cách của công thức
-function recipeSample(r, pack) {
-  const g = r.genre;
-  const col = (k) => gfxStyle(pack, k).color;
-  const words = {bds: 'Giá bán ba tỷ tám', banhang: 'Hôm nay chỉ còn', amthuc: 'Món này ngon lắm', kienthuc: 'Mẹo số một là', vlog: 'Một ngày ở Đà Lạt'}[g] || 'Bạn có biết điều này';
-  const ws = words.split(' ').map((w, i) => ({w, s: 0.2 + i * 0.3, e: 0.45 + i * 0.3}));
-  let st = [];
-  let T = 1.4;
-  if (g === 'bds') {
-    st = r.key === 'bds-nhanh'
-      ? [{id: 's', kind: 'gfx', key: 'specs', ...GFX_MAP.specs.def, color: col('specs'), start: 0, dur: 9}]
-      : [{id: 's', kind: 'gfx', key: 'price', ...GFX_MAP.price.def, color: col('price'), badge: 'Sổ hồng riêng', land: 0.9, start: 0, dur: 9}];
-    T = 2.4;
-  } else if (g === 'banhang') {
-    st = [{id: 's', kind: 'gfx', key: 'slash', ...GFX_MAP.slash.def, color: col('slash'), start: 0, dur: 9}, {id: 'b', kind: 'gfx', key: 'sale', ...GFX_MAP.sale.def, color: col('sale'), y: 0.44, start: 0.3, dur: 9}];
-    T = 2;
-  } else {
-    const lab = {amthuc: 'MÓN NGON PHẢI THỬ', kienthuc: '3 MẸO HAY', vlog: 'MỘT NGÀY Ở ĐÀ LẠT'}[g] || 'BẠN CÓ BIẾT?';
-    st = [{id: 's', kind: 'gfx', key: 'hook', ...GFX_MAP.hook.def, ...gfxStyle(pack, 'hook'), label: lab, y: 0.2, start: 0, dur: 9}];
-  }
-  return fakeProject({stickers: st, transcript: {words: ws}, subs: {on: true, y: 0.72, size: 1.15, ...pack.subs}, look: pack.look, cam: r.cam});
-}
-function drawRecipeThumbs() {
-  for (const c of $$('canvas[data-rcp]')) {
-    const r = recipesFor(c.dataset.rcg).find((x) => x.key === c.dataset.rcp);
-    if (!r) continue;
-    const pack = PACKS[r.pack] || PACKS.mau1;
-    const k = thumbKey('rc', r.key);
-    if (thumbCached(c, k)) continue;
-    const fake = recipeSample(r, pack);
-    const T = r.genre === 'bds' ? 2.4 : r.genre === 'banhang' ? 2 : 1.4;
-    const go = () => thumbDraw(c, fake, T);
-    go();
-    Promise.all([ensureFont(pack.font), ensureFont(pack.subs.font)]).then(() => (go(), thumbStore(c, k)));
-  }
-}
+// ---------- SKILL (công thức dựng theo ngành) — chỉ gọi từ ô chat: gõ @ hoặc nút Skill ▾ ----------
 function pickRecipe(key) {
   const p = ed.p;
   if (!key) {
     manual(() => ((p.recipeBy = null), (p.packBy = null)), {lock: false});
     renderInspector();
-    return toast('AI sẽ tự chọn công thức ở lần dựng sau');
+    return toast('Đã bỏ skill — AI dựng theo phong cách bạn chọn');
   }
   const r = recipesFor(p.genre).find((x) => x.key === key);
   if (!r) return;
@@ -1584,32 +1500,50 @@ function pickRecipe(key) {
   }, {lock: false});
   ensureProjectFonts(p).then(() => (ed.player.dirty = true));
   renderVars();
-  toast(`Công thức: ${r.name}${p.aiDone ? ' — đã áp chữ, màu, phụ đề, máy quay. Bấm Dựng lại nếu muốn AI thêm lại đồ hoạ theo công thức' : ' — bấm AI dựng để dựng theo công thức này'}`, 5200);
+  toast(`Skill: ${r.name}${p.aiDone ? ' — đã áp chữ, màu, phụ đề, máy quay. Bấm Dựng lại nếu muốn AI dựng lại cả đồ hoạ theo skill' : ' — bấm AI dựng để dựng theo skill này'}`, 5200);
 }
-// 3 phương án sau khi AI dựng: ảnh xem trước vẽ từ CHÍNH video của khách (khung đang có đồ hoạ), bấm là áp ngay
+// Chọn phong cách (bảng Video + dải 3 phương án sau khi AI dựng) — áp ngay, chỗ sửa tay giữ nguyên
+function pickPack(k) {
+  if (k === 'close') {
+    ed.p.varsSeen = true;
+    return renderVars();
+  }
+  if (k === 'auto') {
+    manual(() => (ed.p.packBy = null), {lock: false});
+    return toast('AI sẽ tự chọn phong cách ở lần dựng sau');
+  }
+  if (!PACKS[k]) return;
+  manual(() => restyle(ed.p, k, 'user'), {lock: false});
+  ensureProjectFonts(ed.p).then(() => (ed.player.dirty = true));
+  renderVars();
+  toast(`Phong cách: ${PACKS[k].name}${ed.p.aiDone ? ' — đã áp cho chữ, phụ đề, chuyển cảnh, màu (chỗ bạn sửa tay giữ nguyên)' : ' — AI sẽ dựng theo kiểu này'}`);
+}
+// 3 phương án PHONG CÁCH sau khi AI dựng: ảnh xem trước vẽ từ CHÍNH video của khách, bấm là áp ngay
 function renderVars() {
   const box = $('#vars');
   const p = ed.p;
   if (!box) return;
-  const list = p?.aiDone && !p.varsSeen ? recipesFor(p.genre) : [];
+  let list = [];
+  if (p?.aiDone && !p.varsSeen) {
+    const all = packsFor(p.genre);
+    const cur = all.find((x) => x.key === p.pack) || PACKS[p.pack];
+    list = [cur, ...all.filter((x) => x.key !== p.pack)].filter(Boolean).slice(0, 3);
+  }
   if (list.length < 2 || ed.busy) {
     box.hidden = true;
     return;
   }
   box.hidden = false;
-  const cur = recipeOf(p).key;
   const w = 54;
   const hh = Math.round((w * H) / W);
-  box.innerHTML = `<span class="vars-t"><b>Chọn phương án</b><small>bấm để đổi ngay</small></span>${list.map((r, i) => `<button class="var-it${cur === r.key ? ' on' : ''}" data-var="${r.key}"><canvas width="${w * 2}" height="${hh * 2}" data-varc="${r.key}"></canvas><span>${String.fromCharCode(65 + i)} · ${esc(r.name)}</span></button>`).join('')}<button class="var-x" data-var="close" aria-label="Ẩn phương án">${icon('M6 6l12 12M18 6L6 18', 16)}</button>`;
+  box.innerHTML = `<span class="vars-t"><b>Thử phong cách</b><small>bấm để đổi ngay</small></span>${list.map((x, i) => `<button class="var-it${p.pack === x.key ? ' on' : ''}" data-pack="${x.key}"><canvas width="${w * 2}" height="${hh * 2}" data-varc="${x.key}"></canvas><span>${String.fromCharCode(65 + i)} · ${esc(x.name)}</span></button>`).join('')}<button class="var-x" data-pack="close" aria-label="Ẩn phương án">${icon('M6 6l12 12M18 6L6 18', 16)}</button>`;
   const D = duration(p);
   const card = (p.stickers || []).find((s) => s.kind === 'gfx' && ['price', 'slash', 'specs', 'pin', 'hook'].includes(s.key));
   const T = card ? Math.min(D - 0.1, card.start + Math.min(card.dur - 0.2, card.key === 'price' ? (card.land || 1.2) + 0.6 : 1.8)) : Math.min(D * 0.3, 4);
   for (const c of $$('canvas[data-varc]')) {
-    const r = list.find((x) => x.key === c.dataset.varc);
     const clone = JSON.parse(JSON.stringify(p));
     clone._rev = -Math.random();
-    restyle(clone, r.pack, 'ai');
-    clone.cam = r.cam;
+    restyle(clone, c.dataset.varc, 'ai');
     const g = c.getContext('2d');
     g.setTransform(c.width / W, 0, 0, c.height / H, 0, 0);
     const fr = ed.player.snap();
@@ -1617,15 +1551,6 @@ function renderVars() {
     go();
     ensureProjectFonts(clone).then(go);
   }
-}
-function renderHomeRecipes() {
-  const g = lastChoice().genre;
-  let cur = '';
-  try {
-    cur = localStorage.getItem('dv.recipe.' + g) || '';
-  } catch (e) {}
-  $('#homeRecipes').innerHTML = `<h2 class="h-sub">Công thức dựng <small>· ${esc(GENRES[g]?.label || '')}</small></h2>${recipeCards(g, cur, 'data-hrecipe')}`;
-  drawRecipeThumbs();
 }
 function drawGfxThumbs() {
   const pack = PACKS[ed.p.pack] || PACKS.mau1;
@@ -2094,12 +2019,13 @@ async function boot() {
   document.addEventListener('click', (e) => {
     const a = e.target.closest('[data-act]');
     if (a) act(a.dataset.act, a);
+    const vp = e.target.closest('#vars [data-pack]');
+    if (vp) return pickPack(vp.dataset.pack);
     const hg = e.target.closest('[data-hgenre]');
     if (hg) {
       rememberChoice(hg.dataset.hgenre, null); // dự án mới tạo theo thể loại này
       renderGenreChips();
-      renderHomeRecipes();
-    }
+        }
     const o = e.target.closest('[data-open]');
     if (o) store.getProject(o.dataset.open).then(openEditor);
     const del = e.target.closest('[data-del]');

@@ -22,17 +22,16 @@ const W = +(process.argv[2] || 390), Hh = +(process.argv[3] || 844);
   await p.waitForTimeout(1200);
   const out = {};
   if (mob) {
-    await p.tap('.dk[data-act="recipes"]');
+    await p.tap('.dk[data-act="packs"]');
     await p.waitForTimeout(700);
     out.sheetOpen = await p.evaluate(() => document.querySelector('#side').classList.contains('open'));
-    // cuộn hàng thẻ sang phải rồi chọn thẻ cuối
-    await p.evaluate(() => (document.querySelector('#insp .rc-grid').scrollLeft = 400));
-    const before = await p.evaluate(() => document.querySelector('#insp .rc-grid').scrollLeft);
+    out.noRecipeSection = await p.evaluate(() => !document.querySelector('#insp [data-recipe], #insp .rc-sec') && !document.querySelector('.dk[data-act="recipes"]') && !document.querySelector('#homeRecipes'));
+    const before = await p.evaluate(() => document.querySelector('#insp').closest('.side-pane').scrollTop);
     const t0 = Date.now();
-    await p.tap('#insp [data-recipe="bds-nhanh"]');
+    await p.locator('#insp [data-pack="sangtrong"]').scrollIntoViewIfNeeded();
+    await p.tap('#insp [data-pack="sangtrong"]');
     out.tapMs = Date.now() - t0;
-    out.after = await p.evaluate(() => ({sl: document.querySelector('#insp .rc-grid').scrollLeft, on: document.querySelector('#insp .rc-it.on')?.dataset.recipe, rec: window.__dv.p.recipe}));
-    out.scrollKept = Math.abs(out.after.sl - before) < 2;
+    out.after = await p.evaluate(() => ({on: document.querySelector('#insp .pk-it.on')?.dataset.pack, pack: window.__dv.p.pack, by: window.__dv.p.packBy}));
     await p.screenshot({path: 'test/sheet-chon.png'});
     // vuốt xuống từ thanh nắm (chạm thật bằng CDP)
     const cdp = await p.context().newCDPSession(p);
@@ -46,9 +45,9 @@ const W = +(process.argv[2] || 390), Hh = +(process.argv[3] || 844);
     await p.waitForTimeout(450);
     out.closedBySwipe = await p.evaluate(() => !document.querySelector('#side').classList.contains('open'));
     // mở lại, vuốt ngang trong hàng thẻ → KHÔNG được đóng
-    await p.tap('.dk[data-act="recipes"]');
+    await p.tap('.dk[data-act="packs"]');
     await p.waitForTimeout(600);
-    const r = await p.locator('#insp .rc-grid').boundingBox();
+    const r = await p.locator('#insp .chips').first().boundingBox();
     const hx = r.x + r.width * 0.8, hy = r.y + 40;
     await cdp.send('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: [{x: hx, y: hy}]});
     for (let i = 1; i <= 8; i++) { await cdp.send('Input.dispatchTouchEvent', {type: 'touchMove', touchPoints: [{x: hx - i * 25, y: hy + i * 2}]}); await p.waitForTimeout(16); }

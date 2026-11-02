@@ -1279,23 +1279,25 @@ export async function autoEdit(ed, log) {
     }
     ed.cur.say('');
   }
-  // phong cách: khách đã chọn thì giữ; không thì AI chọn theo nội dung, không có AI thì xoay vòng giữa các lần dựng
-  // công thức dựng: khách chọn thì giữ; không thì theo phong cách AI chọn, không có AI thì xoay vòng các công thức của ngành
+  // SKILL (công thức dựng) chỉ dùng khi khách gọi trong ô chat (@ hoặc nút Skill ▾) — Giang chốt 2/11 11:52.
+  // Không gọi skill: AI dựng theo PHONG CÁCH (khách chọn thì giữ; không thì AI chọn theo nội dung, không có AI thì xoay vòng);
+  // đồ hoạ ngành (bảng giá, thẻ thông số…) vẫn tự ra theo lời nói của thể loại đó.
   const recs = recipesFor(p.genre);
-  if (p.recipeBy !== 'user' || !recs.some((r) => r.key === p.recipe)) {
-    const pk = extraAi.pack || rotatePack(p.genre || 'chung');
-    const r = recs.find((x) => x.pack === pk) || recs[0];
-    p.recipe = r.key;
-    p.recipeBy = 'ai';
+  if (p.recipeBy === 'user' && recs.some((r) => r.key === p.recipe)) {
     if (p.packBy !== 'user') {
-      p.pack = extraAi.pack || r.pack;
+      p.pack = recipeOf(p).pack;
       p.packBy = 'ai';
     }
-  } else if (p.packBy !== 'user') {
-    p.pack = recipeOf(p).pack;
-    p.packBy = 'ai';
+    log('ke', 'run', `Skill “${recipeOf(p).name}” · phong cách “${PACKS[p.pack]?.name || ''}”`);
+  } else {
+    p.recipe = null;
+    p.recipeBy = null;
+    if (p.packBy !== 'user' || !PACKS[p.pack]) {
+      p.pack = extraAi.pack || rotatePack(p.genre || 'chung');
+      p.packBy = 'ai';
+    }
+    log('ke', 'run', `Phong cách “${PACKS[p.pack]?.name || ''}”`);
   }
-  log('ke', 'run', `Công thức dựng “${recipeOf(p).name}”`);
   const ops = localPlan(p, {keys, hook: extraAi.hook || '', pics: extraAi.pics, sfx: extraAi.sfx, place: extraAi.place || ''});
   log('ke', 'ok', `Kịch bản dựng: ${ops.length} thao tác`);
 
