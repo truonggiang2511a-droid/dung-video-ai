@@ -1077,31 +1077,39 @@ async function aiExtras(p, r) {
   out.stock = (r.stock || []).map((s) => ({start: +s.start, q: String(s.q || '').trim()})).filter((s) => s.start >= 1.5 && s.start < D - 4 && stockAllowed(p.genre || 'chung', s.q)).slice(0, 4);
   // các bước / danh sách người nói liệt kê: mỗi mục phải có NGUYÊN VĂN trong lời (±3 s), tiêu đề chỉ dùng số có trong lời
   const tws = timelineWords(p);
-  const inSpeech = (txt, at, win = 3) => {
+  // tìm cụm chữ trong lời quanh lúc AI đưa (AI hay đưa giây ĐẦU CÂU, cụm có thể nằm cuối câu) → trả giây thật của chữ đầu, không thấy = null
+  // các chữ phải đúng thứ tự trong lời (cho phép AI bỏ bớt ≤ 4 chữ xen giữa: “để dành [20%] thu nhập”)
+  const locate = (txt, at, back = 1.5, fwd = 8) => {
     const toks = plain(txt).replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
-    if (!toks.length) return false;
-    const near = tws.filter((w) => Math.abs(w.s - at) <= win).map((w) => plain(w.w).replace(/[^a-z0-9]/g, ''));
-    // các chữ phải có đúng thứ tự trong lời (cho phép AI bỏ bớt ≤ 4 chữ xen giữa: “để dành [20%] thu nhập”)
-    for (let i = 0; i < near.length; i++) {
-      if (near[i] !== toks[0]) continue;
+    if (!toks.length) return null;
+    const near = tws.filter((w) => w.s >= at - back && w.s <= at + fwd);
+    const nt = near.map((w) => plain(w.w).replace(/[^a-z0-9]/g, ''));
+    for (let i = 0; i < nt.length; i++) {
+      if (nt[i] !== toks[0]) continue;
       let k = 1;
       let gap = 0;
-      for (let j = i + 1; j < near.length && k < toks.length && gap <= 4; j++) {
-        if (near[j] === toks[k]) k++;
+      for (let j = i + 1; j < nt.length && k < toks.length && gap <= 4; j++) {
+        if (nt[j] === toks[k]) k++;
         else gap++;
       }
-      if (k === toks.length) return true;
+      if (k === toks.length) return near[i].s;
     }
-    return false;
+    return null;
   };
-  const items = (r.steps || []).map((x) => ({start: +x.start, text: String(x.text || '').trim().replace(/[.,;:!?]+$/, '')})).filter((x) => x.text && x.text.length <= 28 && x.start >= 0.5 && x.start < D - 2 && inSpeech(x.text, x.start)).slice(0, 6);
+  const inSpeech = (txt, at, win = 3) => locate(txt, at, win, win) !== null;
+  const items = (r.steps || []).map((x) => {
+    const text = String(x.text || '').trim().replace(/[.,;:!?]+$/, '');
+    return {start: locate(text, +x.start || 0), text};
+  }).filter((x) => x.text && x.text.length <= 28 && x.start !== null && x.start >= 0.3 && x.start < D - 2).slice(0, 6);
   if (items.length >= 2) {
     let title = String(r.steps_title || '').trim().toUpperCase();
     if (title.length > 24 || !(title.match(/\d+/g) || []).every((n) => saidNums.has(n) || +n === items.length)) title = '';
     out.steps = {items: items.map((x) => ({...x, text: x.text.charAt(0).toUpperCase() + x.text.slice(1)})), title, kind: ['buoc', 'kiemtra', 'nguyenlieu'].includes(r.steps_kind) ? r.steps_kind : 'buoc'};
   }
   const v = r.versus;
-  if (v && v.sai && v.dung && +v.start >= 0.5 && +v.start < D - 3 && inSpeech(v.sai, +v.start, 6) && inSpeech(v.dung, +v.start, 8)) out.versus = {start: +v.start, sai: String(v.sai).trim(), dung: String(v.dung).trim()};
+  const vs = v?.sai && v?.dung ? locate(String(v.sai), +v.start || 0) : null;
+  const vd = vs !== null ? locate(String(v.dung), vs, 0, 10) : null;
+  if (vs !== null && vd !== null && vs >= 0.5 && vs < D - 3) out.versus = {start: vs, t2: vd, sai: String(v.sai).trim(), dung: String(v.dung).trim()};
   return out;
 }
 // Gộp các đoạn cắt chồng / sát nhau (giây nguồn)
