@@ -40,6 +40,7 @@ const I = {
   zoomIn: 'M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM21 21l-4.3-4.3M11 8v6M8 11h6',
   zoomOut: 'M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM21 21l-4.3-4.3M8 11h6',
   ff: 'M4 5l8 7-8 7zM12 5l8 7-8 7z',
+  swap: 'M4 8h13l-3-3M20 16H7l3 3',
 };
 
 // ---------- thông báo nhỏ ----------
@@ -212,6 +213,9 @@ function updateStage() {
   ex.textContent = p.aiDone && !p.approved ? 'Duyệt & xuất' : 'Xuất video';
   $('#btnUndo').disabled = !ed.history.undo.length || ed.busy;
   $('#btnRedo').disabled = !ed.history.redo.length || ed.busy;
+  $$('[data-act="undo"]').forEach((b) => (b.disabled = $('#btnUndo').disabled));
+  $$('[data-act="redo"]').forEach((b) => (b.disabled = $('#btnRedo').disabled));
+  $$('#dockTools .dk').forEach((b) => (b.disabled = ed.busy || (!p.main && b.dataset.act !== 'project')));
   renderStatus();
 }
 function renderStatus() {
@@ -223,15 +227,15 @@ function renderStatus() {
     const k = cur < 0 ? aiSteps.length : cur;
     h = `<span class="st-ic spin" aria-hidden="true"></span><span class="st-t"><b>AI đang dựng</b> · ${esc(aiSteps[Math.min(k, aiSteps.length - 1)].text)}</span>
       <span class="st-dots" aria-hidden="true">${aiSteps.map((x) => `<i class="${x.st}"></i>`).join('')}</span>
-      <button class="btn ghost xs" data-act="skip">${icon(I.ff, 14)} Tua nhanh</button>`;
+      <button class="btn ghost xs" data-act="skip">${icon(I.ff, 14)} Tua nhanh</button><i class="st-bar" style="width:${Math.round((k / aiSteps.length) * 100 + 100 / aiSteps.length / 2)}%"></i>`;
   } else if (p.main && ed.mainBad) {
-    h = `<span class="st-ic warn" aria-hidden="true">!</span><span class="st-t"><b>Video chính chưa hiện được hình</b> trên trình duyệt này (thường là video iPhone dạng HEVC).</span><button class="btn ai xs" data-act="fixMain">Sửa video</button>`;
+    h = `<span class="st-ic warn" aria-hidden="true">!</span><span class="st-t"><b>Video chính chưa hiện hình</b> (thường do video iPhone dạng HEVC).</span><button class="btn ai xs" data-act="fixMain">Sửa video</button>`;
   } else if (!p.main) {
     h = `<span class="st-t">Kéo thả video vào timeline, hoặc bấm <b>Thêm video chính</b> bên dưới.</span>`;
   } else if (!p.aiDone) {
-    h = `<span class="st-ic" aria-hidden="true">${icon(I.sparkle, 15)}</span><span class="st-t">Sẵn sàng — bấm <b>AI dựng</b> để cắt khoảng lặng, ghép cảnh, thêm chữ và hiệu ứng.</span>`;
+    h = `<span class="st-ic" aria-hidden="true">${icon(I.sparkle, 15)}</span><span class="st-t">Sẵn sàng — bấm <b>AI dựng</b>: cắt lặng, ghép cảnh, thêm chữ, hiệu ứng.</span>`;
   } else if (!p.approved) {
-    h = `<span class="st-ic ok" aria-hidden="true">${icon(I.check, 15)}</span><span class="st-t">Bản nháp đã xong — xem lại, sửa nếu cần, rồi bấm <b>Duyệt &amp; xuất</b>.</span><button class="btn ghost xs" data-act="preview">${icon(I.play, 13)} Xem từ đầu</button>`;
+    h = `<span class="st-ic ok" aria-hidden="true">${icon(I.check, 15)}</span><span class="st-t">Bản nháp xong — xem lại rồi bấm <b>Duyệt &amp; xuất</b>.</span><button class="btn ghost xs" data-act="preview">${icon(I.play, 13)} Xem từ đầu</button>`;
   }
   st.hidden = !h;
   st.innerHTML = h;
@@ -431,17 +435,33 @@ function select(sel) {
 function renderSelBar() {
   const s = ed.sel;
   const bar = $('#selbar');
+  const dc = $('#dockClip');
+  const dt = $('#dockTools');
   if (!s) {
     bar.hidden = true;
+    dc.hidden = true;
+    dt.hidden = false;
     return;
   }
   bar.hidden = false;
   const canAi = ['text', 'broll', 'zoom', 'sticker', 'subs', 'music'].includes(s.type);
+  const canDel = ['text', 'broll', 'zoom', 'seg', 'music', 'sticker', 'sfx'].includes(s.type);
   bar.innerHTML = `
     ${canAi ? `<button class="sb ai" data-act="clipAi">${icon(I.sparkle, 17)}<span>Nhờ AI sửa</span></button>` : ''}
     <button class="sb" data-act="sheet">${icon(I.edit, 17)}<span>Sửa tay</span></button>
     ${s.type === 'seg' ? `<button class="sb" data-act="split">${icon(I.split, 17)}<span>Tách</span></button>` : ''}
-    ${['text', 'broll', 'zoom', 'seg', 'music', 'sticker', 'sfx'].includes(s.type) ? `<button class="sb" data-act="del">${icon(I.trash, 17)}<span>Xoá</span></button>` : ''}`;
+    ${canDel ? `<button class="sb" data-act="del">${icon(I.trash, 17)}<span>Xoá</span></button>` : ''}`;
+  // điện thoại: thanh công cụ đáy đổi sang thao tác cho clip đang chọn (kiểu CapCut)
+  const name = {text: 'Chữ', broll: 'Cảnh phụ', zoom: 'Hiệu ứng', seg: 'Đoạn video', music: 'Nhạc nền', sticker: 'Hình', sfx: 'Âm thanh', subs: 'Phụ đề'}[s.type] || 'Clip';
+  const dk = (act, ic, label, cls = '') => `<button class="dk${cls}" data-act="${act}">${icon(ic, 21)}<span>${label}</span></button>`;
+  dc.innerHTML = `<button class="dk back" data-act="deselect" aria-label="Bỏ chọn">${icon(I.back, 21)}<span>${name}</span></button><i class="dk-sep" aria-hidden="true"></i>
+    ${canAi ? dk('clipAi', I.sparkle, 'Nhờ AI', ' ai') : ''}
+    ${dk('sheet', I.edit, 'Sửa')}
+    ${s.type === 'sticker' && selItem()?.kind !== 'gfx' ? dk('libReplace', I.swap, 'Đổi hình') : ''}
+    ${s.type === 'seg' ? dk('split', I.split, 'Tách') : ''}
+    ${canDel ? dk('del', I.trash, 'Xoá', ' del') : ''}`;
+  dc.hidden = false;
+  dt.hidden = true;
 }
 
 const TRANS = TRANSITIONS;
@@ -746,6 +766,26 @@ async function act(a, el) {
     }
     case 'sheet':
       return openSheet(true);
+    case 'undo':
+      return undoRedo(-1);
+    case 'redo':
+      return undoRedo(1);
+    case 'deselect':
+      return select(null);
+    case 'packs':
+      select(null);
+      openSheet(true);
+      requestAnimationFrame(() => $('#insp .pk-grid')?.closest('.fl')?.scrollIntoView({block: 'start'}));
+      return;
+    case 'lib':
+      ed.libTab = el.dataset.lib;
+      return openPane('media');
+    case 'pane':
+      return openPane(el.dataset.pane2);
+    case 'note':
+      setTool(ed.tool === 'note' ? 'select' : 'note');
+      if (ed.tool === 'note') toast('Chạm lên khung hình chỗ muốn sửa, rồi nhắn AI.', 3500);
+      return;
     case 'closeSheet':
       return openSheet(false);
     case 'clipAi':
@@ -771,8 +811,7 @@ async function act(a, el) {
       if (!it || ed.sel?.type !== 'sticker') return;
       ed.libReplace = it.id;
       ed.libTab = it.kind === 'icon' ? 'icon' : it.kind === 'anim' ? 'anim' : 'emoji';
-      $('#side [data-tab="media"]')?.click();
-      renderMedia();
+      openPane('media');
       return;
     }
     case 'libCancel':
@@ -828,6 +867,10 @@ async function act(a, el) {
 function openSheet(on) {
   $('#side').classList.toggle('open', on);
   if (on) $('#side').querySelector('[data-tab="edit"]')?.click();
+}
+function openPane(pane) {
+  $('#side').classList.add('open');
+  $(`#side [data-tab="${pane}"]`)?.click();
 }
 
 // ---------- AI dựng từ A–Z ----------
@@ -1320,6 +1363,7 @@ function insertBroll(srcId) {
 function setTool(t) {
   ed.tool = t;
   $$('.tool').forEach((b) => b.classList.toggle('on', b.dataset.tool === t));
+  $$('[data-tool2]').forEach((b) => b.classList.toggle('on', b.dataset.tool2 === t));
   $('#cv').classList.toggle('noting', t === 'note');
   if (t !== 'note') closeNote();
 }
@@ -1688,6 +1732,8 @@ async function boot() {
   };
   ed.tl = new Timeline($('#tl'), tlCb);
   ed.cur = new Cursor();
+  // điện thoại: chú thích từng bước nằm gọn trong thanh trạng thái, ngón tay tự do thao tác trên timeline
+  ed.cur.dockEl = () => (matchMedia('(max-width: 899px)').matches ? $('#status') : null);
   window.__dv = ed; // để kiểm thử (xem CLAUDE.md)
   window.__render = {drawFrame, TEXT_STYLES, TEXT_MOTIONS, setFormat};
   window.__ai = {localKeys, keyLockups, timelinePhrases, numberLockups};

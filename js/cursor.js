@@ -1,7 +1,7 @@
 // Con trỏ AI: di chuyển, bấm, kéo trên timeline như người dựng thật. Điện thoại hiện ngón tay, máy tính hiện mũi tên.
 // mũi tên xanh chanh + thẻ "AI" kiểu con trỏ cộng tác (Figma) cho dễ thấy trên nền tối
 const ARROW = '<svg width="38" height="38" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 2.5v17.2l4.6-4.3 3 6.6 2.9-1.3-3-6.5 6.3-.3z" fill="#d1fe17" stroke="#0b0d10" stroke-width="1.3" stroke-linejoin="round"/></svg>';
-const FINGER = '<svg width="46" height="46" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11V4.5a1.5 1.5 0 0 1 3 0V10h.5V8.5a1.5 1.5 0 0 1 3 0V10h.5V9.5a1.5 1.5 0 0 1 3 0V16a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-2.7L4.3 15a1.6 1.6 0 0 1 2.4-2L9 15z" fill="#ffe3cc" stroke="#0b0d10" stroke-width="1.1" stroke-linejoin="round"/></svg>';
+const FINGER = '<svg width="40" height="40" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11V4.5a1.5 1.5 0 0 1 3 0V10h.5V8.5a1.5 1.5 0 0 1 3 0V10h.5V9.5a1.5 1.5 0 0 1 3 0V16a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-2.7L4.3 15a1.6 1.6 0 0 1 2.4-2L9 15z" fill="#ffe3cc" stroke="#0b0d10" stroke-width="1.1" stroke-linejoin="round"/></svg>';
 
 const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -27,6 +27,20 @@ export class Cursor {
     const ox = this.touch ? 10 : 4;
     const oy = this.touch ? 4 : 2;
     this.el.style.transform = `translate(${this.x - ox}px, ${this.y - oy}px)`;
+    // điện thoại: chú thích gắn vào thanh trạng thái (không che làn đang sửa); không có thanh thì nằm TRÊN ngón tay
+    const d = this.dockEl?.();
+    if (d && !d.hidden && d.offsetParent) {
+      const r = d.getBoundingClientRect();
+      const skip = d.querySelector('[data-act="skip"]');
+      const right = skip ? skip.getBoundingClientRect().left - 6 : r.right - 8;
+      this.tip.classList.add('docked');
+      this.tip.style.maxWidth = this.tip.style.width = Math.max(160, right - r.left - 8) + 'px';
+      const th = this.tip.offsetHeight || 30;
+      this.tip.style.transform = `translate(${r.left + 6}px, ${r.top + (r.height - th) / 2}px)`;
+      return;
+    }
+    this.tip.classList.remove('docked');
+    this.tip.style.maxWidth = this.tip.style.width = '';
     // điện thoại: chú thích nằm TRÊN ngón tay (ngón tay che phía dưới); máy tính: dưới mũi tên, sát đáy thì lật lên
     const tw = this.tip.offsetWidth || 260;
     const below = this.y + 38;

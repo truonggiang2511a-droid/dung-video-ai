@@ -420,7 +420,7 @@ kbd{display:inline-block;min-width:18px;padding:0 5px;margin:0 1px;border:1px so
   .tb.icon{width:32px;padding:0;justify-content:center}
   #tlZoom{font-size:12px;color:var(--mu);min-width:40px;text-align:center;font-variant-numeric:tabular-nums}
   .status{border-top:0;background:transparent;min-height:36px;padding:0 8px;font-size:12.5px}
-  .bin,.selbar{display:none!important}
+  .bin,.selbar,.dock{display:none!important}
   .tl{height:274px;border-top:0;background:transparent}
   .tl-labels{width:96px;background:transparent;padding-top:24px}
   .tl-label{height:32px;font-size:11px;flex-direction:row;gap:7px;justify-content:flex-start;padding-left:12px;white-space:nowrap}
@@ -448,8 +448,7 @@ kbd{display:inline-block;min-width:18px;padding:0 5px;margin:0 1px;border:1px so
   .tab-chat{display:none!important}
 }
 @media (min-width:1500px){.e-chatcol{width:380px}.e-side{width:370px}}
-@media (max-width:520px){.pname{visibility:hidden}.e-top .btn.sm{padding:0 11px}.side-tabs button span{font-size:12px}}
-@media (max-height:700px) and (max-width:899px){.tl{height:228px}.tl-row,.tl-label{height:26px}.clip,.tl-add{top:3px;height:20px;line-height:20px}.tl-row[data-row=sfx],.tl-label[data-row=sfx]{height:22px}}
+@media (max-width:520px){.e-top .btn.sm{padding:0 11px}.side-tabs button span{font-size:12px}}
 @media (min-width:900px) and (max-width:1199px){.side-tabs button svg{display:none}.side-tabs button{font-size:12.5px;padding:0 4px}}
 @media (max-width:420px){.side-tabs{gap:2px;padding:4px 8px 8px}.side-tabs button{gap:4px;font-size:12px}.side-tabs button svg{width:13px;height:13px}}
 
@@ -503,3 +502,80 @@ kbd{display:inline-block;min-width:18px;padding:0 5px;margin:0 1px;border:1px so
 .fx-it.on{border-color:var(--acc);color:var(--acc)}
 #media h5{margin:14px 0 8px}
 .c-main .jt{position:absolute;left:0;top:0;bottom:0;z-index:2;width:12px;background:var(--acc);color:var(--ink);font-style:normal;font-size:9px;line-height:inherit;text-align:center;border-radius:0 4px 4px 0}
+
+/* ---------- ĐIỆN THOẠI (< 900px): gọn kiểu CapCut — khung xem lớn, timeline mảnh, thanh công cụ đáy ---------- */
+.dock{display:none}
+@media (max-width:899px){
+  .e-top{height:48px;padding:0 6px 0 2px;gap:4px}
+  #btnUndo,#btnRedo{display:none}
+  .pname input{font-size:14.5px;padding:6px 4px}
+  .dk span{max-width:96px;overflow:hidden;text-overflow:ellipsis}
+  .e-top .btn.sm{min-height:34px;border-radius:17px;padding:0 13px;font-size:13.5px;gap:5px}
+  .e-top .btn:disabled{opacity:1;background:var(--card2);color:var(--mu);box-shadow:none}
+  .e-top .btn.ai:not(:disabled){background:transparent;border-color:var(--accbd)}
+  .stage-wrap{padding:6px}
+  /* hàng phát: giờ trái · nút phát giữa · hoàn tác phải */
+  .e-transport{position:relative;height:44px;gap:0;padding:0 4px 0 12px}
+  .e-transport .tools{display:none}
+  .e-transport .time{order:-1;font-size:13px}
+  .e-transport .play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:38px;height:38px;border-radius:19px}
+  .e-transport .icon-btn{width:38px;height:38px}
+  /* thanh trạng thái: 1 dòng, thanh tiến độ mảnh khi AI dựng */
+  .status{position:relative;min-height:34px;padding:0 6px 0 12px;font-size:12.5px;gap:7px}
+  .st-t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .status .btn.xs{min-height:26px;padding:0 9px;font-size:12px;border-radius:13px;flex-shrink:0}
+  .st-bar{position:absolute;left:0;bottom:-1px;height:2px;background:var(--acc);border-radius:0 2px 2px 0;transition:width .4s;box-shadow:0 0 8px var(--acc)}
+  .bin{padding:5px 10px;gap:6px}
+  .bin-t{font-size:11px;white-space:normal;max-width:76px;line-height:1.2}
+  .bin-item{width:38px;height:38px;border-radius:7px}
+  .bin-item span{display:none}
+  .selbar{display:none!important}
+  /* timeline: làn mảnh, cột nhãn chỉ còn icon */
+  .tl{height:222px}
+  .tl-labels{width:30px;padding-top:20px}
+  .tl-label{height:24px;gap:0}
+  .tl-label span{display:none}
+  .tl-label svg{width:14px;height:14px;color:var(--mu)}
+  .tl-ruler{height:20px;font-size:9.5px}
+  .tl-ruler span{top:3px}
+  .tl-ruler span::after{top:13px;height:3px}
+  .tl-row{height:24px}
+  .tl-row[data-row=main],.tl-label[data-row=main]{height:34px}
+  .tl-row[data-row=sfx],.tl-label[data-row=sfx]{height:20px}
+  .tl-row[data-row=sfx] .clip{top:2px;height:16px;line-height:16px;font-size:9.5px}
+  .tl-labels{padding-bottom:4px}
+  .clip{top:3px;height:18px;line-height:18px;font-size:10.5px;border-radius:6px;padding:0 6px}
+  .tl-row[data-row=main] .clip{top:2px;height:30px;line-height:30px}
+  .clip .h{width:11px}
+  .clip .h::after{top:50%;margin-top:-5px}
+  .tl-add{top:2px;height:20px;font-size:11px;padding:0 8px}
+  .tl-row[data-row=main] .tl-add{height:30px}
+  .tl-head{left:calc(30px + (100% - 30px) / 2)}
+  .tl-empty{left:30px}
+  /* thanh công cụ đáy */
+  .dock{display:block;flex-shrink:0;border-top:1px solid var(--line);background:var(--bg)}
+  .dock-row{display:flex;gap:2px;overflow-x:auto;padding:4px 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .dock-row::-webkit-scrollbar{display:none}
+  .dk{flex-shrink:0;min-width:58px;height:50px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:0;border-radius:10px;background:transparent;color:var(--tx);font:600 10.5px/1 inherit;padding:0 6px;white-space:nowrap}
+  .dk svg{color:var(--tx2)}
+  .dk:active{background:var(--card2)}
+  .dk.on{background:var(--accbg);color:var(--acc)}
+  .dk.on svg,.dk.ai svg,.dk.ai{color:var(--acc)}
+  .dk.del svg{color:#ff7a7a}
+  .dk.back{color:var(--tx2);min-width:64px}
+  .dk-sep{flex-shrink:0;width:1px;margin:10px 4px;background:var(--line2)}
+  .dock-sel{animation:dockin .18s ease-out}
+  /* ô chat gọn */
+  .e-chat{padding:6px 10px calc(6px + var(--sab))}
+  .e-chat input{height:42px;border-radius:21px;font-size:14.5px}
+  .e-chat .chat-row>button{width:42px;height:42px;border-radius:21px}
+  .chat-ctx{display:none}
+  /* con trỏ AI: ngón tay nhỏ hơn, chú thích gắn vào thanh trạng thái */
+  .ai-cursor.touch .ai-name{left:32px;top:31px;font-size:10px;padding:3px 6px}
+  .ai-tip.docked{border-radius:8px;font-size:12.5px;padding:5px 9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;background:#101214;box-shadow:none}
+  .ai-tip.docked b{display:inline-block;margin-right:6px;font-size:10.5px;padding:2px 5px}
+  .ai-tip.docked i{display:inline-block;margin-right:6px;vertical-align:1px}
+}
+@keyframes dockin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (max-width:899px) and (max-height:700px){.dk{height:44px;gap:3px}.e-top{height:44px}}
+@media (max-width:420px){.pname{visibility:hidden}}

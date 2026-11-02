@@ -61,9 +61,8 @@
         <button id="btnPlay" class="play" aria-label="Phát"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4l13 8-13 8z"/></svg></button>
         <span class="time"><b id="tNow">0:00</b> / <span id="tDur">0:00</span></span>
         <span class="sp"></span>
-        <button class="chip-set" data-act="project" aria-label="Cài đặt video: thể loại, khổ hình, đoạn kết"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg><span id="fmtLabel">9:16</span></button>
-        <button class="icon-btn mob" data-act="tlOut" aria-label="Thu nhỏ timeline"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM21 21l-4.3-4.3M8 11h6"/></svg></button>
-        <button class="icon-btn mob" data-act="tlIn" aria-label="Phóng to timeline"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM21 21l-4.3-4.3M11 8v6M8 11h6"/></svg></button>
+        <button class="icon-btn mob" data-act="undo" aria-label="Hoàn tác"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+        <button class="icon-btn mob" data-act="redo" aria-label="Làm lại"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
       </div>
     </section>
 
@@ -98,6 +97,26 @@
     <div id="bin" class="bin" hidden></div>
     <div id="selbar" class="selbar" hidden></div>
     <div id="tl" class="tl"></div>
+    <nav id="dock" class="dock" aria-label="Công cụ dựng">
+      <div id="dockTools" class="dock-row">
+        <button class="dk" data-act="project"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M16 4v4M10 10v4M18 16v4"/></svg><span id="fmtLabel">9:16</span></button>
+        <button class="dk" data-act="packs"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c1 0 1.5-.8 1.5-1.6 0-.9-.7-1.4-.7-2.3 0-1 .8-1.6 1.8-1.6H17a4 4 0 0 0 4-4c0-4.7-4-8.5-9-8.5zM7.5 11h.01M10 7.5h.01M15 7.5h.01"/></svg><span>Phong cách</span></button>
+        <button class="dk" data-act="addText"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg><span>Chữ</span></button>
+        <button class="dk" data-act="lib" data-lib="text"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M10 9v6M14 9v6"/></svg><span>Chữ mẫu</span></button>
+        <button class="dk" data-act="lib" data-lib="emoji"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM8.5 14.5s1.3 2 3.5 2 3.5-2 3.5-2M9 9.5h.01M15 9.5h.01"/></svg><span>Hình</span></button>
+        <button class="dk" data-act="lib" data-lib="anim"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM8 14s1.5 2.5 4 2.5 4-2.5 4-2.5M9 9h.01M15 9h.01M19 3l2 2M21 3l-2 2"/></svg><span>Emoji động</span></button>
+        <button class="dk" data-act="lib" data-lib="icon"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10l9-7 9 7v10H3zM9 20v-6h6v6"/></svg><span>Icon</span></button>
+        <button class="dk" data-act="lib" data-lib="gfx"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16v5H4zM4 15h10v3H4zM18 15h2v3h-2z"/></svg><span>Đồ hoạ</span></button>
+        <button class="dk" data-act="lib" data-lib="sfx"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H2v6h4l5 4V5zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg><span>Âm thanh</span></button>
+        <button class="dk" data-act="lib" data-lib="fx"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 17l.8 2.2L22 20l-2.2.8L19 23l-.8-2.2L16 20l2.2-.8z"/></svg><span>Hiệu ứng</span></button>
+        <button class="dk" data-act="subs"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18v14H3zM7 13h4M13 13h4M7 16h10"/></svg><span>Phụ đề</span></button>
+        <button class="dk" data-act="addBroll"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18v14H3zM3 9h18M8 5v4M16 5v4"/></svg><span>Cảnh phụ</span></button>
+        <button class="dk" data-act="addMusic"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18V5l12-2v13M9 18a3 3 0 1 1-3-3 3 3 0 0 1 3 3zM21 16a3 3 0 1 1-3-3 3 3 0 0 1 3 3z"/></svg><span>Nhạc</span></button>
+        <button class="dk" data-act="pane" data-pane2="script"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>Lời thoại</span></button>
+        <button class="dk" data-act="note" data-tool2="note"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2zM12 7v6M9 10h6"/></svg><span>Ghi chú</span></button>
+      </div>
+      <div id="dockClip" class="dock-row dock-sel" hidden></div>
+    </nav>
   </section>
   <form id="chat" class="e-chat" autocomplete="off">
     <div id="chatCtx" class="chat-ctx" hidden></div>

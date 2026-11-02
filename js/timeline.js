@@ -29,7 +29,7 @@ export class Timeline {
     this.sel = null;
     this.p = null;
     root.innerHTML = `
-      <div class="tl-labels">${ROWS.map((r) => `<div class="tl-label" data-row="${r.key}">${svg(r.icon, 15)}<span>${r.label}</span></div>`).join('')}</div>
+      <div class="tl-labels">${ROWS.map((r) => `<div class="tl-label" data-row="${r.key}" title="${r.label}">${svg(r.icon, 15)}<span>${r.label}</span></div>`).join('')}</div>
       <div class="tl-scroll" tabindex="0" aria-label="Timeline, kéo ngang để tua">
         <div class="tl-inner">
           <div class="tl-ruler" title="Bấm hoặc kéo để tua"></div>
@@ -75,6 +75,24 @@ export class Timeline {
         e.preventDefault();
       }
     }, {passive: false});
+    // điện thoại: chụm / mở 2 ngón để thu / phóng timeline (thay nút +/−)
+    let pinch = null;
+    const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    this.scroll.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2) pinch = {d: dist(e.touches)};
+    }, {passive: true});
+    this.scroll.addEventListener('touchmove', (e) => {
+      if (!pinch || e.touches.length !== 2) return;
+      e.preventDefault();
+      const k = dist(e.touches) / pinch.d;
+      if (k > 1.08 || k < 0.92) {
+        this.zoom(k);
+        pinch.d = dist(e.touches);
+      }
+    }, {passive: false});
+    this.scroll.addEventListener('touchend', (e) => {
+      if (e.touches.length < 2) pinch = null;
+    });
     this.inner.addEventListener('pointerdown', (e) => {
       if (e.target.closest('.tl-add')) e.preventDefault(); // không để trình duyệt cuộn timeline tới nút
       this._down(e);
