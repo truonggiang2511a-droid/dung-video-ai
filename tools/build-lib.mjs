@@ -103,12 +103,56 @@ for (const it of icons) it[3] += 1;
 fs.writeFileSync(path.join(out, 'icons.json'), JSON.stringify({groups: ['Bộ BĐS mẫu 1', ...CATS.map((c) => c[0]), 'Khác'], items: [...bds, ...icons]}));
 console.log(`Icon: ${icons.length} (${icons.filter((x) => !/^[a-z0-9 ]+$/.test(x[1])).length} có nhãn tiếng Việt, ${icons.filter((x) => x[3] < CATS.length).length} có nhóm)`);
 
+// ---------- 2/11 chiều: mở rộng kho (MIT) ----------
+// Hình nổi 3D: Fluent Emoji (bản màu chuyển sắc) — file e/3d-<tên>.svg, mục lục emoji3.json (bỏ biến thể màu da, bỏ hình người trừ cử chỉ tay)
+const fc = require('@iconify-json/fluent-emoji/icons.json');
+const emoji3 = [];
+for (const name of Object.keys(fc.icons)) {
+  if (SKIN.test(name)) continue;
+  const e = enBySlug[name];
+  const g = e ? e.group ?? 7 : 7;
+  if (g === 2) continue;
+  if (g === 1 && !/(hand|thumb|clap|fist|finger|muscle|ok-|waving|pray|point|victory|call-me|writing|raising)/.test(name)) continue;
+  const v = e && viBy[e.hexcode];
+  const label = v?.label || name.replace(/-/g, ' ');
+  const tags = [...new Set([label, ...(v?.tags || [])])].join(',');
+  fs.writeFileSync(path.join(out, 'e', '3d-' + name + '.svg'), `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 ${fc.icons[name].width || fc.width || 32} ${fc.icons[name].height || fc.height || 32}">${fc.icons[name].body}</svg>`);
+  emoji3.push(['3d-' + name, label, tags, g]);
+}
+emoji3.sort((a, b) => a[3] - b[3]);
+fs.writeFileSync(path.join(out, 'emoji3.json'), JSON.stringify({groups: GROUPS, items: emoji3}));
+console.log(`Hình nổi 3D: ${emoji3.length}`);
+// Icon Tabler (nét, MIT) → i/tb-<tên>.svg + icons-tb.json; Phosphor (đặc, MIT) → i/ph-<tên>.svg + icons-ph.json
+function iconSet(json, prefix, pick, file) {
+  const list = [];
+  for (const raw of Object.keys(json.icons)) {
+    const name = pick(raw);
+    if (!name) continue;
+    const words = name.split('-');
+    const vn = [...new Set(words.flatMap((w) => (DICT[w] ? DICT[w].split(',') : [])))];
+    const label = vn[0] || name.replace(/-/g, ' ');
+    let cat = CATS.findIndex(([, set]) => words.some((w) => set.has(w)) || set.has(name));
+    const ic = json.icons[raw];
+    const body = ic.body.replace(/currentColor/g, '#ffffff');
+    fs.writeFileSync(path.join(out, 'i', prefix + name + '.svg'), `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 ${ic.width || json.width || 24} ${ic.height || json.height || 24}">${body}</svg>`);
+    list.push([prefix + name, label, [...vn, ...words].join(','), cat < 0 ? CATS.length : cat]);
+  }
+  list.sort((a, b) => a[3] - b[3]);
+  fs.writeFileSync(path.join(out, file), JSON.stringify({groups: [...CATS.map((c) => c[0]), 'Khác'], items: list}));
+  console.log(`${file}: ${list.length} icon`);
+}
+iconSet(require('@iconify-json/tabler/icons.json'), 'tb-', (k) => (/-(filled|off)$/.test(k) ? null : k), 'icons-tb.json');
+iconSet(require('@iconify-json/ph/icons.json'), 'ph-', (k) => (k.endsWith('-fill') ? k.slice(0, -5) : null), 'icons-ph.json');
+
 fs.writeFileSync(
   path.join(out, 'GIAY-PHEP.txt'),
   `Kho hình của Dựng Video AI
 - Hình minh hoạ (thư mục e/): Fluent Emoji (Flat) — Copyright (c) Microsoft Corporation — giấy phép MIT: https://github.com/microsoft/fluentui-emoji/blob/main/LICENSE
 - Nhãn tiếng Việt của hình: emojibase-data (MIT) dựa trên Unicode CLDR.
 - Icon (thư mục i/): Lucide — Copyright (c) Lucide Contributors — giấy phép ISC: https://github.com/lucide-icons/lucide/blob/main/LICENSE
+- Hình nổi 3D (e/3d-*.svg): Fluent Emoji (bản màu) — Copyright (c) Microsoft Corporation — giấy phép MIT.
+- Icon tb-*.svg: Tabler Icons — Copyright (c) Paweł Kuna — giấy phép MIT: https://github.com/tabler/tabler-icons/blob/main/LICENSE
+- Icon ph-*.svg: Phosphor Icons — Copyright (c) Phosphor Icons — giấy phép MIT: https://github.com/phosphor-icons/core/blob/main/LICENSE
 - Icon bds-*.svg: bộ icon bất động sản "mẫu 1" do Dựng Video AI tự vẽ (tools/build-bds-icons.py).
 - Emoji động (thư mục a/): Noto Emoji Animation — Copyright Google — giấy phép CC BY 4.0: https://creativecommons.org/licenses/by/4.0/ (nguồn: https://googlefonts.github.io/noto-emoji-animation/). Ghi công bắt buộc: giữ dòng này + dòng ghi công trong app.
 Cả hai giấy phép cho phép dùng thương mại, kể cả trong video khách xuất ra; chỉ cần giữ thông báo bản quyền này trong phần mềm.

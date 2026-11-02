@@ -9,7 +9,7 @@ const plain = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀
 const idx = {};
 export function loadIndex(kind) {
   if (!idx[kind])
-    idx[kind] = fetch(`lib/${kind === 'icon' ? 'icons' : kind === 'anim' ? 'anim' : 'emoji'}.json`)
+    idx[kind] = fetch(`lib/${{icon: 'icons', anim: 'anim', emoji: 'emoji', emoji3: 'emoji3', 'icon-tb': 'icons-tb', 'icon-ph': 'icons-ph'}[kind] || 'emoji'}.json`)
       .then((r) => r.json())
       .then((j) => ({groups: j.groups, items: j.items.map(([key, label, tags, g, fk]) => ({key, label, tags, g, fk, l: ' ' + norm(label) + ' ', ts: new Set([label, ...tags.split(',')].map(norm)), qv: ' ' + normV(label + ' ' + tags) + ' ', q: ' ' + norm(key.replace(/-/g, ' ') + ' ' + label + ' ' + tags) + ' '}))}))
       .catch(() => ({groups: [], items: []}));

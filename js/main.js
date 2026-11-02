@@ -1319,8 +1319,9 @@ function renderMedia() {
   const head = `<div class="lib-tabs" role="tablist">${LIB_TABS.map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-libtab="${k}">${l}</button>`).join('')}</div>${ed.libReplace ? `<p class="lib-note">Chọn hình để thay cho hình đang chọn · <button class="lnk" data-act="libCancel">Huỷ</button></p>` : ''}`;
   if (tab === 'emoji' || tab === 'icon' || tab === 'anim') {
     box.innerHTML = `${head}<input class="inp lib-q" id="libQ" type="search" placeholder="${tab === 'icon' ? 'Tìm: nhà, sổ hồng, hồ bơi, giỏ hàng…' : 'Tìm: nhà, tiền, ngon, tim, cười…'}" value="${esc(ed.libQ || '')}" autocomplete="off">
+      ${LIB_SETS[tab] ? `<div class="seg lib-set">${LIB_SETS[tab].map(([k, l]) => `<button class="${libKind() === k ? 'on' : ''}" data-libset="${k}">${l}</button>`).join('')}</div>` : ''}
       <div class="lib-groups" id="libGroups"></div><div class="lib-grid${tab === 'icon' ? ' ic' : ''}" id="libGrid"></div>
-      <p class="hint lib-lic">${tab === 'emoji' ? 'Hình Fluent Emoji (Microsoft, giấy phép MIT) — dùng thương mại thoải mái.' : tab === 'anim' ? 'Emoji động: Noto Emoji Animation © Google, giấy phép CC BY 4.0 (googlefonts.github.io/noto-emoji-animation) — dùng thương mại được, app đã ghi công.' : 'Bộ BĐS mẫu 1 (tự vẽ) + icon Lucide (giấy phép ISC) — dùng thương mại thoải mái.'}</p>`;
+      <p class="hint lib-lic">${tab === 'emoji' ? 'Hình Fluent Emoji phẳng + nổi 3D (Microsoft, giấy phép MIT) — dùng thương mại thoải mái.' : tab === 'anim' ? 'Emoji động: Noto Emoji Animation © Google, giấy phép CC BY 4.0 (googlefonts.github.io/noto-emoji-animation) — dùng thương mại được, app đã ghi công.' : 'Bộ BĐS mẫu 1 (tự vẽ) + icon Lucide (ISC), Tabler (MIT), Phosphor (MIT) — dùng thương mại thoải mái.'}</p>`;
     fillLib();
     return;
   }
@@ -1421,8 +1422,11 @@ async function insertStock(i) {
   }
 }
 // lưới hình / icon: tìm theo nhãn tiếng Việt, lọc theo nhóm
+// bộ trong mỗi tab Kho: Hình = phẳng / nổi 3D; Icon = Lucide / Tabler / Phosphor đặc (cùng thư mục, khoá có tiền tố 3d- / tb- / ph-)
+const LIB_SETS = {emoji: [['emoji', 'Phẳng'], ['emoji3', 'Nổi 3D']], icon: [['icon', 'Lucide + BĐS'], ['icon-tb', 'Tabler nét'], ['icon-ph', 'Phosphor đặc']]};
+const libKind = () => (LIB_SETS[ed.libTab] ? ed.libSet?.[ed.libTab] || ed.libTab : ed.libTab);
 async function fillLib() {
-  const kind = ed.libTab;
+  const kind = libKind();
   const grid = $('#libGrid');
   if (!grid) return;
   const {groups} = await loadIndex(kind);
@@ -1430,8 +1434,8 @@ async function fillLib() {
   const gb = $('#libGroups');
   if (gb) gb.innerHTML = [[-1, 'Tất cả'], ...groups.map((x, i) => [i, x]).filter(([, x]) => x)].map(([i, x]) => `<button class="chip-b${g === i ? ' on' : ''}" data-libgroup="${i}">${esc(x)}</button>`).join('');
   const list = await searchLib(kind, ed.libQ || '', g, 300);
-  if (ed.libTab !== kind || !$('#libGrid')) return;
-  const src = (k) => (kind === 'anim' ? `lib/a/${k}.webp` : `lib/${kind === 'icon' ? 'i' : 'e'}/${k}.svg`);
+  if (libKind() !== kind || !$('#libGrid')) return;
+  const src = (k) => (kind === 'anim' ? `lib/a/${k}.webp` : `lib/${ed.libTab === 'icon' ? 'i' : 'e'}/${k}.svg`);
   grid.innerHTML = list.length
     ? list.map((x) => `<button class="lib-it${String(x.key).startsWith('bds-') ? ' bds' : ''}" data-libadd="${x.key}" data-label="${esc(x.label)}" title="${esc(x.label)}"><img src="${src(x.key)}" alt="${esc(x.label)}" loading="lazy" width="48" height="48"></button>`).join('')
     : '<p class="hint">Không tìm thấy — thử từ khác (vd: “nhà”, “tiền”, “tim”).</p>';
@@ -2207,9 +2211,15 @@ async function boot() {
       ed.libTab = lt.dataset.libtab;
       renderMedia();
     }
+    const ls = e.target.closest('[data-libset]');
+    if (ls) {
+      ed.libSet = {...(ed.libSet || {}), [ed.libTab]: ls.dataset.libset};
+      for (const b of $$('.lib-set button')) b.classList.toggle('on', b === ls);
+      fillLib();
+    }
     const lg = e.target.closest('[data-libgroup]');
     if (lg) {
-      ed.libGroup = {...(ed.libGroup || {}), [ed.libTab]: +lg.dataset.libgroup};
+      ed.libGroup = {...(ed.libGroup || {}), [libKind()]: +lg.dataset.libgroup};
       fillLib();
     }
     const la = e.target.closest('[data-libadd]');
