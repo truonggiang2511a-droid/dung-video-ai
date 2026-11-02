@@ -1081,7 +1081,17 @@ async function aiExtras(p, r) {
     const toks = plain(txt).replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
     if (!toks.length) return false;
     const near = tws.filter((w) => Math.abs(w.s - at) <= win).map((w) => plain(w.w).replace(/[^a-z0-9]/g, ''));
-    for (let i = 0; i + toks.length <= near.length; i++) if (toks.every((t, j) => near[i + j] === t)) return true;
+    // các chữ phải có đúng thứ tự trong lời (cho phép AI bỏ bớt ≤ 4 chữ xen giữa: “để dành [20%] thu nhập”)
+    for (let i = 0; i < near.length; i++) {
+      if (near[i] !== toks[0]) continue;
+      let k = 1;
+      let gap = 0;
+      for (let j = i + 1; j < near.length && k < toks.length && gap <= 4; j++) {
+        if (near[j] === toks[k]) k++;
+        else gap++;
+      }
+      if (k === toks.length) return true;
+    }
     return false;
   };
   const items = (r.steps || []).map((x) => ({start: +x.start, text: String(x.text || '').trim().replace(/[.,;:!?]+$/, '')})).filter((x) => x.text && x.text.length <= 28 && x.start >= 0.5 && x.start < D - 2 && inSpeech(x.text, x.start)).slice(0, 6);
