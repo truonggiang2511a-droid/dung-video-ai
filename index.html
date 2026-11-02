@@ -40,6 +40,7 @@
     <label class="pname"><span class="sr">Tên dự án</span><input id="pname" maxlength="60"></label>
     <div class="e-logo" aria-hidden="true"><span class="logo"></span><b>Dựng Video AI</b></div>
     <span class="sp"></span>
+    <button id="btnUi" class="icon-btn" aria-label="Cài đặt giao diện" title="Cài đặt giao diện"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h18v16H3zM9 4v16M15 9h6M15 14h6"/></svg></button>
     <button id="btnUndo" class="icon-btn" aria-label="Hoàn tác" title="Hoàn tác (Ctrl+Z)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
     <button id="btnRedo" class="icon-btn" aria-label="Làm lại" title="Làm lại (Ctrl+Y)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
     <button id="btnAi" class="btn ai sm" disabled><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg><span>AI dựng</span></button>
@@ -50,6 +51,7 @@
     <aside id="chatcol" class="e-chatcol" aria-label="Trợ lý AI">
       <div class="cc-head"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg><b>Trợ lý AI</b><small>Nhắn để sửa video</small></div>
     </aside>
+    <div class="split-v" data-split="chat" role="separator" aria-orientation="vertical" title="Kéo để đổi bề rộng cột Trợ lý AI (bấm đúp: mặc định)"></div>
 
     <section class="e-stage">
       <div class="stage-wrap">
@@ -68,6 +70,7 @@
         <button class="icon-btn mob" data-act="redo" aria-label="Làm lại"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
       </div>
     </section>
+    <div class="split-v" data-split="side" role="separator" aria-orientation="vertical" title="Kéo để đổi bề rộng bảng sửa (bấm đúp: mặc định)"></div>
 
     <aside id="side" class="e-side" aria-label="Bảng chỉnh sửa">
       <div class="side-grab"><button data-act="closeSheet" aria-label="Đóng bảng sửa"><i></i></button></div>
@@ -85,6 +88,7 @@
   </div>
 
   <section class="e-bottom">
+    <div class="split-h" data-split="tl" role="separator" aria-orientation="horizontal" title="Kéo lên / xuống để đổi độ cao timeline (bấm đúp: mặc định)"></div>
     <div class="tl-bar">
       <div class="tl-tools">
         <button class="tb" data-act="split" title="Tách tại đầu phát (S)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v18M7 8l-4 4 4 4M17 8l4 4-4 4"/></svg><span>Tách</span></button>

@@ -15,6 +15,7 @@ import {autoEdit, askAi, aiHealth, TEXT_DENSITY, localKeys, keyLockups, timeline
 import {installCard, canExport} from './install.js';
 import {GENRES, FORMATS, genreOf, migrate, rememberChoice, lastChoice} from './templates.js';
 import {recipesFor, recipeOf, SKILL_NAMES} from './recipes.js';
+import {ui, applyUi, bindSplitters, openUiSettings} from './uiprefs.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -830,7 +831,7 @@ async function act(a, el) {
       if (matchMedia('(min-width: 900px)').matches) {
         ed.ctxOff = false;
         renderCtx();
-        if (!matchMedia('(min-width: 1200px)').matches) $('#side [data-tab="chat"]')?.click();
+        if (!matchMedia('(min-width: 1200px)').matches || ui.chat === false) $('#side [data-tab="chat"]')?.click();
         $('#chatIn').focus();
         return;
       }
@@ -2122,7 +2123,10 @@ async function boot() {
   bindInspector();
   bindStageDrag();
   bindDrop();
+  applyUi();
   placeChat();
+  bindSplitters(relayout);
+  $('#btnUi').onclick = () => openUiSettings(relayout);
   matchMedia('(min-width: 900px)').addEventListener?.('change', placeChat);
   matchMedia('(min-width: 1200px)').addEventListener?.('change', placeChat);
   $('#script').addEventListener('click', scriptClick);
@@ -2345,8 +2349,13 @@ async function boot() {
 }
 
 // Ô chat + nhật ký chat: ≥ 1200px ở cột trái (kiểu HyperFrames), 900–1199 trong bảng phải, điện thoại ở đáy màn hình
+function relayout() {
+  placeChat();
+  ed.tl?.layout?.();
+}
+
 function placeChat() {
-  const wide = matchMedia('(min-width: 1200px)').matches;
+  const wide = matchMedia('(min-width: 1200px)').matches && ui.chat !== false;
   const desk = matchMedia('(min-width: 900px)').matches;
   const chat = $('#chat');
   const log = $('#chatlog');

@@ -451,13 +451,13 @@ kbd{display:inline-block;min-width:18px;padding:0 5px;margin:0 1px;border:1px so
   .e-top .btn.sm{min-height:40px;border-radius:12px;padding:0 18px}
   #btnExport{background:#fff;color:var(--ink)}
   #btnExport:not(:disabled):hover{filter:none;background:var(--acc)}
-  .e-body{gap:10px;min-height:0}
+  .e-body{gap:0;min-height:0}
   .e-stage{background:var(--card);border:1px solid var(--line);border-radius:var(--rc);overflow:hidden}
   .stage-wrap{padding:14px;background:var(--well);margin:8px 8px 0;border-radius:12px}
   .e-transport{height:54px;padding:0 12px}
   .mob{display:none!important}
   .chip-set{display:none}
-  .e-side{position:static;transform:none;width:340px;max-height:none;border-radius:var(--rc);border:1px solid var(--line);box-shadow:none;background:var(--card);padding-bottom:0;flex-shrink:0;overflow:hidden}
+  .e-side{position:static;transform:none;width:calc(var(--sidew,340px) / var(--fz,1));max-height:none;border-radius:var(--rc);border:1px solid var(--line);box-shadow:none;background:var(--card);padding-bottom:0;flex-shrink:0;overflow:hidden}
   .side-grab{display:none}
   .side-tabs{padding:10px 10px 6px;border-bottom:1px solid var(--line);margin-bottom:10px}
   .side-pane{padding:0 14px 14px}
@@ -491,7 +491,7 @@ kbd{display:inline-block;min-width:18px;padding:0 5px;margin:0 1px;border:1px so
 @media (min-width:900px) and (pointer:coarse){.kbd-hint{display:none}}
 /* ≥ 1200px: 3 cột như HyperFrames — trợ lý AI bên trái, khung xem giữa, bảng sửa bên phải */
 @media (min-width:1200px){
-  .e-chatcol{display:flex;flex-direction:column;width:340px;flex-shrink:0;background:var(--card);border:1px solid var(--line);border-radius:var(--rc);overflow:hidden}
+  .e-chatcol{display:flex;flex-direction:column;width:calc(var(--chatw,340px) / var(--fz,1));flex-shrink:0;background:var(--card);border:1px solid var(--line);border-radius:var(--rc);overflow:hidden}
   .cc-head{display:flex;align-items:center;gap:8px;padding:14px 16px 10px;border-bottom:1px solid var(--line);color:var(--acc)}
   .cc-head b{color:var(--tx);font-size:14.5px}
   .cc-head small{margin-left:auto;color:var(--mu);font-size:12px}
@@ -499,7 +499,7 @@ kbd{display:inline-block;min-width:18px;padding:0 5px;margin:0 1px;border:1px so
   .e-chatcol .e-chat{padding:10px;border-top:1px solid var(--line);background:var(--card)}
   .tab-chat{display:none!important}
 }
-@media (min-width:1500px){.e-chatcol{width:380px}.e-side{width:370px}}
+@media (min-width:1500px){.e-chatcol{width:calc(var(--chatw,380px) / var(--fz,1))}.e-side{width:calc(var(--sidew,370px) / var(--fz,1))}}
 @media (max-width:520px){.e-top .btn.sm{padding:0 11px}.side-tabs button span{font-size:12px}}
 @media (min-width:900px) and (max-width:1199px){.side-tabs button svg{display:none}.side-tabs button{font-size:12.5px;padding:0 4px}}
 @media (max-width:420px){.side-tabs{gap:2px;padding:4px 8px 8px}.side-tabs button{gap:4px;font-size:12px}.side-tabs button svg{width:13px;height:13px}}
@@ -663,3 +663,45 @@ kbd{display:inline-block;min-width:18px;padding:0 5px;margin:0 1px;border:1px so
 .var-it span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .var-x{flex-shrink:0;width:30px;height:30px;border-radius:15px;border:0;background:transparent;color:var(--mu);display:flex;align-items:center;justify-content:center;margin-left:auto}
 @media (min-width:900px){.vars{display:flex!important}.vars[hidden]{display:none!important}.var-it canvas{width:36px}}
+
+/* ================= BỐ CỤC KÉO GIÃN (2/11 15:40) — vạch chia + Cài đặt giao diện (js/uiprefs.js) ================= */
+.split-v,.split-h{display:none;flex-shrink:0;touch-action:none;-webkit-user-select:none;user-select:none;position:relative}
+.split-v::after,.split-h::after{content:"";position:absolute;border-radius:3px;background:var(--line2);transition:background .15s}
+.split-v:hover::after,.split-h:hover::after,.split-v.drag::after,.split-h.drag::after{background:var(--acc)}
+.split-h{display:block;height:12px;cursor:row-resize;margin-bottom:-2px}
+.split-h::after{left:50%;top:4px;width:44px;height:4px;margin-left:-22px}
+@media (min-width:900px){
+  .split-v{display:block;width:10px;cursor:col-resize}
+  .split-v::after{top:50%;left:3px;width:4px;height:44px;margin-top:-22px}
+  .split-v[data-split=chat]{display:none}
+  .split-h{height:10px;margin:0}
+  .split-h::after{top:3px}
+}
+@media (min-width:1200px){.split-v[data-split=chat]{display:block}}
+#editor.nochatcol .e-chatcol,#editor.nochatcol .split-v[data-split=chat]{display:none}
+@media (min-width:1200px){#editor.nochatcol .tab-chat{display:flex!important}}
+.e-side,.e-chatcol,#editor>.e-chat{zoom:var(--fz,1)}
+/* làn timeline co giãn: --tk = tỉ lệ độ cao làn */
+.tl{height:auto;--rh:30px;--rhs:24px;--rhm:30px}
+@media (min-width:900px){.tl{height:auto;--rh:32px;--rhs:26px;--rhm:32px}}
+@media (max-width:899px){.tl{height:auto;--rh:24px;--rhs:20px;--rhm:34px}}
+.tl-row,.tl-label{height:calc(var(--rh) * var(--tk,1))}
+.tl-row[data-row=sfx],.tl-label[data-row=sfx]{height:calc(var(--rhs) * var(--tk,1))}
+.tl-row[data-row=main],.tl-label[data-row=main]{height:calc(var(--rhm) * var(--tk,1))}
+.clip{top:12%;height:76%;line-height:1.2;display:flex;align-items:center}
+.clip>span{flex:1;min-width:0}
+.tl-row[data-row=sfx] .clip{top:10%;height:80%;line-height:1.2}
+.tl-row[data-row=main] .clip{top:6%;height:88%;line-height:1.2}
+.clip .h::after{top:50%;margin-top:-5px}
+.tl-add{top:10%;height:80%}
+.tl-row[data-row=main] .tl-add{top:6%;height:88%}
+/* bảng Cài đặt giao diện */
+.uiset h3{margin:0 0 4px;font-size:17px}
+.uiset .us-row{margin:14px 0 0}
+.uiset .us-row>b{display:block;font-size:13px;margin-bottom:6px}
+.uiset .us-row>small{display:block;color:var(--mu);font-size:11.5px;margin-top:4px}
+.uiset .seg{display:flex;gap:6px}
+.uiset .seg button{flex:1;height:38px;border-radius:10px;border:1.5px solid var(--line2);background:var(--card2);color:var(--tx);font:600 13px/1 inherit}
+.uiset .seg button.on{border-color:var(--acc);color:var(--acc);background:var(--accbg)}
+.uiset input[type=range]{width:100%;accent-color:var(--acc)}
+.uiset .us-foot{display:flex;gap:8px;margin-top:18px}
