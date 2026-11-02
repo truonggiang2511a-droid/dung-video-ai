@@ -122,6 +122,9 @@ export function applyOp(p, o) {
     case 'pack':
       restyle(p, o.key, 'user');
       break;
+    case 'cam':
+      p.cam = o.v || null;
+      break;
     case 'cta':
       Object.assign(p.cta, o.set);
       break;
@@ -194,6 +197,8 @@ export function describeOp(p, o) {
       return 'Xoá';
     case 'pack':
       return `Đổi phong cách: ${PACKS[o.key]?.name || o.key}`;
+    case 'cam':
+      return o.v === 'strong' ? 'Máy quay chuyển động mạnh' : o.v ? 'Máy quay chuyển động nhẹ' : 'Tắt chuyển động máy quay';
     case 'subs':
       return o.set.on === false ? 'Tắt phụ đề' : o.set.style ? 'Đổi kiểu phụ đề' : 'Bật phụ đề';
     case 'music':

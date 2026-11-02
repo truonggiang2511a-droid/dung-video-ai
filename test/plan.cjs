@@ -8,7 +8,8 @@ const M = '/home/claude/testmedia/';
   const b = await chromium.launch({args: ['--autoplay-policy=no-user-gesture-required']});
   const p = await (await b.newContext({viewport: {width: 1440, height: 900}})).newPage();
   const errs = [];
-  p.on('pageerror', (e) => errs.push(e.message));
+  p.on('pageerror', (e) => { errs.push(e.message); console.log('PAGEERR', e.message); });
+  p.on('console', (m) => m.type() === 'error' && !/404/.test(m.text()) && console.log('CONSOLE', m.text().slice(0, 300)));
   await p.goto(process.env.URL || 'http://localhost:8790/');
   await p.waitForTimeout(800);
   let fc = p.waitForEvent('filechooser');
@@ -20,18 +21,20 @@ const M = '/home/claude/testmedia/';
   await (await fc).setFiles([M + 'Phong khach.mp4', M + 'Bep.mp4', M + 'Mat tien.mp4']);
   await p.waitForFunction(() => Object.values(window.__dv.p.sources).filter((s) => s.kind === 'broll').length === 3, null, {timeout: 30000});
   const truth = JSON.parse(fs.readFileSync(M + 'gen/speech_mid.json'));
-  const texts = ['Xin chào cả nhà, hôm nay mình giới thiệu căn nhà phố', 'ngay trung tâm thành phố', 'Mặt tiền rộng 5 mét,', 'một trệt hai lầu.', 'Giá bán 3.800 triệu,', 'có thương lượng.', 'Phòng khách rộng, bếp thoáng.', 'Pháp lý sổ hồng riêng,', 'công chứng ngay trong ngày.', 'Ai quan tâm thì nhắn tin cho mình nhé.'];
+  const TEXTS_BH = ['Chào các bạn, hôm nay mình giới thiệu nồi chiên', 'không dầu bán chạy nhất shop', 'Giá gốc 599 nghìn,', 'hôm nay chỉ còn 399 nghìn.', 'Giảm 30% cho 100 đơn đầu,', 'miễn phí vận chuyển.', 'Lòng nồi rộng, chiên giòn đều.', 'Hàng chính hãng,', 'bảo hành 12 tháng.', 'Bấm vào giỏ hàng đặt hàng ngay nhé.'];
+  const texts = genre === 'banhang' ? TEXTS_BH : ['Xin chào cả nhà, hôm nay mình giới thiệu căn nhà phố', 'ngay trung tâm thành phố', 'Mặt tiền rộng 5 mét,', 'một trệt hai lầu.', 'Giá bán 3.800 triệu,', 'có thương lượng.', 'Phòng khách rộng, bếp thoáng.', 'Pháp lý sổ hồng riêng,', 'công chứng ngay trong ngày.', 'Ai quan tâm thì nhắn tin cho mình nhé.'];
   const words = [];
   truth.speech.forEach(([a, bb], i) => {
     const ts = (texts[i] || '').split(' ');
     ts.forEach((t, j) => words.push({w: t, s: +(a + ((bb - a) * j) / ts.length).toFixed(2), e: +(a + ((bb - a) * (j + 0.85)) / ts.length).toFixed(2)}));
   });
-  await p.evaluate(([ws, g, d, pk]) => {
+  await p.evaluate(([ws, g, d, pk, rc]) => {
     if (ws.length) window.__dv.p.transcript = {words: ws};
     window.__dv.p.genre = g;
     if (d) window.__dv.p.textDensity = d; // DENSITY=it|vua|nhieu
     if (pk) Object.assign(window.__dv.p, {pack: pk, packBy: 'user'}); // PACK=sangtrong|nangdong|…
-  }, [process.env.NOWORDS ? [] : words, genre, process.env.DENSITY || '', process.env.PACK || '']);
+    if (rc) Object.assign(window.__dv.p, {recipe: rc, recipeBy: 'user'}); // RECIPE=bds-sang|bh-flash|…
+  }, [process.env.NOWORDS ? [] : words, genre, process.env.DENSITY || '', process.env.PACK || '', process.env.RECIPE || '']);
   await p.click('#btnAi');
   await p.waitForFunction(() => window.__dv.p.aiDone && !window.__dv.busy, null, {timeout: 180000});
   const r = await p.evaluate(() => {

@@ -92,6 +92,10 @@ export const ICONS = {
   book: {label: 'Kiến thức', d: 'M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 4h5v8l-2.5-1.5L6 12V4z'},
   chart: {label: 'Tăng trưởng', d: 'M16 6l2.3 2.3-4.9 4.9-4-4L2 16.6 3.4 18l6-6 4 4 6.3-6.3L22 12V6z'},
   camera: {label: 'Máy ảnh', d: 'M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4zM9 2 7.2 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.2L15 2H9zm3 15a5 5 0 1 1 0-10 5 5 0 0 1 0 10z'},
+  floors: {label: 'Kết cấu', d: 'M3 21V9l6-4v4l6-4v4l6-4v16zm3-9v2h2v-2zm0 4v2h2v-2zm5-4v2h2v-2zm0 4v2h2v-2zm5-4v2h2v-2zm0 4v2h2v-2z'},
+  bath: {label: 'Toilet', d: 'M7 4a3 3 0 0 1 3 3h-2a1 1 0 0 0-2 0v4h16v2a6 6 0 0 1-3 5.2V21h-2v-2H7v2H5v-2.8A6 6 0 0 1 2 13v-2h2V7a3 3 0 0 1 3-3z'},
+  road: {label: 'Đường', d: 'M8 2h2.2L9 22H4zm5.8 0H16l4 20h-5zM11 4h2v3.5h-2zm0 6h2v3.5h-2zm0 6h2v3.5h-2z'},
+  percent: {label: 'Giảm giá', d: 'M7 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM17 13a4 4 0 1 1 0 8 4 4 0 0 1 0-8zm0 2.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM18.4 3.2l1.8 1.8L5.6 20.8l-1.8-1.8z'},
   plane: {label: 'Du lịch', d: 'M21 16v-2l-8-5V3.5c0-.8-.7-1.5-1.5-1.5S10 2.7 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z'},
 };
 const iconPaths = {};
@@ -808,6 +812,14 @@ export const GFX = [
   ['confetti', 'Pháo giấy', {x: 0.5, y: 0, dur: 3, color: '#ffc61a'}],
   ['leak', 'Vệt sáng', {x: 0.5, y: 0.5, dur: 0.9, color: '#ffb36b'}],
   ['follow', 'Nút theo dõi', {label: 'THEO DÕI', x: 0.5, y: 0.6, dur: 3, color: '#ff2a2a', font: 'bevietnampro900'}],
+  // 2/11 — đồ hoạ theo ngành, chép bố cục từ bộ công cụ skill batdongsan-editor / hook-video-30s (kit/hook_mg.py: mg_price, mg_specs, mg_pin) + bán hàng
+  ['price', 'Bảng giá', {label: 'GIÁ BÁN', sub: '3,8 tỷ', badge: '', x: 0.5, y: 0.19, dur: 3.8, land: 1.3, color: '#ffc61a'}],
+  ['specs', 'Thẻ thông số', {items: [{icon: 'floors', text: '*1* trệt *2* lầu', t: 0}, {icon: 'ruler', text: '*52*m²', t: 0.35}, {icon: 'bed', text: '*3* phòng ngủ', t: 0.7}], x: 0.06, y: 0.13, dur: 4.5, color: '#ffc61a'}],
+  ['pin', 'Ghim vị trí', {label: 'VỊ TRÍ', sub: 'Bình Chánh', x: 0.5, y: 0.15, px: 0.5, py: 0.5, dur: 3.2, color: '#ffc61a'}],
+  ['room', 'Nhãn cảnh', {label: 'PHÒNG KHÁCH', x: 0.06, y: 0.09, dur: 2.5, color: '#ffc61a'}],
+  ['slash', 'Giá gạch ngang', {label: 'CHỈ CÒN', old: '599K', sub: '399K', x: 0.5, y: 0.2, dur: 3.6, color: '#ff2a2a'}],
+  ['sale', 'Tem giảm giá', {label: '-30%', sub: 'GIẢM', x: 0.78, y: 0.3, dur: 3, color: '#ff2a2a'}],
+  ['buy', 'Nút mua ngay', {label: 'MUA NGAY', x: 0.5, y: 0.8, dur: 3, color: '#ffc61a'}],
 ];
 export const GFX_MAP = Object.fromEntries(GFX.map(([k, l, d]) => [k, {label: l, def: d}]));
 const HOOK_VARIANTS = [['band', 'Dải màu'], ['box', 'Hộp'], ['line', 'Gạch chân'], ['burst', 'Nổ'], ['bubble', 'Bong bóng']];
@@ -834,6 +846,633 @@ function star(ctx, r) {
   }
   ctx.closePath();
 }
+
+// ---------- đồ hoạ theo ngành: tấm kính, chữ số quay, huy hiệu ----------
+const easeOutExpo = (x) => (x >= 1 ? 1 : 1 - Math.pow(2, -10 * clamp(x)));
+const easeOutBack = (x) => {
+  x = clamp(x);
+  const c = 1.9;
+  return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2);
+};
+const segE = (t, a, d, f = easeOut) => f(clamp((t - a) / d));
+function glassCard(ctx, x, y, w, h, r, a = 1) {
+  if (a <= 0 || w <= 1) return;
+  const u = Math.min(W, H) / 1080;
+  ctx.save();
+  ctx.globalAlpha *= a;
+  ctx.shadowColor = 'rgba(0,0,0,0.38)';
+  ctx.shadowBlur = 34 * u;
+  ctx.shadowOffsetY = 10 * u;
+  roundRect(ctx, x, y, w, h, Math.min(r, h / 2, w / 2));
+  ctx.fillStyle = 'rgba(15,17,22,0.68)';
+  ctx.fill();
+  ctx.shadowColor = 'transparent';
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, 'rgba(255,255,255,0.13)');
+  g.addColorStop(0.45, 'rgba(255,255,255,0.03)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.lineWidth = Math.max(1.5, 2.2 * u);
+  ctx.strokeStyle = 'rgba(255,255,255,0.24)';
+  ctx.stroke();
+  ctx.restore();
+}
+function accGrad(ctx, c, y0, y1) {
+  const g = ctx.createLinearGradient(0, y0, 0, y1);
+  g.addColorStop(0, mixHex(c, '#ffffff', 0.35));
+  g.addColorStop(1, c);
+  return g;
+}
+function drawIco(ctx, k, cx, cy, size, color) {
+  if (!ICONS[k]) k = 'check';
+  ctx.save();
+  ctx.translate(cx - size / 2, cy - size / 2);
+  ctx.scale(size / 24, size / 24);
+  ctx.fillStyle = color;
+  ctx.fill(iconPath(k));
+  ctx.restore();
+}
+// “*1* trệt *2* lầu” → [[“1”, true], [“ trệt ”, false], …]
+function hotParts(s) {
+  const out = [];
+  String(s || '').split('*').forEach((x, i) => x && out.push([x, i % 2 === 1]));
+  return out;
+}
+// con số chạy từ 0 lên (chỉ số nguyên ≤ 9999), dừng đúng giá trị thật trước khi cụm tắt
+function countUp(s, k) {
+  return k >= 1 ? s : s.replace(/\d+/, (n) => (+n <= 9999 ? String(Math.round(+n * k)) : n));
+}
+// chữ số quay (kiểu bảng giá): mỗi chữ số lăn từ (số + K) về đúng số, chữ đơn vị đứng yên
+function rollValue(ctx, value, cx, cy, size, t, tRoll, roll, c, maxW) {
+  const toks = String(value).match(/\d|[.,]|[^\d.,]+/g) || [];
+  const unitSize = size * 0.43;
+  const meas = () => toks.map((k) => {
+    if (/\d|[.,]/.test(k)) {
+      ctx.font = fontStr('anton', size);
+      return ctx.measureText(k).width + size * 0.012;
+    }
+    ctx.font = fontStr('bvp', size * 0.43);
+    return ctx.measureText(k.trim()).width + size * 0.16;
+  });
+  let ws = meas();
+  let tot = ws.reduce((a, b) => a + b, 0);
+  if (tot > maxW) {
+    size *= maxW / tot;
+    ws = meas();
+    tot = ws.reduce((a, b) => a + b, 0);
+  }
+  const uS = size * 0.43;
+  let x = cx - tot / 2;
+  let di = 0;
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'center';
+  const base = cy + size * 0.36;
+  const cellH = size * 0.86;
+  for (let i = 0; i < toks.length; i++) {
+    const k = toks[i];
+    const w = ws[i];
+    if (/\d/.test(k)) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x - 4, cy - cellH * 0.62, w + 8, cellH * 1.24);
+      ctx.clip();
+      ctx.font = fontStr('anton', size);
+      ctx.fillStyle = accGrad(ctx, c, cy - size * 0.4, cy + size * 0.4);
+      ctx.shadowColor = 'rgba(0,0,0,0.45)';
+      ctx.shadowBlur = size * 0.08;
+      const u = easeOutExpo((t - tRoll - di * 0.07) / roll);
+      const K = 9 + 3 * di;
+      const q = K * (1 - u);
+      const j0 = Math.floor(q);
+      for (const j of q < 0.02 ? [0] : [j0, j0 + 1]) ctx.fillText(String((+k + j) % 10), x + w / 2, base - (j - q) * cellH);
+      ctx.restore();
+      di++;
+    } else if (/[.,]/.test(k)) {
+      ctx.font = fontStr('anton', size);
+      ctx.fillStyle = c;
+      ctx.fillText(k, x + w / 2, base);
+    } else {
+      ctx.font = fontStr('bvp', uS);
+      ctx.fillStyle = '#ffffff';
+      ctx.globalAlpha *= 1;
+      ctx.fillText(k.trim(), x + w / 2 + size * 0.02, base);
+    }
+    x += w;
+  }
+  return {w: tot, size};
+}
+function checkMark(ctx, x, y, s, k, col) {
+  const P = [[0.1, 0.52], [0.4, 0.82], [0.95, 0.2]].map(([a, b]) => [x + a * s, y - s / 2 + b * s]);
+  const d1 = Math.hypot(P[1][0] - P[0][0], P[1][1] - P[0][1]);
+  const d2 = Math.hypot(P[2][0] - P[1][0], P[2][1] - P[1][1]);
+  let tot = (d1 + d2) * k;
+  ctx.save();
+  ctx.strokeStyle = col;
+  ctx.lineWidth = Math.max(3, s * 0.17);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(P[0][0], P[0][1]);
+  const e1 = Math.min(1, tot / d1);
+  ctx.lineTo(P[0][0] + (P[1][0] - P[0][0]) * e1, P[0][1] + (P[1][1] - P[0][1]) * e1);
+  if (tot > d1) {
+    const e2 = (tot - d1) / d2;
+    ctx.lineTo(P[1][0] + (P[2][0] - P[1][0]) * e2, P[1][1] + (P[2][1] - P[1][1]) * e2);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+function gfxIndustry(ctx, it, t, boxes, u, c, out, sz, cx, cy) {
+  const b = Math.min(W, H);
+  switch (it.key) {
+    case 'price': {
+      // tấm kính mở từ giữa → nhãn + 2 vạch màu → chữ số quay dừng đúng lúc nói → gạch chân → nhãn tích
+      const label = String(it.label || '').toUpperCase();
+      const value = String(it.sub || '');
+      const nd = (value.match(/\d/g) || []).length;
+      const roll = 0.85;
+      const span = roll + 0.07 * Math.max(0, nd - 1);
+      const land = clamp(it.land ?? 1.3, span + 0.1, Math.max(span + 0.1, it.dur - 1.05));
+      const tRoll = land - span;
+      const big = b * 0.2 * sz;
+      const pxLab = b * 0.037 * sz;
+      ctx.font = fontStr('bvp', pxLab);
+      const lw = ctx.measureText(label).width * 1.12;
+      const pw = Math.min(W * 0.92, Math.max(big * Math.max(2.2, value.length * 0.55) + b * 0.12, lw + b * 0.34));
+      const ph = b * 0.042 + pxLab + b * 0.014 + big * 0.95 + b * 0.066;
+      const py = cy - ph / 2;
+      const g = segE(t, 0, 0.42, easeOutExpo);
+      const w = pw * (0.16 + 0.84 * g);
+      glassCard(ctx, cx - w / 2, py, w, ph, b * 0.034, clamp(t / 0.12) * out);
+      ctx.globalAlpha = out;
+      const yb = py + b * 0.042 + pxLab * 0.8;
+      const la = segE(t, 0.16, 0.22);
+      if (label && la > 0) {
+        ctx.save();
+        ctx.globalAlpha = out * la;
+        ctx.font = fontStr('bvp', pxLab);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillStyle = '#ffffff';
+        if (ctx.letterSpacing !== undefined) ctx.letterSpacing = pxLab * 0.16 + 'px';
+        ctx.fillText(label, cx, yb);
+        ctx.restore();
+        const L = b * 0.07 * segE(t, 0.24, 0.32);
+        if (L > 1) {
+          ctx.fillStyle = c;
+          const ym = yb - pxLab * 0.36;
+          ctx.fillRect(cx - lw / 2 - b * 0.022 - L, ym - 2 * u, L, 4 * u);
+          ctx.fillRect(cx + lw / 2 + b * 0.022, ym - 2 * u, L, 4 * u);
+        }
+      }
+      const vy = yb + b * 0.014 + big * 0.5;
+      let r = {w: pw * 0.7};
+      if (t >= tRoll - 0.02) {
+        ctx.save();
+        const q = t - land;
+        const sc = q > 0 ? 1 + 0.07 * Math.exp(-q * 10) * Math.cos(q * 18) : 1;
+        ctx.translate(cx, vy);
+        ctx.scale(sc, sc);
+        ctx.globalAlpha = out * clamp((t - tRoll + 0.02) / 0.1);
+        r = rollValue(ctx, value, 0, 0, big, t, tRoll, roll, c, pw - b * 0.1);
+        ctx.restore();
+      }
+      const uq = segE(t, land + 0.1, 0.36, easeOutExpo);
+      if (uq > 0) {
+        ctx.fillStyle = accGrad(ctx, c, 0, 1);
+        const uw = r.w * 0.92 * uq;
+        roundRect(ctx, cx - uw / 2, vy + big * 0.5, uw, Math.max(3, b * 0.0062), 3);
+        ctx.fill();
+      }
+      if (it.badge) {
+        const q = t - (land + 0.3);
+        if (q > 0) {
+          const px = b * 0.047 * sz;
+          ctx.font = fontStr('bvp', px);
+          const tw = ctx.measureText(it.badge).width;
+          const bw = px * 0.95 + px * 0.95 + px * 0.38 + tw + px * 0.95;
+          const bh = px * 2.05;
+          const s2 = easeOutBack(q / 0.3);
+          const by = py + ph;
+          ctx.save();
+          ctx.translate(cx, by);
+          ctx.scale(s2, s2);
+          ctx.fillStyle = 'rgba(0,0,0,0.3)';
+          roundRect(ctx, -bw / 2, -bh / 2 + 3, bw, bh, bh / 2);
+          ctx.fill();
+          ctx.fillStyle = accGrad(ctx, c, -bh / 2, bh / 2);
+          roundRect(ctx, -bw / 2, -bh / 2, bw, bh, bh / 2);
+          ctx.fill();
+          if (q > 0.22) {
+            const x0 = -bw / 2 + px * 0.95;
+            checkMark(ctx, x0, 0, px * 0.95, segE(q, 0.24, 0.26, easeInOut), '#141414');
+            ctx.globalAlpha = out * clamp((q - 0.22) / 0.12);
+            ctx.fillStyle = '#141414';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(it.badge, x0 + px * 0.95 + px * 0.38, px * 0.04);
+          }
+          ctx.restore();
+        }
+      }
+      boxes.push({id: it.id, type: 'sticker', x: cx - pw / 2, y: py, w: pw, h: ph});
+      return true;
+    }
+    case 'specs': {
+      // dải dọc: mỗi dòng = huy hiệu tròn (vòng màu quét + icon) + thẻ kính kéo ra + chữ (*số* màu nhấn, số chạy), hiện đúng lúc được nói
+      const items = it.items || [];
+      const bd = b * 0.112 * sz;
+      const pitch = b * 0.14 * sz;
+      const px = b * 0.058 * sz;
+      const x0 = (it.x ?? 0.06) * W;
+      const y0 = (it.y ?? 0.13) * H;
+      const gapx = b * 0.026;
+      const bcx = x0 + bd / 2 - (1 - out) * b * 0.05;
+      ctx.globalAlpha = out;
+      const shown = items.filter((r) => t >= (r.t || 0)).length;
+      if (shown > 1) {
+        const last = items[shown - 1].t || 0;
+        const k = shown - 1 - 1 + segE(t, last, 0.3);
+        ctx.fillStyle = c;
+        ctx.fillRect(bcx - 2 * u, y0 + bd / 2, 4 * u, pitch * Math.max(0, k));
+      }
+      let maxW = 0;
+      items.forEach((r, i) => {
+        const q = t - (r.t || 0);
+        if (q <= 0) return;
+        const yy = y0 + bd / 2 + i * pitch;
+        const ph = bd * 0.8;
+        const near = it.dur - t < 0.95;
+        const txt = countUp(String(r.text || ''), near ? 1 : segE(q, 0.16, 0.5));
+        ctx.font = fontStr('bvp', px);
+        const parts = hotParts(txt);
+        const tw = parts.reduce((a, [x]) => a + ctx.measureText(x).width, 0);
+        const full = bd * 0.5 + gapx + tw + b * 0.045;
+        maxW = Math.max(maxW, bd + gapx + tw + b * 0.045);
+        const g = segE(q, 0.08, 0.36, easeOutExpo);
+        if (g > 0) glassCard(ctx, bcx, yy - ph / 2, Math.max(ph, full * g), ph, ph / 2, clamp((q - 0.08) / 0.1) * out);
+        const a = segE(q, 0.2, 0.22);
+        if (a > 0) {
+          ctx.save();
+          ctx.globalAlpha = out * a;
+          ctx.textBaseline = 'middle';
+          ctx.textAlign = 'left';
+          ctx.shadowColor = 'rgba(0,0,0,0.5)';
+          ctx.shadowBlur = px * 0.12;
+          let x = bcx + bd / 2 + gapx - (1 - a) * b * 0.03;
+          for (const [s1, hot] of parts) {
+            ctx.fillStyle = hot ? c : '#ffffff';
+            ctx.fillText(s1, x, yy + px * 0.04);
+            x += ctx.measureText(s1).width;
+          }
+          ctx.restore();
+        }
+        const s1 = easeOutBack(q / 0.3);
+        if (s1 > 0.05) {
+          const rr = (bd / 2) * s1;
+          ctx.save();
+          ctx.globalAlpha = out * clamp(q / 0.1);
+          ctx.beginPath();
+          ctx.arc(bcx, yy, rr, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(15,17,22,0.82)';
+          ctx.fill();
+          const sw = segE(q, 0.05, 0.5, easeInOut);
+          ctx.beginPath();
+          ctx.arc(bcx, yy, rr - 2 * u, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * sw);
+          ctx.strokeStyle = c;
+          ctx.lineWidth = Math.max(2, b * 0.0058);
+          ctx.stroke();
+          ctx.translate(bcx, yy);
+          ctx.rotate(((1 - segE(q, 0, 0.35)) * -35 * Math.PI) / 180);
+          drawIco(ctx, r.icon, 0, 0, bd * 0.5 * s1, '#ffffff');
+          ctx.restore();
+        }
+      });
+      boxes.push({id: it.id, type: 'sticker', x: x0, y: y0, w: Math.max(maxW, bd * 2), h: bd + Math.max(0, items.length - 1) * pitch});
+      return true;
+    }
+    case 'pin': {
+      // ghim rơi xuống + nảy, vòng lan dưới mũi ghim, đường dẫn lên thẻ kính (nhãn nhỏ + tên nơi)
+      const label = String(it.label || 'VỊ TRÍ').toUpperCase();
+      const lines = String(it.sub || '').split('\n').filter(Boolean);
+      const tipx = (it.px ?? 0.5) * W;
+      const tipy = (it.py ?? 0.5) * H;
+      const pinH = b * 0.15 * sz;
+      for (let k = 0; k < 3; k++) {
+        const q = t - 0.32 - k * 0.42;
+        if (q <= 0) continue;
+        const v = (q % 1.5) / 1.1;
+        if (v >= 1) continue;
+        const rx = b * (0.03 + 0.15 * easeOut(v)) * sz;
+        ctx.save();
+        ctx.globalAlpha = Math.pow(1 - v, 1.5) * 0.95 * out;
+        ctx.strokeStyle = c;
+        ctx.lineWidth = Math.max(2, b * 0.0058);
+        ctx.beginPath();
+        ctx.ellipse(tipx, tipy, rx, rx * 0.34, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+      const fall = segE(t, 0, 0.32, (x) => x * x);
+      const py2 = tipy - (1 - fall) * 0.2 * H;
+      const bounce = t > 0.32 ? 1 + 0.16 * Math.exp(-(t - 0.32) * 9) * Math.cos((t - 0.32) * 26) : 1;
+      ctx.save();
+      ctx.globalAlpha = clamp(t / 0.1) * out;
+      ctx.translate(tipx, py2);
+      ctx.scale(bounce, bounce);
+      const r = pinH * 0.34;
+      ctx.beginPath();
+      ctx.arc(0, -pinH + r, r, Math.PI * 0.8, Math.PI * 2.2);
+      ctx.lineTo(0, 0);
+      ctx.closePath();
+      ctx.shadowColor = 'rgba(0,0,0,0.4)';
+      ctx.shadowBlur = pinH * 0.08;
+      ctx.fillStyle = accGrad(ctx, c, -pinH, 0);
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+      ctx.beginPath();
+      ctx.arc(0, -pinH + r, r * 0.4, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.restore();
+      const pxLab = b * 0.035 * sz;
+      let pxBig = b * 0.064 * sz;
+      ctx.font = fontStr('bvp', pxBig);
+      const maxTxt = Math.max(1, ...lines.map((x) => ctx.measureText(x).width));
+      if (maxTxt > W * 0.8) pxBig *= (W * 0.8) / maxTxt;
+      ctx.font = fontStr('bvp', pxBig);
+      const cw = Math.min(W * 0.92, Math.max(...lines.map((x) => ctx.measureText(x).width), pxLab * label.length * 0.75) + b * 0.096);
+      const ch = b * 0.08 + pxLab * 0.8 + b * 0.03 + lines.length * pxBig * 1.04;
+      const ccy = cy;
+      const cy0 = ccy - ch / 2;
+      const cy1 = ccy + ch / 2;
+      const ly0 = tipy - pinH * 1.03;
+      if (ly0 > cy1) {
+        const v = segE(t, 0.36, 0.26, easeInOut);
+        if (v > 0) {
+          ctx.fillStyle = c;
+          ctx.globalAlpha = out;
+          ctx.fillRect(tipx - 2 * u, cy1 + (ly0 - cy1) * (1 - v), 4 * u, (ly0 - cy1) * v);
+        }
+      }
+      const g = segE(t, 0.5, 0.42, easeOutExpo);
+      if (g > 0) {
+        const w = cw * (0.1 + 0.9 * g);
+        glassCard(ctx, cx - w / 2, cy0, w, ch, b * 0.03, clamp((t - 0.5) / 0.12) * out);
+        const bw = cw * 0.22 * segE(t, 0.7, 0.35);
+        if (bw > 2) {
+          ctx.globalAlpha = out;
+          ctx.fillStyle = c;
+          roundRect(ctx, cx - bw / 2, cy1 - 3 * u, bw, 6 * u, 3 * u);
+          ctx.fill();
+        }
+      }
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      let yb = cy0 + b * 0.04 + pxLab * 0.8;
+      const a1 = segE(t, 0.7, 0.22);
+      if (a1 > 0) {
+        ctx.save();
+        ctx.globalAlpha = out * a1;
+        ctx.font = fontStr('bvp', pxLab);
+        if (ctx.letterSpacing !== undefined) ctx.letterSpacing = pxLab * 0.16 + 'px';
+        ctx.fillStyle = c;
+        ctx.fillText(label, cx, yb + (1 - a1) * b * 0.012);
+        ctx.restore();
+      }
+      yb += b * 0.03;
+      lines.forEach((ln, i) => {
+        yb += pxBig * 0.98;
+        const st = 0.78 + i * 0.11;
+        const a = segE(t, st, 0.24);
+        if (a <= 0) return;
+        ctx.save();
+        ctx.globalAlpha = out * a;
+        ctx.font = fontStr('bvp', i === lines.length - 1 ? pxBig : pxBig * 0.8);
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.shadowBlur = pxBig * 0.1;
+        ctx.fillText(ln, cx, yb + (1 - a) * b * 0.02);
+        ctx.restore();
+      });
+      boxes.push({id: it.id, type: 'sticker', x: cx - cw / 2, y: cy0, w: cw, h: ch});
+      return true;
+    }
+    case 'room': {
+      // nhãn cảnh (tên phòng / nơi) góc trên trái khi đang chiếu cảnh phụ: thẻ kính + chấm màu + chữ, trượt vào từ trái
+      const text = String(it.label || '').toUpperCase();
+      const px = b * 0.04 * sz;
+      ctx.font = fontStr('bvp', px);
+      if (ctx.letterSpacing !== undefined) ctx.letterSpacing = px * 0.1 + 'px';
+      const tw = ctx.measureText(text).width;
+      const h = px * 2.1;
+      const w = tw + px * 2.6;
+      const x = (it.x ?? 0.06) * W - (1 - segE(t, 0.15, 0.35, easeOutExpo)) * w * 0.4;
+      const y = (it.y ?? 0.09) * H;
+      const a = segE(t, 0.15, 0.25) * out;
+      glassCard(ctx, x, y, w, h, h / 2, a);
+      ctx.globalAlpha = a;
+      ctx.beginPath();
+      ctx.arc(x + px * 1.05, y + h / 2, px * 0.32, 0, Math.PI * 2);
+      ctx.fillStyle = c;
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, x + px * 1.75, y + h / 2 + px * 0.04);
+      if (ctx.letterSpacing !== undefined) ctx.letterSpacing = '0px';
+      boxes.push({id: it.id, type: 'sticker', x, y, w, h});
+      return true;
+    }
+    case 'slash': {
+      // giá cũ hiện → vạch đỏ gạch qua → giá mới bật ra to (bán hàng)
+      const old = String(it.old || '');
+      const val = String(it.sub || '');
+      const label = String(it.label || '').toUpperCase();
+      const pxOld = b * 0.075 * sz;
+      let big = b * 0.17 * sz;
+      ctx.font = fontStr('anton', big);
+      const vw = ctx.measureText(val).width;
+      if (vw > W * 0.8) big *= (W * 0.8) / vw;
+      ctx.font = fontStr('anton', big);
+      const pw = Math.min(W * 0.92, Math.max(ctx.measureText(val).width, pxOld * old.length * 0.6) + b * 0.16);
+      const ph = pxOld * 1.5 + big * 1.05 + b * 0.09 + (label ? b * 0.05 : 0);
+      const py = cy - ph / 2;
+      const g = segE(t, 0, 0.4, easeOutExpo);
+      glassCard(ctx, cx - (pw * (0.2 + 0.8 * g)) / 2, py, pw * (0.2 + 0.8 * g), ph, b * 0.034, clamp(t / 0.12) * out);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      let y = py + b * 0.045 + pxOld * 0.6;
+      const a0 = segE(t, 0.12, 0.2);
+      if (a0 > 0) {
+        ctx.save();
+        ctx.globalAlpha = out * a0 * (t > 0.7 ? 0.75 : 1);
+        ctx.font = fontStr('bvp', pxOld);
+        ctx.fillStyle = '#e8e8e8';
+        ctx.fillText(old, cx, y);
+        const ow = ctx.measureText(old).width;
+        const k = segE(t, 0.35, 0.22, easeInOut);
+        if (k > 0) {
+          ctx.strokeStyle = '#ff2a2a';
+          ctx.lineWidth = pxOld * 0.12;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(cx - ow / 2 - pxOld * 0.15, y + pxOld * 0.12);
+          ctx.lineTo(cx - ow / 2 - pxOld * 0.15 + (ow + pxOld * 0.3) * k, y - pxOld * 0.12 * (2 * k - 1));
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+      y += pxOld * 0.6 + b * 0.012;
+      if (label) {
+        const al = segE(t, 0.55, 0.2);
+        ctx.save();
+        ctx.globalAlpha = out * al;
+        ctx.font = fontStr('bvp', b * 0.034 * sz);
+        ctx.fillStyle = c;
+        ctx.fillText(label, cx, y + b * 0.02);
+        ctx.restore();
+        y += b * 0.05;
+      }
+      const q = t - 0.62;
+      if (q > 0) {
+        const s2 = easeOutBack(q / 0.32);
+        ctx.save();
+        ctx.translate(cx, y + big * 0.52);
+        ctx.scale(s2, s2);
+        ctx.rotate(-0.03);
+        ctx.font = fontStr('anton', big);
+        ctx.lineWidth = big * 0.1;
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+        ctx.strokeText(val, 0, 0);
+        ctx.fillStyle = accGrad(ctx, c, -big * 0.4, big * 0.4);
+        ctx.fillText(val, 0, 0);
+        ctx.restore();
+      }
+      boxes.push({id: it.id, type: 'sticker', x: cx - pw / 2, y: py, w: pw, h: ph});
+      return true;
+    }
+    case 'sale': {
+      // tem giảm giá hình sao nổ, xoay chậm, nảy vào, lắc nhẹ
+      const R = b * 0.13 * sz;
+      const s2 = easeOutBack(t / 0.35);
+      ctx.save();
+      ctx.globalAlpha = out;
+      ctx.translate(cx, cy);
+      ctx.rotate(Math.sin(t * 5) * 0.06 * clamp((t - 0.35) / 0.3) - 0.12);
+      ctx.scale(s2, s2);
+      ctx.save();
+      ctx.rotate(t * 0.5);
+      ctx.beginPath();
+      for (let k = 0; k < 32; k++) {
+        const a = (k * Math.PI * 2) / 32;
+        const rr = k % 2 ? R * 0.86 : R;
+        ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+      }
+      ctx.closePath();
+      ctx.shadowColor = 'rgba(0,0,0,0.4)';
+      ctx.shadowBlur = R * 0.15;
+      ctx.fillStyle = accGrad(ctx, c, -R, R);
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+      ctx.lineWidth = R * 0.04;
+      ctx.strokeStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(0, 0, R * 0.74, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+      const ink = lightColor(c) ? '#141414' : '#ffffff';
+      ctx.fillStyle = ink;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      if (it.sub) {
+        ctx.font = fontStr('bvp', R * 0.24);
+        ctx.fillText(String(it.sub).toUpperCase(), 0, -R * 0.34);
+      }
+      const lab = String(it.label || '');
+      fitFont(ctx, 'anton', lab, R * 0.62, R * 1.3);
+      ctx.fillText(lab, 0, R * (it.sub ? 0.1 : 0.02));
+      ctx.restore();
+      boxes.push({id: it.id, type: 'sticker', x: cx - R, y: cy - R, w: 2 * R, h: 2 * R});
+      return true;
+    }
+    case 'buy': {
+      // nút “Mua ngay”: viên thuốc chuyển sắc + huy hiệu giỏ hàng + mũi tên chạy, nhún định kỳ, ngón chạm có vòng sóng
+      const text = String(it.label || 'MUA NGAY').toUpperCase();
+      const h = b * 0.11 * sz;
+      ctx.font = fontStr('bvp', h * 0.42);
+      const tw = ctx.measureText(text).width;
+      const w = h * 1.05 + tw + h * 1.15;
+      const pulse = t > 0.5 ? 1 + 0.045 * Math.max(0, Math.sin(((t - 0.5) * Math.PI * 2) / 1.6)) : 1;
+      const s2 = easeOutBack(t / 0.35) * pulse;
+      ctx.save();
+      ctx.globalAlpha = out;
+      ctx.translate(cx, cy);
+      ctx.scale(s2, s2);
+      ctx.shadowColor = 'rgba(0,0,0,0.4)';
+      ctx.shadowBlur = h * 0.3;
+      const gr = ctx.createLinearGradient(-w / 2, 0, w / 2, 0);
+      gr.addColorStop(0, c);
+      gr.addColorStop(1, mixHex(c, '#ff6a3d', 0.55));
+      ctx.fillStyle = gr;
+      roundRect(ctx, -w / 2, -h / 2, w, h, h / 2);
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+      // vệt sáng chạy qua nút
+      const sh = ((t * 0.7) % 1.6) / 1.6;
+      ctx.save();
+      roundRect(ctx, -w / 2, -h / 2, w, h, h / 2);
+      ctx.clip();
+      const sx = -w / 2 + sh * w * 1.6 - w * 0.3;
+      const lg = ctx.createLinearGradient(sx - h, 0, sx + h, 0);
+      lg.addColorStop(0, 'rgba(255,255,255,0)');
+      lg.addColorStop(0.5, 'rgba(255,255,255,0.45)');
+      lg.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = lg;
+      ctx.fillRect(-w / 2, -h / 2, w, h);
+      ctx.restore();
+      const ink = lightColor(c) ? '#141414' : '#ffffff';
+      ctx.beginPath();
+      ctx.arc(-w / 2 + h * 0.52, 0, h * 0.38, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.85)';
+      ctx.fill();
+      drawIco(ctx, 'cart', -w / 2 + h * 0.52, 0, h * 0.42, c);
+      ctx.fillStyle = ink;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, -w / 2 + h * 1.02, h * 0.03);
+      for (let k = 0; k < 2; k++) {
+        const ax = w / 2 - h * 0.62 + ((t * 1.4 + k * 0.5) % 1) * h * 0.25;
+        ctx.globalAlpha = out * (0.5 + 0.5 * k);
+        ctx.strokeStyle = ink;
+        ctx.lineWidth = h * 0.08;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(ax - h * 0.08, -h * 0.13);
+        ctx.lineTo(ax + h * 0.06, 0);
+        ctx.lineTo(ax - h * 0.08, h * 0.13);
+        ctx.stroke();
+      }
+      ctx.restore();
+      const tap = (t - 0.9) / 0.45;
+      if (tap > 0 && tap < 1) {
+        ctx.save();
+        ctx.globalAlpha = (1 - tap) * out;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 6 * u;
+        ctx.beginPath();
+        ctx.arc(cx + w * 0.18, cy + h * 0.1, 20 * u + tap * 70 * u, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+      boxes.push({id: it.id, type: 'sticker', x: cx - w / 2, y: cy - h / 2, w, h});
+      return true;
+    }
+  }
+  return false;
+}
 function drawGfx(ctx, it, t, boxes) {
   const u = Math.min(W, H) / 1080;
   const c = it.color || '#ffc61a';
@@ -843,6 +1482,10 @@ function drawGfx(ctx, it, t, boxes) {
   const cy = (it.y ?? 0.5) * H;
   const ink = lightColor(c) ? '#121212' : '#ffffff';
   ctx.save();
+  if (gfxIndustry(ctx, it, t, boxes, u, c, out, sz, cx, cy)) {
+    ctx.restore();
+    return;
+  }
   switch (it.key) {
     case 'hook': {
       const text = String(it.label || '').toUpperCase();
@@ -1397,6 +2040,13 @@ export function drawFrame(ctx, p, T, frames, opt = {}) {
   let jtr = null;
   let jt = 9;
   const at = p.main ? srcAt(p, T) : null;
+  // máy quay luôn chuyển động nhẹ (công thức dựng bật p.cam): mỗi đoạn video chính đẩy vào / kéo ra xen kẽ ~3,5 % → hình không bao giờ đứng yên
+  if (p.cam && at && p.main.segs[at.i]) {
+    const sg = p.main.segs[at.i];
+    const k = easeInOut(clamp((at.t - sg.in) / Math.max(0.6, sg.out - sg.in)));
+    const amp = p.cam === 'strong' ? 0.06 : 0.035;
+    z *= at.i % 2 ? 1 + amp * (1 - k) : 1 + amp * k;
+  }
   if (at && at.i > 0 && p.main.segs[at.i]?.tr) {
     jtr = p.main.segs[at.i].tr;
     jt = at.t - p.main.segs[at.i].in;

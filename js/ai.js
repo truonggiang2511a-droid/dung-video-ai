@@ -6,6 +6,7 @@ import {genreOf, formatOf} from './templates.js';
 import {SFX_MAP} from './sfx.js';
 import {MOTIONS, stickerForPhrase, searchLib, loadIndex} from './library.js';
 import {PACKS, packsFor, packText, gfxStyle, rotatePack} from './styles.js';
+import {recipeOf, recipesFor, industryPlan} from './recipes.js';
 
 // ---------- Gọi máy chủ ----------
 let health = null;
@@ -133,7 +134,7 @@ export const TEXT_DENSITY = {
 };
 export const densityOf = (p) => TEXT_DENSITY[p.textDensity] || TEXT_DENSITY.vua;
 const NOUNS = /^(buoc|meo|cach|ly do|dieu|loai|mon|phong|tang|lau|ngay|thang|nam|phut|gio|nguoi|san pham|mau|size|cai|chiec|hop|goi|kg|km|lan|diem|sao)$/;
-export function numberLockups(p) {
+export function numberLockups(p, raw = false) {
   const g = p.genre || 'chung';
   const icons = genreOf(p).icons;
   const ws = timelineWords(p);
@@ -176,6 +177,7 @@ export function numberLockups(p) {
       out.push(newText(at, {lead: 'diện tích', main: `${num} X ${ws[i + 2]?.w || ''}`.toUpperCase(), color: '#ffc61a', icon: 'ruler', dur: 3.5}));
     }
   }
+  if (raw) return out;
   // không chồng nhau: cụm sau cách cụm trước ≥ 2,2 s (Ít: 4 s); cụm trước tự rút ngắn để nhường chỗ
   const keep = [];
   const numGap = densityOf(p).numGap;
@@ -338,12 +340,13 @@ export function brollKeys(src) {
 }
 export const brollTokens = (src) => brollKeys(src).map((x) => x.k);
 
-export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks = null} = {}) {
+export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks = null, place = ''} = {}) {
   const D = duration(p);
   const ops = [];
   if (D < 1) return ops;
   // phong cách của video (bộ phong cách — styles.js): chuyển cảnh, chữ, phụ đề, màu, đồ hoạ theo MỘT công thức
-  const pack = PACKS[p.pack] || packsFor(p.genre)[0] || PACKS.mau1;
+  const rec = recipeOf(p);
+  const pack = PACKS[p.pack] || PACKS[rec?.pack] || packsFor(p.genre)[0] || PACKS.mau1;
   const st = {...(genreOf(p).edit || {pace: 3.2, cover: 0.4, punch: 1.1}), base: pack.trans.base, accent: pack.trans.accent, jump: pack.jump};
   const words = timelineWords(p);
   const cuts = segStarts(p).slice(1).filter((c) => c > 0.2 && c < D - 0.2);
@@ -489,15 +492,21 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
   // chữ số liệu + chữ ý chính từ lời nói (mật độ theo khách chọn: Ít / Vừa / Nhiều)
   // tiêu đề mở đầu (hook) chiếm 2–3 giây đầu ở phía trên → chữ ý chính không chen vào lúc đó; chữ số liệu sớm thì tiêu đề nhường
   let hookEnd = 0;
-  const nums = numberLockups(p);
+  const allNums = numberLockups(p, true);
+  let nums = numberLockups(p);
+  // CÔNG THỨC DỰNG theo ngành: bảng giá lăn số, thẻ thông số, ghim vị trí, nhãn cảnh, giá gạch ngang, tem giảm %, nút mua (recipes.js)
+  const ind = industryPlan(p, rec, {nums: allNums, slots, D, ctaLen, place, color: gfxStyle(pack, 'price').color, priceColor: pack.price});
+  nums = nums.filter((t) => !ind.drop.has(t));
+  const onCard = (t) => ind.busy.some(([a, b]) => t.start < b + 0.2 && t.start + (t.dur || 3) > a - 0.2);
   if (hook && pack.gfx.hook) {
     hookEnd = Math.min(2.9, Math.max(0, D - ctaLen - 1));
-    const firstNum = nums.find((t) => t.start < hookEnd + 0.2);
+    const firstNum = [...nums, ...ind.busy.map(([a]) => ({start: a}))].filter((t) => t.start < hookEnd + 0.2).sort((u, v) => u.start - v.start)[0];
     if (firstNum) hookEnd = firstNum.start - 0.2;
     if (hookEnd < 1.5) hookEnd = 0;
   }
   let nKey = 0;
-  const keyList = (keys || localKeys(p)).filter((k) => !hookEnd || k.start > hookEnd + 0.3);
+  const keyList = (keys || localKeys(p)).filter((k) => (!hookEnd || k.start > hookEnd + 0.3) && !onCard(k));
+  nums = nums.filter((t) => !onCard(t));
   mergeLockups(p, nums, keyList).forEach((t, i) => {
     // màu / font / kiểu theo phong cách; chuyển động theo ý: giá → đóng dấu, diện tích/chiều dài → phóng ra, “3 bước/5 mẹo” → trượt vào, chữ ý chính → theo phong cách
     Object.assign(t, packText(pack, t, t.kind === 'key' ? nKey++ : 0));
@@ -550,7 +559,7 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
   ops.push(...jumpOps);
 
   // hình minh hoạ đúng lời nói (vd “giá” → túi tiền, “ngon” → mặt thưởng thức): tối đa 1 hình / 4,5 s, né cụm chữ
-  const lks = ops.filter((o) => o.list === 'texts').map((o) => o.item);
+  const lks = [...ops.filter((o) => o.list === 'texts').map((o) => o.item), ...ind.gfx.filter((x) => x.key !== 'room')];
   const stks = [];
   let lastKey = '';
   let lastT = -9;
@@ -630,6 +639,11 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
     ops.push({op: 'add', list: 'stickers', item: it});
     return it;
   };
+  for (const it of ind.gfx) {
+    const o = {id: uid('g'), kind: 'gfx', ...GFX_MAP[it.key].def, ...it, start: +it.start.toFixed(2), dur: +Math.min(it.dur, D - it.start).toFixed(2), locked: false};
+    if (o.dur >= 0.5) ops.push({op: 'add', list: 'stickers', item: o});
+  }
+  for (const [k, t, v] of ind.sfx) sfx(k, t, v);
   if (hookEnd) {
     gfx('hook', 0.2, hookEnd - 0.2, {label: hook});
     sfx(pack.gfx.hook === 'burst' ? 'impact' : 'whoosh', 0.05, 0.4);
@@ -638,7 +652,11 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
   if (pack.gfx.sparkle) for (const t of lks.filter((x) => x.kind === 'price')) gfx('sparkle', t.start + 0.05, 1.2, {y: (t.y ?? 0.2) + 0.03}) && sfx('sparkle', t.start + 0.4, 0.3);
   if (pack.gfx.leak) for (const j of jumpOps.slice(0, 4)) gfx('leak', Math.max(0, j.at - 0.15), 0.8);
   if (p.cta?.on !== false && D > ctaLen + 3) {
-    if (pack.gfx.follow) gfx('follow', D - ctaLen + 0.5, ctaLen - 0.6, {y: 0.8}) && sfx('click', D - ctaLen + 1.35, 0.4);
+    // bán hàng: nút “Mua ngay” thay nút theo dõi ở đoạn kết
+    if (ind.buy) {
+      const said = timelineWords(p).map((w) => plain(w.w)).join(' ');
+      gfx('buy', D - ctaLen + 0.4, ctaLen - 0.5, {y: 0.8, label: /dat hang/.test(said) ? 'ĐẶT HÀNG NGAY' : 'MUA NGAY'}) && sfx('click', D - ctaLen + 1.3, 0.4);
+    } else if (pack.gfx.follow) gfx('follow', D - ctaLen + 0.5, ctaLen - 0.6, {y: 0.8}) && sfx('click', D - ctaLen + 1.35, 0.4);
     if (pack.gfx.confetti) gfx('confetti', D - ctaLen, Math.min(3, ctaLen)) && sfx('success', D - ctaLen + 0.15, 0.35);
   }
   // âm thanh AI chọn theo nghĩa câu nói (ting = ý hay, tim đập = hồi hộp, sai rồi = lỗi sai…) — né các âm đã có
@@ -649,6 +667,7 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
   if (look && p.look?.by !== 'user') ops.push({op: 'look', set: {filter: 'none', amt: 0.6, vignette: 0, grain: 0, leak: 0, bars: false, ...look, by: 'ai'}});
   if (p.subs?.by !== 'user') ops.push({op: 'subs', set: {...pack.subs}});
   if (!p.cta?.on) ops.push({op: 'cta', set: {on: true}});
+  if (rec?.cam) ops.push({op: 'cam', v: rec.cam});
   return ops;
 }
 
@@ -999,6 +1018,7 @@ async function aiExtras(p, r) {
       if (hit) out.pics.push(animBy.has(hit.key) ? {start: pc.start, kind: 'anim', key: animBy.get(hit.key), label: q} : {start: pc.start, kind: 'emoji', key: hit.key, label: q});
     } catch (e) {}
   }
+  if (typeof r.place === 'string' && r.place.trim().length > 1 && r.place.length <= 40) out.place = r.place.trim();
   out.sfx = (r.sfx || []).filter((s) => SFX_MEAN.has(s.key) && s.start >= 0.5 && s.start < D - 0.5).slice(0, 8);
   return out;
 }
@@ -1260,11 +1280,23 @@ export async function autoEdit(ed, log) {
     ed.cur.say('');
   }
   // phong cách: khách đã chọn thì giữ; không thì AI chọn theo nội dung, không có AI thì xoay vòng giữa các lần dựng
-  if (p.packBy !== 'user') {
-    p.pack = extraAi.pack || rotatePack(p.genre || 'chung');
+  // công thức dựng: khách chọn thì giữ; không thì theo phong cách AI chọn, không có AI thì xoay vòng các công thức của ngành
+  const recs = recipesFor(p.genre);
+  if (p.recipeBy !== 'user' || !recs.some((r) => r.key === p.recipe)) {
+    const pk = extraAi.pack || rotatePack(p.genre || 'chung');
+    const r = recs.find((x) => x.pack === pk) || recs[0];
+    p.recipe = r.key;
+    p.recipeBy = 'ai';
+    if (p.packBy !== 'user') {
+      p.pack = extraAi.pack || r.pack;
+      p.packBy = 'ai';
+    }
+  } else if (p.packBy !== 'user') {
+    p.pack = recipeOf(p).pack;
     p.packBy = 'ai';
   }
-  const ops = localPlan(p, {keys, hook: extraAi.hook || '', pics: extraAi.pics, sfx: extraAi.sfx});
+  log('ke', 'run', `Công thức dựng “${recipeOf(p).name}”`);
+  const ops = localPlan(p, {keys, hook: extraAi.hook || '', pics: extraAi.pics, sfx: extraAi.sfx, place: extraAi.place || ''});
   log('ke', 'ok', `Kịch bản dựng: ${ops.length} thao tác`);
 
   // 5. diễn từng thao tác

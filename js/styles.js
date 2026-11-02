@@ -180,6 +180,6 @@ export function restyle(p, key, by = 'user') {
 
 // Màu / font / kiểu cho đồ hoạ theo phong cách
 export function gfxStyle(pack, key) {
-  const c = key === 'hook' ? pack.keys[0] === '#ffffff' ? pack.num : pack.keys[0] : pack.num;
+  const c = key === 'hook' ? (pack.keys[0] === '#ffffff' ? pack.num : pack.keys[0]) : key === 'slash' || key === 'sale' ? pack.price : pack.num;
   return {font: pack.font, color: c, variant: key === 'hook' ? pack.gfx.hook || 'band' : undefined};
 }

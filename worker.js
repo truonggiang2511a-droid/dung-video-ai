@@ -168,8 +168,9 @@ NGOÀI RA:
 - "hook": tiêu đề mở đầu hiện 2–3 giây đầu, VIẾT HOA, tối đa 24 ký tự, gây tò mò, đúng nội dung video. Chỉ dùng con số nếu con số đó có trong lời nói. Không hứa hẹn quá sự thật, không ghi số điện thoại.
 - "pack": khoá phong cách hợp nội dung nhất trong danh sách PHONG CÁCH bên dưới.
 - "pics": hình minh hoạ (emoji) cho những câu có hình ảnh cụ thể — tối đa PICS hình, cách nhau ≥ 5 giây: "start" = giây của câu, "tu" = 1–2 từ tiếng Việt chỉ đồ vật/con vật/cảm xúc để tìm emoji (vd "ngôi nhà", "tiền", "đồng hồ", "trái tim", "xe hơi", "cây", "bánh mì", "cười", "ngạc nhiên").
+- "place": tên địa điểm/vị trí người nói nhắc tới, lấy NGUYÊN VĂN trong lời (vd "Bình Chánh", "chợ Bình Điền", "quận 7"); không có thì "".
 - "sfx": âm thanh nhấn theo nghĩa câu nói, tối đa SFXN cái: "start" = giây của câu, "key" một trong: ding (ý hay, mẹo), success (kết quả tốt), wrong (sai lầm, cảnh báo), heartbeat (hồi hộp), tick (thời gian, hạn chót), coin (tiết kiệm, tiền nhỏ), riser (sắp tiết lộ), boing (vui, hài hước).
-Chỉ trả JSON: {"items":[{"start":0,"lead":"","main":""}],"hook":"","pack":"","pics":[{"start":0,"tu":""}],"sfx":[{"start":0,"key":""}]}`;
+Chỉ trả JSON: {"items":[{"start":0,"lead":"","main":""}],"hook":"","pack":"","pics":[{"start":0,"tu":""}],"place":"","sfx":[{"start":0,"key":""}]}`;
 // ---------- Claude dựng / sửa ----------
 const ICON_LIST = 'house|pin|ruler|tag|doc|school|sofa|car|tree|star|bed|key|heart|fire|check|bulb|chat|thumb|clock|cart|gift|truck|food|coffee|book|chart|camera|plane';
 const GENRE_RULES = {
@@ -253,7 +254,7 @@ async function ai(body, env, url, ip, claude, cf) {
   if (!out) throw new Error(note || 'AI chưa bật');
   if (body.mode === 'highlight') {
     const arr = (x, n) => (Array.isArray(x) ? x.slice(0, n) : []);
-    return {items: arr(out.items, count + 3), hook: String(out.hook || '').slice(0, 40), pack: String(out.pack || '').slice(0, 30), pics: arr(out.pics, 30), sfx: arr(out.sfx, 15), provider, fallback: note || undefined};
+    return {items: arr(out.items, count + 3), hook: String(out.hook || '').slice(0, 40), pack: String(out.pack || '').slice(0, 30), place: String(out.place || '').slice(0, 40), pics: arr(out.pics, 30), sfx: arr(out.sfx, 15), provider, fallback: note || undefined};
   }
   return {note: out.note || '', reply: out.reply || '', ops: Array.isArray(out.ops) ? out.ops.slice(0, 120) : [], provider, fallback: note || undefined};
 }
