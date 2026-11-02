@@ -1180,7 +1180,14 @@ export function cueCuts(words, pace = CUT_PACE.tight) {
   return ss
     .map((x, i) => ({x, i, t: plain(x.text).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()}))
     .filter(({x, t}) => x.n <= 7 && CUE.test(t))
-    .map(({x, i}) => ({a: Math.max(0, i ? ss[i - 1].e + pace.post : x.s - 0.1), b: i + 1 < ss.length ? ss[i + 1].s - pace.pre : x.e + 0.3, why: 'ekip'}));
+    .map(({x, i}) => ({a: Math.max(0, i ? ss[i - 1].e + pace.post : x.s - 0.1), b: i + 1 < ss.length ? ss[i + 1].s - pace.pre : x.e + 0.3, why: 'ekip'}))
+    // câu ngắn lặp y hệt câu ngay trước (“Xin chào! Xin chào!”) → bỏ câu sau
+    .concat(
+      ss
+        .map((x, i) => ({x, i}))
+        .filter(({x, i}) => i > 0 && x.n <= 4 && x.s - ss[i - 1].e < 1.5 && plain(x.text).replace(/[^a-z0-9]/g, '') === plain(ss[i - 1].text).replace(/[^a-z0-9]/g, ''))
+        .map(({x, i}) => ({a: Math.min(ss[i - 1].e + pace.post, x.s), b: i + 1 < ss.length ? ss[i + 1].s - pace.pre : x.e + 0.3, why: 'lap'})),
+    );
 }
 // kết quả Claude {cut:[{from,to,why}]} → khoảng cắt (giây nguồn), có chốt an toàn: bỏ tối đa 45% thời lượng có lời, mỗi đoạn ≤ 90 s
 export function cleanCuts(words, r, pace = CUT_PACE.tight) {
