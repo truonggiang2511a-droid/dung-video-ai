@@ -12,7 +12,7 @@ import {Timeline} from './timeline.js';
 import {Cursor} from './cursor.js';
 import {autoEdit, askAi, aiHealth, TEXT_DENSITY, localKeys, keyLockups, timelinePhrases, numberLockups} from './ai.js';
 import {installCard, canExport} from './install.js';
-import {GENRES, FORMATS, genreOf, migrate, rememberChoice} from './templates.js';
+import {GENRES, FORMATS, genreOf, migrate, rememberChoice, lastChoice} from './templates.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -126,15 +126,16 @@ function manual(fn, {lock = true} = {}) {
 }
 
 // ---------- MÀN DỰ ÁN ----------
+function renderGenreChips() {
+  const cur = lastChoice().genre;
+  $('#genreChips').innerHTML = Object.entries(GENRES).map(([k, g]) => `<button role="radio" aria-checked="${k === cur}" class="g-chip${k === cur ? ' on' : ''}" data-hgenre="${k}">${esc(g.label)}</button>`).join('');
+}
 async function renderHome() {
+  renderGenreChips();
   const list = await store.listProjects();
   const box = $('#plist');
   if (!list.length) {
-    box.innerHTML = `<div class="empty-home">
-      <div class="eh-art" aria-hidden="true"><i></i><i></i><i></i></div>
-      <h3>Chưa có video nào</h3>
-      <p>Tải video bạn nói trước máy quay và vài cảnh phụ lên timeline — AI cắt, ghép, thêm chữ từ A–Z. Bạn xem bản nháp, ưng rồi mới xuất.</p>
-    </div>`;
+    box.innerHTML = `<div class="empty-home"><h3>Chưa có video nào</h3><p>Bấm <b>Video mới</b>, chọn video bạn nói trước máy quay — AI cắt, ghép cảnh, thêm chữ và phụ đề. Bạn xem bản nháp, ưng rồi mới xuất.</p></div>`;
     return;
   }
   box.innerHTML = list
@@ -146,7 +147,7 @@ async function renderHome() {
       return `<div class="pcard" data-id="${p.id}">
         <button class="pcard-open" data-open="${p.id}" aria-label="Mở ${esc(p.name)}">
           <span class="pthumb" style="${th ? `background-image:url(${th})` : ''}"></span>
-          <span class="pinfo"><b>${esc(p.name)}</b><small>${D ? fmt(D) + ' · ' : ''}${new Date(p.updated).toLocaleString('vi-VN', {hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit'})}</small><em class="chip ${st[1]}">${st[0]}</em></span>
+          <span class="pinfo"><b>${esc(p.name)}</b><small>${esc(GENRES[p.genre]?.short || 'Chung')} · ${D ? fmt(D) + ' · ' : ''}${new Date(p.updated).toLocaleString('vi-VN', {hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit'})}</small><em class="chip ${st[1]}">${st[0]}</em></span>
         </button>
         <button class="icon-btn" data-del="${p.id}" aria-label="Xoá dự án ${esc(p.name)}">${icon(I.trash, 18)}</button>
       </div>`;
@@ -1771,6 +1772,11 @@ async function boot() {
   document.addEventListener('click', (e) => {
     const a = e.target.closest('[data-act]');
     if (a) act(a.dataset.act, a);
+    const hg = e.target.closest('[data-hgenre]');
+    if (hg) {
+      rememberChoice(hg.dataset.hgenre, null); // dự án mới tạo theo thể loại này
+      renderGenreChips();
+    }
     const o = e.target.closest('[data-open]');
     if (o) store.getProject(o.dataset.open).then(openEditor);
     const del = e.target.closest('[data-del]');
@@ -1940,7 +1946,8 @@ async function boot() {
   document.addEventListener('can-install', showInstall);
   showInstall();
   aiHealth().then((h) => {
-    $('#aiState').textContent = h.ai ? 'AI máy chủ: đang bật' : 'AI máy chủ: chưa bật — đang dùng bộ dựng cơ bản';
+    $('#aiState').textContent = h.ai ? 'AI đang bật' : 'Bộ dựng cơ bản';
+    $('#aiState').title = h.ai ? 'AI máy chủ đang bật' : 'AI máy chủ chưa bật — đang dùng bộ dựng cơ bản';
     $('#aiState').classList.toggle('ok', !!h.ai);
   });
 

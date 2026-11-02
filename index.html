@@ -18,18 +18,19 @@
 <body>
 <main id="home" class="screen">
   <header class="h-top">
-    <div class="brand"><span class="logo" aria-hidden="true"></span><div><b>Dựng Video AI</b><small>dựng video ngắn cho mọi người</small></div></div>
+    <div class="brand"><span class="logo" aria-hidden="true"></span><b>Dựng Video AI</b></div>
+    <span id="aiState" class="ai-state" role="status"></span>
   </header>
   <section class="h-hero">
+    <h1>Chào bạn,<br><span>hôm nay dựng video gì?</span></h1>
+    <div id="genreChips" class="g-chips" role="radiogroup" aria-label="Thể loại video"></div>
     <button id="btnNew" class="new-tile">
-      <span class="nt-plus" aria-hidden="true"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
-      <b>Video mới</b>
-      <small>Chọn video bạn nói trước máy quay — vào dự án rồi thêm cảnh phụ, AI dựng từ A–Z</small>
+      <span class="nt-plus" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+      <span class="nt-t"><b>Video mới</b><small>Chọn video bạn nói trước máy quay — AI dựng từ A–Z</small></span>
     </button>
   </section>
   <h2 class="h-sub">Dự án gần đây</h2>
   <div id="plist" class="plist"></div>
-  <p id="aiState" class="ai-state"></p>
 </main>
 
 <main id="editor" class="screen" hidden>

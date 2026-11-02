@@ -1,8 +1,16 @@
-@font-face{font-family:'BV';src:url(fonts/bvp400.woff2) format('woff2');font-weight:400;font-display:swap}
-@font-face{font-family:'BV';src:url(fonts/bvp500.woff2) format('woff2');font-weight:500;font-display:swap}
-@font-face{font-family:'BV';src:url(fonts/bvp600.woff2) format('woff2');font-weight:600;font-display:swap}
-@font-face{font-family:'BV';src:url(fonts/bvp700.woff2) format('woff2');font-weight:700;font-display:swap}
-@font-face{font-family:'BV';src:url(fonts/bvp800.woff2) format('woff2');font-weight:800;font-display:swap}
+/* chữ giao diện: Geist (Vercel, SIL OFL 1.1 — public/fonts/ui/GEIST-LICENSE.txt), đủ dấu tiếng Việt, tải theo bộ chữ cần dùng */
+@font-face{font-family:'UI';src:url(fonts/ui/geist-vietnamese-400-normal.woff2) format('woff2');font-weight:400;font-display:swap;unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB}
+@font-face{font-family:'UI';src:url(fonts/ui/geist-latin-ext-400-normal.woff2) format('woff2');font-weight:400;font-display:swap;unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:'UI';src:url(fonts/ui/geist-latin-400-normal.woff2) format('woff2');font-weight:400;font-display:swap;unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:'UI';src:url(fonts/ui/geist-vietnamese-500-normal.woff2) format('woff2');font-weight:500;font-display:swap;unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB}
+@font-face{font-family:'UI';src:url(fonts/ui/geist-latin-ext-500-normal.woff2) format('woff2');font-weight:500;font-display:swap;unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:'UI';src:url(fonts/ui/geist-latin-500-normal.woff2) format('woff2');font-weight:500;font-display:swap;unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:'UI';src:url(fonts/ui/geist-vietnamese-600-normal.woff2) format('woff2');font-weight:600;font-display:swap;unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB}
+@font-face{font-family:'UI';src:url(fonts/ui/geist-latin-ext-600-normal.woff2) format('woff2');font-weight:600;font-display:swap;unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:'UI';src:url(fonts/ui/geist-latin-600-normal.woff2) format('woff2');font-weight:600;font-display:swap;unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:'UI';src:url(fonts/ui/geist-vietnamese-700-normal.woff2) format('woff2');font-weight:700;font-display:swap;unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB}
+@font-face{font-family:'UI';src:url(fonts/ui/geist-latin-ext-700-normal.woff2) format('woff2');font-weight:700;font-display:swap;unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:'UI';src:url(fonts/ui/geist-latin-700-normal.woff2) format('woff2');font-weight:700;font-display:swap;unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
 
 /* Bảng màu kiểu Higgsfield (nền than chì + xanh chanh), bố cục học HyperFrames Studio */
 :root{
@@ -14,7 +22,7 @@
   --r:10px;--rc:16px;--sab:env(safe-area-inset-bottom,0px);--sat:env(safe-area-inset-top,0px);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;background:var(--bg);color:var(--tx);font-family:BV,Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px;line-height:1.45;-webkit-text-size-adjust:100%}
+html,body{margin:0;background:var(--bg);color:var(--tx);font-family:UI,Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px;line-height:1.45;-webkit-text-size-adjust:100%;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
 body.in-editor{overflow:hidden;height:100dvh}
 button,input,textarea{font:inherit;color:inherit}
 button{cursor:pointer}
@@ -47,35 +55,42 @@ button:disabled{opacity:.4;cursor:default}
 
 /* ---------- màn dự án ---------- */
 #home{max-width:760px;margin:0 auto;padding:calc(16px + var(--sat)) 16px calc(32px + var(--sab))}
-.h-top{display:flex;align-items:center;justify-content:space-between;padding:4px 0 18px}
-.brand{display:flex;gap:12px;align-items:center}
-.brand b{display:block;font-size:17px;font-weight:800;letter-spacing:-.01em}
-.brand small{color:var(--mu);font-size:12.5px}
-.logo{width:36px;height:36px;border-radius:10px;background:var(--acc);position:relative;flex-shrink:0}
-.logo::before{content:"";position:absolute;left:14px;top:10px;border-left:12px solid var(--ink);border-top:8px solid transparent;border-bottom:8px solid transparent}
-.h-hero{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:24px 20px}
-.h-hero h1{font-size:28px;line-height:1.15;font-weight:800;margin:0 0 10px;letter-spacing:-.02em;text-transform:uppercase}
-.h-hero h1 em{font-style:normal;color:var(--acc)}
-.h-hero p{color:var(--tx2);margin:0 0 18px}
-.h-sub{font-size:12.5px;font-weight:700;color:var(--mu);letter-spacing:.08em;text-transform:uppercase;margin:28px 2px 10px}
-.plist{display:flex;flex-direction:column;gap:10px}
-.pcard{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:var(--rc);padding:8px 6px 8px 8px;transition:border-color .15s}
+.h-top{display:flex;align-items:center;justify-content:space-between;padding:6px 0 4px}
+.brand{display:flex;gap:10px;align-items:center}
+.brand b{display:block;font-size:16px;font-weight:600;letter-spacing:-.01em}
+.logo{width:30px;height:30px;border-radius:9px;background:var(--acc);position:relative;flex-shrink:0}
+.logo::before{content:"";position:absolute;left:11.5px;top:8px;border-left:10px solid var(--ink);border-top:7px solid transparent;border-bottom:7px solid transparent}
+.ai-state{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:var(--mu);padding:5px 10px;border-radius:99px;border:1px solid var(--line2)}
+.ai-state::before{content:"";width:6px;height:6px;border-radius:3px;background:var(--mu)}
+.ai-state.ok{color:var(--tx2)}.ai-state.ok::before{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.ai-state:empty{display:none}
+.h-hero{padding:0;margin-top:26px}
+.h-hero h1{font-size:32px;line-height:1.1;font-weight:700;margin:0 0 20px;letter-spacing:-.03em}
+.h-hero h1 span{color:var(--mu);font-weight:600}
+.g-chips{display:flex;gap:7px;overflow-x:auto;margin:0 -16px 18px;padding:0 16px;scrollbar-width:none}
+.g-chips::-webkit-scrollbar{display:none}
+.g-chip{flex-shrink:0;height:36px;padding:0 14px;border-radius:99px;border:1px solid var(--line2);background:var(--card);color:var(--tx2);font:500 13.5px/1 inherit;letter-spacing:-.005em;transition:background .15s,color .15s,border-color .15s}
+.g-chip.on{background:var(--tx);color:var(--ink);border-color:var(--tx);font-weight:600}
+.new-tile{width:100%;display:flex;align-items:center;gap:14px;padding:16px;border-radius:20px;border:0;background:var(--acc);color:var(--ink);text-align:left;cursor:pointer;transition:transform .1s,filter .15s;box-shadow:0 12px 34px rgba(209,254,23,.16)}
+.new-tile:hover{filter:brightness(1.04)}.new-tile:active{transform:scale(.985)}
+.nt-plus{width:48px;height:48px;border-radius:24px;background:var(--ink);color:var(--acc);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.nt-t{display:flex;flex-direction:column;gap:3px;min-width:0}
+.nt-t b{font-size:18px;font-weight:700;letter-spacing:-.02em}
+.nt-t small{font-size:13px;line-height:1.35;opacity:.72}
+.h-sub{font-size:11.5px;font-weight:600;color:var(--mu);letter-spacing:.08em;text-transform:uppercase;margin:30px 2px 10px}
+.plist{display:flex;flex-direction:column;gap:8px}
+.pcard{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:var(--rc);padding:9px 6px 9px 9px;transition:border-color .15s}
 .pcard:hover{border-color:var(--line2)}
-.pcard-open{flex:1;display:flex;gap:12px;align-items:center;border:0;background:transparent;text-align:left;padding:0;min-width:0}
-.pthumb{width:54px;height:96px;border-radius:9px;background:#24272b center/cover;flex-shrink:0}
-.pinfo{display:flex;flex-direction:column;gap:4px;min-width:0}
-.pinfo b{font-size:15.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pinfo small{color:var(--mu);font-size:12.5px}
-.chip{align-self:flex-start;font-style:normal;font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:99px;background:var(--card2);color:var(--tx2)}
-.chip.ok{background:rgba(61,220,132,.1);color:var(--ok)}.chip.warn{background:var(--accbg);color:var(--acc)}
-.empty-home{text-align:center;padding:26px 16px;color:var(--tx2)}
-.empty-home h3{color:var(--tx);margin:14px 0 6px;font-size:17px}
-.empty-home p{margin:0 auto;max-width:420px}
-.eh-art{display:flex;gap:8px;justify-content:center}
-.eh-art i{width:34px;height:60px;border-radius:8px;background:var(--card2);border:1px solid var(--line)}
-.eh-art i:nth-child(2){height:70px;margin-top:-6px;background:var(--accbg);border-color:var(--accbd)}
-.ai-state{color:var(--mu);font-size:12.5px;text-align:center;margin-top:26px}
-.ai-state.ok{color:var(--ok)}
+.pcard-open{flex:1;display:flex;gap:12px;align-items:center;border:0;background:transparent;text-align:left;padding:0;min-width:0;color:inherit}
+.pthumb{width:46px;height:62px;border-radius:9px;background:#24272b center/cover;flex-shrink:0}
+.pinfo{display:flex;flex-direction:column;gap:3px;min-width:0}
+.pinfo b{font-size:15px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pinfo small{color:var(--mu);font-size:12.5px;font-variant-numeric:tabular-nums}
+.chip{align-self:flex-start;font-style:normal;font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;background:var(--card2);color:var(--tx2)}
+.chip.ok{background:rgba(61,220,132,.1);color:var(--ok)}.chip.warn{background:rgba(255,204,77,.12);color:#ffcc4d}
+.empty-home{text-align:center;padding:22px 16px;color:var(--mu);font-size:13.5px;border:1px dashed var(--line2);border-radius:var(--rc)}
+.empty-home h3{color:var(--tx2);margin:0 0 4px;font-size:15px;font-weight:600}
+.empty-home p{margin:0 auto;max-width:360px;line-height:1.45}
 
 /* ---------- editor (điện thoại trước) ---------- */
 #editor{height:100dvh;display:flex;flex-direction:column;padding-top:var(--sat)}
@@ -234,7 +249,7 @@ button:disabled{opacity:.4;cursor:default}
 .tl-scroll{flex:1;overflow-x:auto;overflow-y:hidden;position:relative;scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
 .tl-scroll::-webkit-scrollbar{display:none}
 .tl-inner{position:relative;height:100%}
-.tl-ruler{height:24px;position:relative;font-size:10.5px;color:var(--mu);font-variant-numeric:tabular-nums;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.tl-ruler{height:24px;position:relative;font-size:10.5px;color:var(--mu);font-variant-numeric:tabular-nums;font-weight:500}
 .tl-ruler span{position:absolute;top:5px;transform:translateX(-50%)}
 .tl-ruler span::after{content:"";position:absolute;left:50%;top:15px;width:1px;height:4px;background:#3a3f46}
 .tl-row{height:30px;position:relative}
@@ -434,7 +449,7 @@ kbd{display:inline-block;min-width:18px;padding:0 5px;margin:0 1px;border:1px so
   .tl.left .tl-empty{justify-content:flex-start;padding-left:24px}
   .modal{align-items:center}
   .kbd-hint{display:block}
-  .h-hero{padding:34px 30px}.h-hero h1{font-size:40px}
+  .h-hero{margin-top:40px}.h-hero h1{font-size:44px}.new-tile{max-width:520px}
 }
 @media (min-width:900px) and (pointer:coarse){.kbd-hint{display:none}}
 /* ≥ 1200px: 3 cột như HyperFrames — trợ lý AI bên trái, khung xem giữa, bảng sửa bên phải */
@@ -580,12 +595,3 @@ kbd{display:inline-block;min-width:18px;padding:0 5px;margin:0 1px;border:1px so
 @keyframes dockin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @media (max-width:899px) and (max-height:700px){.dk{height:44px;gap:3px}.e-top{height:44px}}
 @media (max-width:420px){.pname{visibility:hidden}}
-
-/* màn Dự án: nút “+ Video mới” kiểu CapCut */
-.h-hero:has(.new-tile){padding:0;border:0;background:transparent}
-.new-tile{width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:30px 20px 26px;border-radius:20px;border:1.5px dashed var(--accbd);background:linear-gradient(180deg,rgba(209,254,23,.07),rgba(209,254,23,.02));color:var(--tx);text-align:center;cursor:pointer;transition:border-color .15s,background .15s,transform .1s}
-.new-tile:hover{border-color:var(--acc)}
-.new-tile:active{transform:scale(.985)}
-.nt-plus{width:72px;height:72px;border-radius:36px;background:var(--acc);color:var(--ink);display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px rgba(209,254,23,.25);margin-bottom:4px}
-.new-tile b{font-size:19px;font-weight:800;letter-spacing:-.01em}
-.new-tile small{color:var(--tx2);font-size:13px;line-height:1.4;max-width:300px}
