@@ -102,7 +102,8 @@ export class Timeline {
   }
 
   get half() {
-    return this.left ? 18 : this.scroll.clientWidth / 2;
+    // điện thoại: đầu phát cố định ở 1/4 bề ngang (không phải giữa) → lúc ở 0:00 không bỏ trống nửa trái timeline
+    return this.left ? 18 : Math.max(56, Math.round(this.scroll.clientWidth * 0.25));
   }
   x(T) {
     return this.half + T * this.pps;
@@ -151,7 +152,7 @@ export class Timeline {
     const D = duration(p);
     const half = this.half;
     const total = D * this.pps;
-    this.inner.style.width = (this.left ? Math.max(this.scroll.clientWidth, total + half + 240) : total + half * 2) + 'px';
+    this.inner.style.width = (this.left ? Math.max(this.scroll.clientWidth, total + half + 240) : total + this.scroll.clientWidth) + 'px';
     this.inner.style.setProperty('--pad', half + 'px');
     // thước thời gian
     const step = this.pps >= 60 ? 1 : this.pps >= 30 ? 2 : 5;

@@ -550,7 +550,8 @@ kbd{display:inline-block;min-width:18px;padding:0 5px;margin:0 1px;border:1px so
   .clip .h::after{top:50%;margin-top:-5px}
   .tl-add{top:2px;height:20px;font-size:11px;padding:0 8px}
   .tl-row[data-row=main] .tl-add{height:30px}
-  .tl-head{left:calc(30px + (100% - 30px) / 2)}
+  .tl-head{left:calc(30px + max(56px, (100% - 30px) * .25))}
+  .tl-inner{background:linear-gradient(90deg,rgba(0,0,0,.28) var(--pad,0),transparent var(--pad,0))}
   .tl-empty{left:30px}
   /* thanh công cụ đáy */
   .dock{display:block;flex-shrink:0;border-top:1px solid var(--line);background:var(--bg)}
