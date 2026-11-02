@@ -1186,18 +1186,44 @@ export function cueCuts(words, pace = CUT_PACE.tight) {
 export function cleanCuts(words, r, pace = CUT_PACE.tight) {
   const ss = sentencesOf(words);
   const speech = words.length ? words[words.length - 1].e - words[0].s : 0;
-  const out = [];
-  let total = 0;
+  const toks = (t) => plain(t).replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((x) => x.length > 1);
+  const nums = (t) => (String(t).match(/\d+/g) || []);
+  // 1. khoảng câu Claude chỉ ra
+  const cand = [];
   for (const c of (r?.cut || []).slice(0, 30)) {
     const i = Math.max(0, Math.floor(+c.from));
     const j = Math.min(ss.length - 1, Math.floor(+c.to));
     if (!(j >= i) || !ss[i]) continue;
-    const a = i ? Math.max(ss[i - 1].e + pace.post, ss[i].s - 0.15) : Math.max(0, ss[i].s - 0.15);
-    const b = j + 1 < ss.length ? Math.min(ss[j + 1].s - pace.pre, ss[j].e + 1.5) : ss[j].e + 0.4;
+    cand.push({i, j, why: ['noi_lai', 'ekip', 'lap'].includes(c.why) ? c.why : 'noi_lai', note: String(c.note || '')});
+  }
+  const inCut = (k) => cand.some((c) => k >= c.i && k <= c.j);
+  const keptText = ss.filter((_, k) => !inCut(k)).map((x) => x.text).join(' ');
+  const keptToks = new Set(toks(keptText));
+  const keptNums = new Set(nums(keptText));
+  // 2. KIỂM LẠI (Claude có lúc lệch số câu — 2/11 từng chỉ nhầm câu GIÁ “3 tỷ 990 triệu” là “chào lặp”):
+  //  • số trong đoạn bỏ phải còn ở phần giữ lại (không bao giờ làm mất giá / số liệu)
+  //  • nói lại: ≥ 50% chữ của đoạn bỏ phải có lại ở phần giữ (hoặc câu bỏ dở ≤ 5 chữ)
+  //  • ekip: câu ngắn ≤ 12 chữ · chào lặp: giống câu liền kề
+  const out = [];
+  let total = 0;
+  for (const c of cand) {
+    const seg = ss.slice(c.i, c.j + 1);
+    const text = seg.map((x) => x.text).join(' ');
+    const tk = toks(text);
+    if (nums(text).some((n) => !keptNums.has(n))) continue;
+    if (c.why === 'ekip' && seg.some((x) => x.n > 12)) continue;
+    if (c.why === 'lap') {
+      const t = toks(text).join(' ');
+      const nb = [ss[c.i - 1], ss[c.j + 1]].filter(Boolean).map((x) => toks(x.text).join(' '));
+      if (!nb.includes(t)) continue;
+    }
+    if (c.why === 'noi_lai' && tk.length > 5 && tk.filter((x) => keptToks.has(x)).length / tk.length < 0.5) continue;
+    const a = c.i ? Math.max(ss[c.i - 1].e + pace.post, ss[c.i].s - 0.15) : Math.max(0, ss[c.i].s - 0.15);
+    const b = c.j + 1 < ss.length ? Math.min(ss[c.j + 1].s - pace.pre, ss[c.j].e + 1.5) : ss[c.j].e + 0.4;
     if (b - a <= 0.15 || b - a > 90) continue;
     if (total + (b - a) > speech * 0.45) break;
     total += b - a;
-    out.push({a, b, why: ['noi_lai', 'ekip', 'lap'].includes(c.why) ? c.why : 'noi_lai', text: ss.slice(i, j + 1).map((x) => x.text).join(' ')});
+    out.push({a, b, why: c.why, text, note: c.note});
   }
   return out;
 }

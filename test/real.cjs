@@ -20,7 +20,7 @@ const fs = require('fs');
   await p.waitForFunction(() => window.__dv.p.aiDone && !window.__dv.busy, null, {timeout: 600000});
   const r = await p.evaluate(() => {
     const pp = window.__dv.p;
-    return {segs: pp.main.segs.map((s) => [+s.in.toFixed(2), +s.out.toFixed(2)]), words: (pp.transcript?.words || []).map((w) => [w.w, +w.s.toFixed(2), +w.e.toFixed(2)]), status: document.querySelector('#status')?.innerText, chat: [...document.querySelectorAll('.chatlog .msg, .chatlog p')].map((x) => x.innerText).slice(-20)};
+    return {clean: pp._cleanCuts || null, segs: pp.main.segs.map((s) => [+s.in.toFixed(2), +s.out.toFixed(2)]), words: (pp.transcript?.words || []).map((w) => [w.w, +w.s.toFixed(2), +w.e.toFixed(2)]), status: document.querySelector('#status')?.innerText, chat: [...document.querySelectorAll('.chatlog .msg, .chatlog p')].map((x) => x.innerText).slice(-20)};
   });
   r.secs = (Date.now() - t0) / 1000;
   r.logs = logs;
