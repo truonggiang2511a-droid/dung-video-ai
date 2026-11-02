@@ -17,7 +17,7 @@ const M = '/home/claude/testmedia/';
   await p.waitForTimeout(500);
   await p.screenshot({path: 'test/s1-empty.png'});
   let fc = p.waitForEvent('filechooser');
-  await p.click('.drop.main');
+  await p.click((await p.locator('#home').isVisible()) ? '#btnNew' : '.drop.main');
   await (await fc).setFiles(M + 'aroll.mp4');
   await p.waitForFunction(() => window.__dv?.p?.main, null, {timeout: 30000});
   await p.waitForTimeout(800);

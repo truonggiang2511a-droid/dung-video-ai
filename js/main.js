@@ -159,6 +159,31 @@ async function newProj() {
   await store.saveProject(p);
   openEditor(p);
 }
+// Nút “+ Video mới” (kiểu CapCut): chọn video trước → mới tạo dự án và vào timeline. Huỷ chọn thì không tạo gì.
+function newVideo() {
+  const inp = $('#file');
+  inp.accept = 'video/*';
+  inp.multiple = true;
+  inp.onchange = async () => {
+    const fs = [...inp.files].filter((f) => /^video\//.test(f.type) || /\.(mp4|mov|m4v|webm)$/i.test(f.name));
+    inp.value = '';
+    if (!fs.length) return;
+    const p = newProject();
+    await store.saveProject(p);
+    await openEditor(p);
+    await addVideos(fs);
+  };
+  inp.click();
+}
+// nhiều video: video dài nhất là video chính, còn lại là cảnh phụ
+async function addVideos(vids) {
+  if (vids.length === 1) return addFiles('main', vids);
+  const metas = await Promise.all(vids.map((f) => probeVideo(f).then((m) => m.duration).catch(() => 0)));
+  const i = metas.indexOf(Math.max(...metas));
+  await addFiles('main', [vids[i]]);
+  const rest = vids.filter((_, j) => j !== i);
+  if (rest.length) await addFiles('broll', rest);
+}
 
 // ---------- MỞ EDITOR ----------
 async function openEditor(p) {
@@ -232,6 +257,8 @@ function renderStatus() {
     h = `<span class="st-ic warn" aria-hidden="true">!</span><span class="st-t"><b>Video chính chưa hiện hình</b> (thường do video iPhone dạng HEVC).</span><button class="btn ai xs" data-act="fixMain">Sửa video</button>`;
   } else if (!p.main) {
     h = `<span class="st-t">Kéo thả video vào timeline, hoặc bấm <b>Thêm video chính</b> bên dưới.</span>`;
+  } else if (!p.aiDone && !p.broll.length && !Object.values(p.sources).some((x) => x.kind === 'broll')) {
+    h = `<span class="st-ic" aria-hidden="true">${icon(I.film, 15)}</span><span class="st-t">Thêm <b>cảnh phụ</b> (nếu có) rồi bấm <b>AI dựng</b>.</span><button class="btn ai xs" data-act="addBroll">${icon(I.plus, 14)} Cảnh phụ</button>`;
   } else if (!p.aiDone) {
     h = `<span class="st-ic" aria-hidden="true">${icon(I.sparkle, 15)}</span><span class="st-t">Sẵn sàng — bấm <b>AI dựng</b>: cắt lặng, ghép cảnh, thêm chữ, hiệu ứng.</span>`;
   } else if (!p.approved) {
@@ -392,12 +419,7 @@ function bindDrop() {
     const vids = fs.filter((f) => /^video\//.test(f.type) || /\.(mp4|mov|m4v|webm)$/i.test(f.name));
     const auds = fs.filter((f) => /^audio\//.test(f.type));
     if (!ed.p.main && vids.length) {
-      // video dài nhất là video chính, còn lại là cảnh phụ
-      const metas = await Promise.all(vids.map((f) => probeVideo(f).then((m) => m.duration).catch(() => 0)));
-      const i = metas.indexOf(Math.max(...metas));
-      await addFiles('main', [vids[i]]);
-      const rest = vids.filter((_, j) => j !== i);
-      if (rest.length) await addFiles('broll', rest);
+      await addVideos(vids);
     } else if (vids.length) await addFiles('broll', vids);
     if (auds.length) await addFiles('music', [auds[0]]);
   });
@@ -1855,7 +1877,7 @@ async function boot() {
     clearTimeout(libT);
     libT = setTimeout(fillLib, 160);
   });
-  $('#btnNew').onclick = newProj;
+  $('#btnNew').onclick = newVideo;
   $('#btnBack').onclick = closeEditor;
   $('#btnPlay').onclick = () => ed.player.toggle();
   $('#btnUndo').onclick = () => undoRedo(-1);
@@ -1922,9 +1944,16 @@ async function boot() {
     $('#aiState').classList.toggle('ok', !!h.ai);
   });
 
-  // Vào app là vào thẳng timeline: mở dự án gần nhất, chưa có thì tạo mới
+  // Máy tính: vào thẳng timeline (dự án gần nhất, chưa có thì tạo mới).
+  // Điện thoại (2/11, Giang): mở màn Dự án có nút “+ Video mới” — trừ khi đang ở trong 1 dự án (tải lại trang).
   const id = location.hash.slice(1);
   let p = id ? await store.getProject(id) : null;
+  if (!p && !matchMedia('(min-width: 900px)').matches) {
+    $('#home').hidden = false;
+    $('#editor').hidden = true;
+    renderHome();
+    return;
+  }
   if (!p) p = (await store.listProjects())[0] || null;
   if (!p) {
     p = newProject();

@@ -11,7 +11,7 @@ const M = '/home/claude/testmedia/';
   await p.goto(process.env.URL || 'https://dung-video-ai.truonggiang2511a.workers.dev/');
   await p.waitForTimeout(1000);
   const fc = p.waitForEvent('filechooser');
-  await p.click('.drop.main');
+  await p.click((await p.locator('#home').isVisible()) ? '#btnNew' : '.drop.main');
   await (await fc).setFiles(M + (process.env.FILE || 'speech_mid_g30.mp4'));
   await p.waitForFunction(() => window.__dv?.p?.main, null, {timeout: 60000});
   await p.click('[data-act="project"]');

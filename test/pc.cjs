@@ -11,7 +11,7 @@ const M = '/home/claude/testmedia/';
   await p.screenshot({path: 'test/pc1-open.png'});
   // HEVC
   let fc = p.waitForEvent('filechooser');
-  await p.click('.drop.main');
+  await p.click((await p.locator('#home').isVisible()) ? '#btnNew' : '.drop.main');
   await (await fc).setFiles(M + 'IMG_HEVC.mov');
   await p.waitForSelector('#dlg:not([hidden])', {timeout: 60000}).catch(() => {});
   await p.waitForTimeout(500);
@@ -19,7 +19,7 @@ const M = '/home/claude/testmedia/';
   await p.screenshot({path: 'test/pc2-hevc.png'});
   await p.click('#dlg [data-v="1"]').catch(() => {});
   fc = p.waitForEvent('filechooser');
-  await p.click('.drop.main');
+  await p.click((await p.locator('#home').isVisible()) ? '#btnNew' : '.drop.main');
   await (await fc).setFiles(M + 'aroll.mp4');
   await p.waitForFunction(() => window.__dv?.p?.main, null, {timeout: 30000});
   await p.waitForTimeout(1500);

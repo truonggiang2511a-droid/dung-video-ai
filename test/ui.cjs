@@ -14,7 +14,7 @@ const M = '/home/claude/testmedia/';
   await p.waitForTimeout(800);
   await p.screenshot({path: `test/ui-${tag}-0-empty.png`});
   let fc = p.waitForEvent('filechooser');
-  await p.click('.drop.main');
+  await p.click((await p.locator('#home').isVisible()) ? '#btnNew' : '.drop.main');
   await (await fc).setFiles(M + 'speech_mid_g30.mp4');
   await p.waitForFunction(() => window.__dv?.p?.main, null, {timeout: 60000});
   fc = p.waitForEvent('filechooser');

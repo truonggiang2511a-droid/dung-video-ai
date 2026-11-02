@@ -235,6 +235,7 @@ export class Player {
       el.remove();
     }
     this.mains = [];
+    this.active = null; // thẻ cũ đã gỡ src — giữ lại thì dự án mở sau đứng ở “Chưa có video” (lỗi 2/11)
     if (this.mainId) {
       delete this.els[this.mainId];
       delete this.holds[this.mainId];

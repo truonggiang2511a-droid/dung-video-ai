@@ -10,9 +10,8 @@ const M = '/home/claude/testmedia/';
     await p.goto('http://localhost:8790/');
     await p.waitForTimeout(600);
     if (tag === 'pc') await p.screenshot({path: 'test/pc-home.png'});
-    await p.click('#btnNew');
     let fc = p.waitForEvent('filechooser');
-    await p.click('.drop.main');
+    await p.click((await p.locator('#home').isVisible()) ? '#btnNew' : '.drop.main');
     await (await fc).setFiles(M + 'aroll.mp4');
     await p.waitForFunction(() => window.__dv?.p?.main, null, {timeout: 30000});
     // giả lập lời nói đã chép + chữ
