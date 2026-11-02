@@ -74,6 +74,7 @@ const ROOM_NAMES = [
   ['hem', 'Đường vào'], ['duong vao', 'Đường vào'], ['phong lam viec', 'Phòng làm việc'], ['tang tret', 'Tầng trệt'], ['lau 1', 'Lầu 1'], ['lau 2', 'Lầu 2'],
 ];
 export function roomName(src) {
+  if (src?.stock) return ''; // cảnh mạng (Pixabay) không phải phòng của căn nhà → không gắn nhãn phòng
   if (src.tag && src.tagBy) return src.tag;
   const n = ' ' + plain(String(src.name || '').replace(/\.[a-z0-9]+$/i, '')).replace(/[_\-.]+/g, ' ') + ' ';
   const hit = ROOM_NAMES.find(([k]) => n.includes(' ' + k + ' '));

@@ -84,6 +84,7 @@ export class Player {
     this.mainId = null;
     this.bufs = {}; // id nguồn → AudioBuffer (null = không có tiếng), undefined = đang giải mã
     this.holds = {}; // id nguồn → canvas giữ khung cuối
+    this.imgs = {}; // id nguồn ảnh → {img: canvas đã thu nhỏ, w, h}
     this.T = 0;
     this.playing = false;
     this.boxes = [];
@@ -141,6 +142,19 @@ export class Player {
         this.holder.appendChild(a);
         this.els[id] = a;
         decodeFile(blob).then((b) => this._audioReady(id, b), () => this._audioReady(id, null));
+      } else if (src.kind === 'broll' && src.image) {
+        // ảnh làm cảnh phụ (Pixabay / ảnh khách): giải mã 1 lần ra canvas cỡ khung xem, vẽ mỗi khung rất rẻ
+        const im = new Image();
+        im.onload = () => {
+          const s = Math.min(1, Math.max((W * this.k * 1.3) / im.naturalWidth, (H * this.k * 1.3) / im.naturalHeight));
+          const cv = document.createElement('canvas');
+          cv.width = Math.max(2, Math.round(im.naturalWidth * s));
+          cv.height = Math.max(2, Math.round(im.naturalHeight * s));
+          cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height);
+          this.imgs[id] = {img: cv, w: cv.width, h: cv.height};
+          this.dirty = true;
+        };
+        im.src = url;
       } else if (src.kind === 'broll') {
         const el = makeVideo(url);
         el.addEventListener('seeked', () => (this.dirty = true));
@@ -225,6 +239,7 @@ export class Player {
     delete this.urls[id];
     delete this.bufs[id];
     delete this.holds[id];
+    delete this.imgs[id];
   }
 
   _dropMain() {
@@ -251,6 +266,7 @@ export class Player {
     this.urls = {};
     this.bufs = {};
     this.holds = {};
+    this.imgs = {};
     this.p = null;
   }
 
@@ -619,6 +635,10 @@ export class Player {
       fr.main = this._hold(p.main.src, el, ok);
     }
     for (const b of activeBrolls(p, this.T)) {
+      if (this.imgs[b.src]) {
+        fr.broll[b.id] = this.imgs[b.src];
+        continue;
+      }
       const el = this.els[b.src];
       if (!el) continue;
       fr.broll[b.id] = this._hold(b.src, el, el.readyState >= 2 && !el.seeking);

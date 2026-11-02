@@ -52,11 +52,23 @@ export async function exportVideo(p, getBlob, {res = 1080, onProgress, signal} =
       fp.keys.push(['main', null]);
     }
     for (const b of activeBrolls(p, T)) {
+      if (p.sources[b.src]?.image) {
+        fp.keys.push(['img:' + b.src, b.id]);
+        continue;
+      }
       const key = 'b:' + b.src;
       push(key, b.in + (T - b.start));
       fp.keys.push([key, b.id]);
     }
     plan.push(fp);
+  }
+  // ảnh làm cảnh phụ: giải mã 1 lần
+  const images = {};
+  for (const b of p.broll || []) {
+    const s = p.sources[b.src];
+    if (!s?.image || images[b.src]) continue;
+    const bm = await createImageBitmap(await getBlob(s.fileKey));
+    images[b.src] = {img: bm, w: bm.width, h: bm.height};
   }
   const iters = {};
   const meta = {};
@@ -99,6 +111,10 @@ export async function exportVideo(p, getBlob, {res = 1080, onProgress, signal} =
     }
     const fr = {main: null, broll: {}};
     for (const [key, id] of plan[i].keys) {
+      if (key.startsWith('img:')) {
+        fr.broll[id] = images[key.slice(4)] || null;
+        continue;
+      }
       const r = await iters[key].next();
       const wc = r.value;
       const f = wc ? {img: wc.canvas, w: meta[key].w, h: meta[key].h} : null;

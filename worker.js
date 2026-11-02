@@ -2,7 +2,10 @@
 //  POST /api/transcribe  (audio/wav 16 kHz mono) → Workers AI Whisper → {words:[{w,s,e}]}
 //  POST /api/ai          ({mode:'highlight'|'edit'|'plan', ...}) → Claude / AI Cloudflare → {items} | {note|reply, ops:[...]}
 //  POST /api/vision     ({genre, items:[{id, img:'data:image/jpeg;base64,…'}]}) → Workers AI Llama 4 Scout xem cảnh phụ → {tags:{id:{nhan, tu_khoa}}}
-//  GET  /api/health      → {ai, stt, vision}
+//  GET  /api/health      → {ai, stt, vision, stock}
+//  GET  /api/stock?q=&type=video|image&orient=   → tìm cảnh / ảnh Pixabay (Secret PIXABAY_KEY; nếu có key video riêng: PIXABAY_VIDEO_KEY; tắt khẩn cấp STOCK_OFF = "on"),
+//       kết quả lưu đệm 24 giờ (luật Pixabay), giới hạn chung STT_LIMIT khoá s:<ip>
+//  GET  /api/stock-file?u=<url pixabay>          → tải hộ file (chỉ máy chủ *.pixabay.com) để app lưu vào máy khách (ảnh KHÔNG được nhúng link thẳng)
 // AI nhìn cảnh phụ (/api/vision, ~0,0003 USD/cảnh, dùng chung 10.000 neuron/ngày miễn phí với Whisper) BẬT sẵn từ 1/11; tắt khẩn cấp: VISION_OFF = "on".
 // Chép lời (/api/transcribe, Whisper ~0,0005 USD/phút, 10.000 neuron/ngày miễn phí ≈ 214 phút) BẬT sẵn từ 1/11;
 // tắt khẩn cấp: đặt biến STT_OFF = "on" trong Cloudflare (wrangler.toml có keep_vars nên deploy không xoá).
@@ -21,8 +24,21 @@ export default {
     const vision = env.VISION_OFF !== 'on' && !!env.AI;
     const claude = open && !!env.ANTHROPIC_API_KEY;
     const cf = env.AI_OFF !== 'on' && !!env.AI; // AI miễn phí của Cloudflare: dùng khi chưa bật Claude, hoặc Claude lỗi / hết hạn mức
+    const stock = env.STOCK_OFF !== 'on' && !!(env.PIXABAY_KEY || env.PIXABAY_VIDEO_KEY);
     try {
-      if (url.pathname === '/api/health') return json({ai: claude || cf, provider: claude ? 'claude' : cf ? 'cf' : null, stt, vision});
+      if (url.pathname === '/api/health') return json({ai: claude || cf, provider: claude ? 'claude' : cf ? 'cf' : null, stt, vision, stock});
+      if (url.pathname === '/api/stock') {
+        if (!stock) return json({error: 'Kho Pixabay chưa bật (thiếu PIXABAY_KEY)'}, 503);
+        if (env.STT_LIMIT) {
+          const {success} = await env.STT_LIMIT.limit({key: 's:' + (req.headers.get('cf-connecting-ip') || 'x')});
+          if (!success) return json({error: 'Tìm quá nhanh — thử lại sau 1 phút'}, 429);
+        }
+        return stockSearch(url, env);
+      }
+      if (url.pathname === '/api/stock-file') {
+        if (!stock) return json({error: 'Kho Pixabay chưa bật'}, 503);
+        return stockFile(url);
+      }
       if (url.pathname === '/api/vision' && req.method === 'POST') {
         if (!vision) return json({error: 'AI nhìn cảnh đang tắt'}, 503);
         if (env.STT_LIMIT) {
@@ -170,7 +186,8 @@ NGOÀI RA:
 - "pics": hình minh hoạ (emoji) cho những câu có hình ảnh cụ thể — tối đa PICS hình, cách nhau ≥ 5 giây: "start" = giây của câu, "tu" = 1–2 từ tiếng Việt chỉ đồ vật/con vật/cảm xúc để tìm emoji (vd "ngôi nhà", "tiền", "đồng hồ", "trái tim", "xe hơi", "cây", "bánh mì", "cười", "ngạc nhiên").
 - "place": tên địa điểm/vị trí người nói nhắc tới, lấy NGUYÊN VĂN trong lời (vd "Bình Chánh", "chợ Bình Điền", "quận 7"); không có thì "".
 - "sfx": âm thanh nhấn theo nghĩa câu nói, tối đa SFXN cái: "start" = giây của câu, "key" một trong: ding (ý hay, mẹo), success (kết quả tốt), wrong (sai lầm, cảnh báo), heartbeat (hồi hộp), tick (thời gian, hạn chót), coin (tiết kiệm, tiền nhỏ), riser (sắp tiết lộ), boing (vui, hài hước).
-Chỉ trả JSON: {"items":[{"start":0,"lead":"","main":""}],"hook":"","pack":"","pics":[{"start":0,"tu":""}],"place":"","sfx":[{"start":0,"key":""}]}`;
+- "stock": cảnh trám từ kho video mạng (Pixabay) cho những câu có ý nói về thứ CHUNG CHUNG không có trong cảnh quay — tối đa STOCKN cảnh, cách nhau ≥ 6 giây: "start" = giây của câu, "q" = 1–3 từ TIẾNG ANH để tìm video (vd "city skyline", "money counting", "family happy", "handshake", "traffic road", "calendar"). TUYỆT ĐỐI KHÔNG tìm chính căn nhà / căn hộ / phòng / món ăn / sản phẩm đang review hoặc đang bán hay người nói (cảnh mạng mà giả làm hàng thật là lừa khách). Không chắc thì để [].
+Chỉ trả JSON: {"items":[{"start":0,"lead":"","main":""}],"hook":"","pack":"","pics":[{"start":0,"tu":""}],"place":"","sfx":[{"start":0,"key":""}],"stock":[{"start":0,"q":""}]}`;
 // ---------- Claude dựng / sửa ----------
 const ICON_LIST = 'house|pin|ruler|tag|doc|school|sofa|car|tree|star|bed|key|heart|fire|check|bulb|chat|thumb|clock|cart|gift|truck|food|coffee|book|chart|camera|plane';
 const GENRE_RULES = {
@@ -223,7 +240,7 @@ function buildPrompt(body) {
     const gap = Math.max(1.5, Math.min(10, +body.gap || 4));
     const dur = Math.max(5, +body.dur || 60);
     const packs = (Array.isArray(body.packs) ? body.packs : []).slice(0, 20).map((x) => `- ${String(x.key).slice(0, 30)}: ${String(x.name).slice(0, 40)} — ${String(x.desc).slice(0, 120)}`).join('\n');
-    const system = HL_SYS.replace('COUNT', count).replace('GAP', gap).replace('PICS', Math.max(1, Math.round(dur / 6))).replace('SFXN', Math.max(1, Math.round(dur / 12))) + (body.genre ? `\nThể loại video: ${String(body.genre).slice(0, 200)}.` : '') + (packs ? `\nPHONG CÁCH:\n${packs}` : '');
+    const system = HL_SYS.replace('COUNT', count).replace('GAP', gap).replace('PICS', Math.max(1, Math.round(dur / 6))).replace('SFXN', Math.max(1, Math.round(dur / 12))).replace('STOCKN', Math.max(1, Math.min(4, Math.round(dur / 15)))) + (body.genre ? `\nThể loại video: ${String(body.genre).slice(0, 200)}.` : '') + (packs ? `\nPHONG CÁCH:\n${packs}` : '');
     return {system, user: `Lời người nói:\n${lines}`, max: 1600, count};
   }
   const proj = JSON.stringify(body.project).slice(0, 120000); // giữ prompt < 100k token (Haiku 5.5 trên 100k token giá ×5)
@@ -254,7 +271,7 @@ async function ai(body, env, url, ip, claude, cf) {
   if (!out) throw new Error(note || 'AI chưa bật');
   if (body.mode === 'highlight') {
     const arr = (x, n) => (Array.isArray(x) ? x.slice(0, n) : []);
-    return {items: arr(out.items, count + 3), hook: String(out.hook || '').slice(0, 40), pack: String(out.pack || '').slice(0, 30), place: String(out.place || '').slice(0, 40), pics: arr(out.pics, 30), sfx: arr(out.sfx, 15), provider, fallback: note || undefined};
+    return {items: arr(out.items, count + 3), hook: String(out.hook || '').slice(0, 40), pack: String(out.pack || '').slice(0, 30), place: String(out.place || '').slice(0, 40), pics: arr(out.pics, 30), sfx: arr(out.sfx, 15), stock: arr(out.stock, 6), provider, fallback: note || undefined};
   }
   return {note: out.note || '', reply: out.reply || '', ops: Array.isArray(out.ops) ? out.ops.slice(0, 120) : [], provider, fallback: note || undefined};
 }
@@ -328,4 +345,65 @@ export class AiGate {
     await st.put('day', now);
     return json({...out, cost});
   }
+}
+
+// ---------- Kho cảnh / ảnh Pixabay (key giữ ở máy chủ, KHÔNG gửi về máy khách) ----------
+// Luật Pixabay (pixabay.com/api/docs, đọc 2/11): kết quả phải lưu đệm 24 giờ; ảnh phải tải về (không nhúng link lâu dài);
+// hiện “nguồn Pixabay” chỗ có kết quả; 100 lượt/60 giây cho mỗi key; cấm tải hàng loạt tự động.
+async function stockSearch(url, env) {
+  const q = (url.searchParams.get('q') || '').trim().slice(0, 60);
+  const type = url.searchParams.get('type') === 'image' ? 'image' : 'video';
+  const orient = ['vertical', 'horizontal'].includes(url.searchParams.get('orient')) ? url.searchParams.get('orient') : 'all';
+  const page = Math.max(1, Math.min(5, +url.searchParams.get('page') || 1));
+  if (!q) return json({items: []});
+  const lang = /[^\x00-\x7f]/.test(q) ? 'vi' : 'en';
+  const cacheKey = new Request(`https://stock-cache.dung-video-ai/${type}?q=${encodeURIComponent(q.toLowerCase())}&o=${orient}&p=${page}&l=${lang}`);
+  const cache = caches.default;
+  const hit = await cache.match(cacheKey).catch(() => null);
+  if (hit) return hit;
+  const api = new URL(type === 'image' ? 'https://pixabay.com/api/' : 'https://pixabay.com/api/videos/');
+  // Pixabay dùng CHUNG 1 key cho ảnh và video; nếu Giang đặt riêng key video thì dùng PIXABAY_VIDEO_KEY cho video
+  const key = type === 'video' ? env.PIXABAY_VIDEO_KEY || env.PIXABAY_KEY : env.PIXABAY_KEY || env.PIXABAY_VIDEO_KEY;
+  api.searchParams.set('key', key);
+  api.searchParams.set('q', q);
+  api.searchParams.set('lang', lang);
+  api.searchParams.set('safesearch', 'true');
+  api.searchParams.set('per_page', '24');
+  api.searchParams.set('page', String(page));
+  if (type === 'image') {
+    api.searchParams.set('image_type', 'photo');
+    if (orient !== 'all') api.searchParams.set('orientation', orient);
+  }
+  const r = await fetch(api.toString());
+  if (r.status === 429) return json({error: 'Kho Pixabay đang bận — thử lại sau 1 phút'}, 429);
+  if (!r.ok) return json({error: 'Pixabay lỗi ' + r.status + ': ' + (await r.text()).slice(0, 120)}, 502);
+  const d = await r.json();
+  const items = (d.hits || []).map((h) =>
+    type === 'image'
+      ? {id: h.id, type: 'image', page: h.pageURL, user: h.user, tags: h.tags, thumb: h.previewURL, view: h.webformatURL, url: h.largeImageURL, w: h.imageWidth, h: h.imageHeight}
+      : (() => {
+          const v = h.videos || {};
+          const pick = v.small?.url ? v.small : v.tiny?.url ? v.tiny : v.medium;
+          return pick?.url ? {id: h.id, type: 'video', page: h.pageURL, user: h.user, tags: h.tags, dur: h.duration, thumb: (v.tiny || pick).thumbnail || '', url: pick.url, w: pick.width, h: pick.height, size: pick.size} : null;
+        })(),
+  ).filter(Boolean);
+  const res = new Response(JSON.stringify({items, total: d.totalHits || 0, source: 'Pixabay'}), {headers: {'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=86400'}});
+  await cache.put(cacheKey, res.clone()).catch(() => {});
+  return res;
+}
+async function stockFile(url) {
+  let u;
+  try {
+    u = new URL(url.searchParams.get('u') || '');
+  } catch (e) {
+    return json({error: 'Link không hợp lệ'}, 400);
+  }
+  if (u.protocol !== 'https:' || !/(^|\.)pixabay\.com$/.test(u.hostname)) return json({error: 'Chỉ tải được file của Pixabay'}, 400);
+  const r = await fetch(u.toString(), {cf: {cacheTtl: 86400, cacheEverything: true}});
+  if (!r.ok) return json({error: 'Không tải được file (' + r.status + ')'}, 502);
+  const len = +(r.headers.get('content-length') || 0);
+  if (len > 80 * 1024 * 1024) return json({error: 'File quá lớn'}, 413);
+  const h = {'content-type': r.headers.get('content-type') || 'application/octet-stream', 'cache-control': 'private, max-age=86400'};
+  if (len) h['content-length'] = String(len);
+  return new Response(r.body, {headers: h});
 }

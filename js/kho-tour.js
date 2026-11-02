@@ -191,7 +191,7 @@ function presetFor(t) {
 
 // ---------- 2) CON TRỎ VÀO KHO ----------
 // ed.ui (main.js): showPacks(), openLib(tab), query(q), done(). Trả về các op đã áp trong tour (bỏ khỏi danh sách diễn sau).
-export async function kitTour(ed, ops, {fixes = [], packBy = 'ai', budget = 16} = {}) {
+export async function kitTour(ed, ops, {fixes = [], packBy = 'ai', budget = 16, stock = []} = {}) {
   const {p, cur, ui} = ed;
   const done = new Set();
   if (!ui || !p.main) return done;
@@ -356,6 +356,36 @@ export async function kitTour(ed, ops, {fixes = [], packBy = 'ai', budget = 16} 
         await ui.done();
         await demoFix(fx);
       }
+    }
+    // 3a. Cảnh trám Pixabay: gõ từ khoá trong Kho › Pixabay, chọn cảnh, kéo xuống làn Cảnh phụ đúng câu nói
+    const sp = stock[0];
+    const bop = sp && ops.find((o) => o.op === 'add' && o.list === 'broll' && o.item.src === sp.src.id);
+    if (bop) {
+      cur.speed = Math.max(cur.speed, 1.3);
+      ed.seek(bop.item.start + 0.05);
+      await ui.openLib('stock', {q: sp.q, type: sp.it.type});
+      const inp = document.querySelector('#stockQ');
+      if (shown(inp)) {
+        await cur.moveTo(...center(inp), 420);
+        await cur.click();
+        cur.say(`Tìm cảnh trám trên Pixabay: “${sp.q}”`);
+        for (let i = 1; i <= sp.q.length; i++) {
+          inp.value = sp.q.slice(0, i);
+          await cur.pause(45);
+        }
+      }
+      const el = document.querySelector(`#stockGrid [data-stockid="${sp.it.id}"]`);
+      if (shown(el)) {
+        await cur.moveTo(...center(el), 480);
+        cur.say(`Câu nói này không có cảnh quay → lấy ${sp.it.type === 'image' ? 'ảnh' : 'cảnh'} chung minh hoạ “${sp.q}” (không dùng làm ${p.genre === 'bds' ? 'căn nhà' : 'hàng'} đang bán) · nguồn Pixabay`);
+        await cur.pause(600);
+        const img = el.querySelector('img')?.getAttribute('src') || '';
+        const to = ed.tl.pointAt('broll', bop.item.start + 0.2);
+        await dragGhost(ghostOf(`<img src="${img}" alt="">`, 'pic'), to.x, to.y, 750);
+      }
+      apply(bop);
+      ed.seek(bop.item.start + 0.8);
+      await cur.pause(900);
     }
     // 3b. Đồ hoạ ngành (bảng giá, thẻ thông số, ghim vị trí…) — lấy từ Kho › Đồ hoạ, kéo ra đúng chỗ
     const CARD_WHY = {price: 'lời nói có giá → bảng giá lăn số, dừng đúng lúc nói', specs: 'lời nói có diện tích, số phòng → thẻ thông số hiện từng dòng đúng lúc nói', pin: 'nhắc tên nơi → ghim vị trí', slash: 'nói giá cũ → giá mới → gạch giá cũ cho thấy rẻ hơn', sale: 'nói giảm % → tem giảm giá', room: 'cảnh phụ là phòng nào → nhãn tên phòng'};

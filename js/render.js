@@ -219,6 +219,45 @@ export function drawCover(ctx, fr, scale = 1, dx = 0, dy = 0) {
   }
 }
 
+// Cảnh lệch khổ nhiều (cảnh ngang Pixabay trong khổ dọc): VỪA KHUNG + nền mờ của chính cảnh đó (kiểu TikTok) thay vì cắt
+// phóng to 3× bị nhoè. Nền mờ giả = thu cảnh xuống 24 px rồi phóng lên (không dùng ctx.filter — Safari cũ không có).
+let blurTiny = null;
+export function drawFitBlur(ctx, fr, scale = 1, dx = 0, dy = 0) {
+  if (!fr || !fr.img || !fr.w) return false;
+  try {
+    if (!blurTiny) blurTiny = document.createElement('canvas');
+    const tw = 24;
+    const th = Math.max(2, Math.round((tw * H) / W));
+    blurTiny.width = tw;
+    blurTiny.height = th;
+    const g = blurTiny.getContext('2d');
+    const cs = Math.max(tw / fr.w, th / fr.h);
+    g.drawImage(fr.img, (tw - fr.w * cs) / 2, (th - fr.h * cs) / 2, fr.w * cs, fr.h * cs);
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(blurTiny, dx - W * 0.04, dy - H * 0.04, W * 1.08, H * 1.08);
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.fillRect(dx, dy, W, H);
+    ctx.restore();
+    const s = Math.min(W / fr.w, H / fr.h) * scale;
+    const w = fr.w * s;
+    const h = fr.h * s;
+    ctx.drawImage(fr.img, (W - w) / 2 + dx, (H - h) / 2 + dy, w, h);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+// cảnh phụ dùng kiểu nào: b.fit 'cover' | 'blur'; không ghi thì tự chọn — lệch khổ > 1,6 lần mới vừa khung + nền mờ
+export function brollFit(b, src) {
+  if (b?.fit === 'cover' || b?.fit === 'blur') return b.fit;
+  const sw = src?.w || 0;
+  const sh = src?.h || 0;
+  if (!sw || !sh) return 'cover';
+  const r = sw / sh / (W / H);
+  return r > 1.6 || r < 1 / 1.6 ? 'blur' : 'cover';
+}
+
 // 3 kiểu zoom video chính: (mặc định) đẩy vào 0,25 s rồi giữ; 'punch' = zoom giật tức thì (che chỗ cắt, kiểu dựng TikTok/YouTube);
 // 'push' = đẩy máy chậm suốt đoạn (giữ hình không đứng yên khi người nói lâu)
 export function zoomAt(p, T) {
@@ -2156,10 +2195,13 @@ export function drawFrame(ctx, p, T, frames, opt = {}) {
     const tr = b.trans || 'fade';
     const inP = tr === 'none' ? 1 : easeOut(t / (tr === 'whip' || tr === 'flash' ? 0.22 : 0.3));
     const outP = clamp((b.start + b.dur - T) / 0.25);
-    const drift = 1.08 - 0.08 * clamp(t / b.dur);
+    const src = p.sources?.[b.src];
+    // ảnh: đẩy máy chậm vào (Ken Burns) cho ảnh tĩnh có chuyển động; video: lùi nhẹ như cũ
+    const drift = src?.image ? 1 + 0.1 * clamp(t / b.dur) : 1.08 - 0.08 * clamp(t / b.dur);
     const fr = frames.broll?.[b.id];
+    const fit = brollFit(b, src);
     const paint = (sc, x = 0, y = 0) => {
-      if (!drawCover(ctx, fr, sc, x, y) && opt.placeholder) {
+      if (!(fit === 'blur' ? drawFitBlur(ctx, fr, sc, x, y) : drawCover(ctx, fr, sc, x, y)) && opt.placeholder) {
         ctx.fillStyle = '#2a3140';
         ctx.fillRect(x, y, W, H);
       }

@@ -7,6 +7,7 @@ import {SFX, SFX_MAP, playSfx} from './sfx.js';
 import {MOTIONS, searchLib, loadIndex, pruneAnims} from './library.js';
 import {FONT_CATS, ensureFont, ensureProjectFonts} from './fonts.js';
 import {importFile, probeVideo, ensurePlayable, thumbs, CUT_PACE} from './media.js';
+import {stockSearch, stockImport} from './stock.js';
 import {Player} from './player.js';
 import {Timeline} from './timeline.js';
 import {Cursor} from './cursor.js';
@@ -578,6 +579,7 @@ function renderInspector() {
       <div class="fl"><span>Nhịp cắt khoảng lặng <small class="fcount">AI cắt chỗ ngừng nói</small></span><div class="seg">${Object.entries(CUT_PACE).map(([k, v]) => `<button class="${(p.cutPace || 'tight') === k ? 'on' : ''}" data-pace="${k}">${v.label}</button>`).join('')}</div></div>
       <div class="fl"><span>Chữ điểm nhấn <small class="fcount">số liệu, giá, ý chính</small></span><div class="seg">${Object.entries(TEXT_DENSITY).map(([k, v]) => `<button class="${(p.textDensity || 'vua') === k ? 'on' : ''}" data-density="${k}">${v.label}</button>`).join('')}</div></div>
       <div class="fl"><span>Khổ hình</span><div class="fmts">${Object.entries(FORMATS).map(([k, f]) => `<button class="fmt${p.format === k ? ' on' : ''}" data-format="${k}" title="${esc(f.note)}"><i style="aspect-ratio:${f.w}/${f.h}"></i><b>${k}</b><small>${esc(f.note.split(',')[0])}</small></button>`).join('')}</div></div>
+      <label class="fl tog"><input type="checkbox" data-stockauto ${p.stockAuto !== false ? 'checked' : ''}> AI tự lấy cảnh trám Pixabay <small class="muted">— chỉ video người nói / kiến thức; review nhà, món, hàng có cảnh thật thì không trám</small></label>
       <label class="fl tog"><input type="checkbox" data-cta="on" ${p.cta?.on ? 'checked' : ''}> Đoạn kết kêu gọi (4 giây cuối)</label>
       ${p.cta?.on ? `<label class="fl">Chữ đoạn kết<input data-cta="text" value="${esc(p.cta.text)}" maxlength="30" placeholder="${esc(genreOf(p).cta)}"></label>` : ''}
       <p class="hint">Chạm vào một clip trên timeline để sửa, hoặc nhắn AI ở ô bên dưới.</p>
@@ -655,6 +657,9 @@ function bindInspector() {
       const k = el.dataset.cta;
       p.cta[k] = el.type === 'checkbox' ? el.checked : el.value;
       if (k === 'on') renderInspector();
+    } else if (el.dataset.stockauto !== undefined) {
+      p.stockAuto = el.checked;
+      toast(el.checked ? 'AI sẽ tự lấy cảnh trám Pixabay khi video thiếu cảnh phụ' : 'AI không lấy cảnh Pixabay nữa — chỉ dùng cảnh của bạn');
     } else return;
     p._rev++;
     if (p.approved) p.approved = false;
@@ -1290,6 +1295,7 @@ const LIB_TABS = [
   ['gfx', 'Đồ hoạ'],
   ['sfx', 'Âm thanh'],
   ['fx', 'Hiệu ứng'],
+  ['stock', 'Pixabay'],
 ];
 function renderMedia() {
   const box = $('#media');
@@ -1330,6 +1336,15 @@ function renderMedia() {
     drawGfxThumbs();
     return;
   }
+  if (tab === 'stock') {
+    const st = ed.stockType || 'video';
+    box.innerHTML = `${head}<div class="seg stk-seg"><button class="${st === 'video' ? 'on' : ''}" data-stocktype="video">Cảnh video</button><button class="${st === 'image' ? 'on' : ''}" data-stocktype="image">Ảnh minh hoạ</button></div>
+      <input class="inp lib-q" id="stockQ" type="search" placeholder="Tìm: thành phố, tiền, gia đình, bãi biển, nấu ăn…" value="${esc(ed.stockQ || '')}" autocomplete="off" enterkeyhint="search">
+      <div class="stk-grid" id="stockGrid"></div>
+      <p class="hint lib-lic">Nguồn: <a href="https://pixabay.com/" target="_blank" rel="noopener">Pixabay</a> — cảnh & ảnh miễn phí, dùng thương mại được. Bấm để tải về và chèn tại đầu phát. <b>Video bất động sản / bán hàng: chỉ dùng làm cảnh trám chung (thành phố, tiền, gia đình…), KHÔNG dùng làm căn nhà / sản phẩm đang bán.</b></p>`;
+    fillStock();
+    return;
+  }
   if (tab === 'sfx') {
     box.innerHTML = `${head}<p class="hint" style="margin:2px 0 10px">Bấm ▶ để nghe, bấm + để chèn tại đầu phát. Âm thanh tự tạo trong app — không lo bản quyền.</p>
       <div class="sfx-list">${SFX.map((x) => `<div class="sfx-i"><button class="icon-btn" data-playsfx2="${x.key}" aria-label="Nghe ${esc(x.name)}">${icon(I.play, 15)}</button><b>${esc(x.name)}</b><small>${x.len.toFixed(1).replace('.', ',')} s</small><button class="tag" data-addsfx="${x.key}">+ Chèn</button></div>`).join('')}</div>`;
@@ -1350,6 +1365,46 @@ function renderMedia() {
     group('Video chính', all.filter((s) => s.kind === 'main' && p.main?.src === s.id), p.main ? 'replaceMain' : 'addMain', p.main ? 'Thay video chính' : 'Thêm video chính') +
     group('Cảnh phụ', all.filter((s) => s.kind === 'broll'), 'addBroll', 'Thêm cảnh phụ') +
     group('Nhạc nền', all.filter((s) => s.kind === 'music'), 'addMusic', p.music ? 'Đổi bài nhạc' : 'Thêm nhạc nền');
+}
+// lưới Pixabay: tìm qua máy chủ (key ở máy chủ), bấm = tải về + chèn tại đầu phát
+const STOCK_HINT = {bds: 'thành phố', banhang: 'mua sắm', amthuc: 'nấu ăn', kienthuc: 'học tập', vlog: 'du lịch', chung: 'thành phố'};
+let stockList = [];
+async function fillStock() {
+  const grid = $('#stockGrid');
+  if (!grid) return;
+  const h = await aiHealth().catch(() => ({}));
+  if (!h.stock) {
+    grid.innerHTML = '<p class="hint">Kho Pixabay chưa bật — cần thêm key Pixabay vào máy chủ (Cloudflare → Variables and Secrets → <b>PIXABAY_KEY</b>).</p>';
+    return;
+  }
+  const type = ed.stockType || 'video';
+  const q = (ed.stockQ || '').trim() || STOCK_HINT[ed.p.genre || 'chung'] || 'thành phố';
+  grid.innerHTML = '<p class="hint">Đang tìm…</p>';
+  try {
+    stockList = await stockSearch(q, type, type === 'image' ? (W > H ? 'horizontal' : 'vertical') : '');
+  } catch (e) {
+    grid.innerHTML = `<p class="hint">${esc(e.message)}</p>`;
+    return;
+  }
+  if ($('#stockGrid') !== grid || (ed.stockType || 'video') !== type) return;
+  ed.stockLastQ = q;
+  grid.innerHTML = stockList.length
+    ? stockList.map((x, i) => `<button class="stk-it${x.type === 'image' ? ' img' : ''}" data-stock="${i}" data-stockid="${x.id}" title="${esc(x.tags || '')} · tác giả ${esc(x.user || '')} (Pixabay)"><img src="${esc(x.thumb)}" alt="${esc(x.tags || '')}" loading="lazy" referrerpolicy="no-referrer"><span>${x.type === 'video' ? fmt(x.dur || 0) : 'Ảnh'}</span></button>`).join('')
+    : `<p class="hint">Không có kết quả cho “${esc(q)}” — thử từ khác (gõ tiếng Việt hoặc tiếng Anh đều được).</p>`;
+}
+async function insertStock(i) {
+  const it = stockList[i];
+  const p = ed.p;
+  if (!it || !p?.main) return toast('Thêm video chính trước đã nhé.');
+  toast('Đang tải từ Pixabay…', 60000);
+  try {
+    const src = await stockImport(p, it, ed.stockLastQ || '', (m) => toast(esc(m), 60000));
+    await ed.player.attach(p, ed.getBlob);
+    insertBroll(src.id);
+    toast(`Đã chèn ${it.type === 'image' ? 'ảnh' : 'cảnh'} Pixabay của ${esc(it.user || 'tác giả')}.`);
+  } catch (e) {
+    toast(esc(e.message), 5000);
+  }
 }
 // lưới hình / icon: tìm theo nhãn tiếng Việt, lọc theo nhóm
 async function fillLib() {
@@ -2029,14 +2084,19 @@ async function boot() {
       $('#insp .pk-grid')?.closest('.fl')?.scrollIntoView({block: 'start'});
       await frame();
     },
-    async openLib(tab) {
+    async openLib(tab, opt = {}) {
       ed.libTab = tab;
       ed.libQ = '';
+      if (tab === 'stock') {
+        ed.stockQ = opt.q || '';
+        ed.stockType = opt.type || 'video';
+      }
       const was = $('#side').classList.contains('open');
       if (mobile()) $('#side').classList.add('peek');
       if ($('[data-pane="media"]').hidden || !$('#side').classList.contains('open')) openPane('media');
       else renderMedia();
       if (['emoji', 'anim', 'icon'].includes(tab)) await fillLib();
+      if (tab === 'stock') await fillStock();
       await settle(was);
       $('#media')?.closest('.side-pane')?.scrollTo?.({top: 0});
       await frame();
@@ -2106,6 +2166,13 @@ async function boot() {
     }
     const ins = e.target.closest('[data-insert]');
     if (ins) insertBroll(ins.dataset.insert);
+    const stk = e.target.closest('[data-stock]');
+    if (stk) insertStock(+stk.dataset.stock);
+    const stt = e.target.closest('[data-stocktype]');
+    if (stt) {
+      ed.stockType = stt.dataset.stocktype;
+      renderMedia();
+    }
     const tg = e.target.closest('[data-tagsrc]');
     if (tg) tagSource(tg.dataset.tagsrc);
     const lt = e.target.closest('[data-libtab]');
@@ -2177,6 +2244,13 @@ async function boot() {
       ed.player.dirty = true;
       queueSave();
       if (lk === 'amt') drawFxThumbs();
+      return;
+    }
+    if (e.target.id === 'stockQ') {
+      // tìm Pixabay: chờ khách gõ xong 0,7 s mới gửi (giới hạn 100 lượt/phút cho cả app)
+      ed.stockQ = e.target.value;
+      clearTimeout(libT);
+      libT = setTimeout(fillStock, 700);
       return;
     }
     if (e.target.id !== 'libQ') return;

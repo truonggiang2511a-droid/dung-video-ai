@@ -8,6 +8,7 @@ import {MOTIONS, stickerForPhrase, searchLib, loadIndex} from './library.js';
 import {PACKS, packsFor, packText, gfxStyle, rotatePack} from './styles.js';
 import {recipeOf, recipesFor, industryPlan} from './recipes.js';
 import {reviewPlan, kitTour} from './kho-tour.js';
+import {stockSearch, stockImport, stockAllowed, stockWant} from './stock.js';
 import {ensureFont} from './fonts.js';
 
 // ---------- Gọi máy chủ ----------
@@ -389,7 +390,7 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
     .filter((x) => x.kind === 'broll' && x.duration > 0.8)
     .map((x) => {
       const usable = Math.max(0.5, x.duration - 0.6);
-      return {x, keys: brollKeys(x), used: 0, nWin: Math.max(1, Math.floor((usable + 0.2) / (Ls + 0.2)))};
+      return {x, keys: brollKeys(x), used: 0, nWin: x.stock ? 1 : Math.max(1, Math.floor((usable + 0.2) / (Ls + 0.2)))};
     });
   const score = (c, ph) => c.keys.reduce((a, {k, w}) => a + (ph.text.includes(' ' + k + ' ') ? w : 0), 0);
   const slots = [];
@@ -421,6 +422,11 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
     // A. cảnh khớp lời nói: vào đúng đầu cụm có nhắc tới; 2 cảnh được nhắc liền nhau → nối thành chuỗi
     const ment = clips
       .map((c) => {
+        // cảnh trám Pixabay: đặt đúng câu AI chọn (src.stockAt), không đoán theo từ khoá
+        if (typeof c.x.stockAt === 'number') {
+          const ph = phrases.filter((x) => x.s >= b0 - 0.3 && x.s < b1 - 1.2).sort((u, v) => Math.abs(u.s - c.x.stockAt) - Math.abs(v.s - c.x.stockAt))[0];
+          return {c, ph: ph && Math.abs(ph.s - c.x.stockAt) < 2.5 ? ph : null};
+        }
         let ph = null;
         let best = 0;
         for (const x of phrases) {
@@ -1026,6 +1032,8 @@ async function aiExtras(p, r) {
   }
   if (typeof r.place === 'string' && r.place.trim().length > 1 && r.place.length <= 40) out.place = r.place.trim();
   out.sfx = (r.sfx || []).filter((s) => SFX_MEAN.has(s.key) && s.start >= 0.5 && s.start < D - 0.5).slice(0, 8);
+  // cảnh trám Pixabay: chỉ ý CHUNG CHUNG; BĐS / bán hàng chặn cảnh giả làm hàng đang bán (stockAllowed)
+  out.stock = (r.stock || []).map((s) => ({start: +s.start, q: String(s.q || '').trim()})).filter((s) => s.start >= 1.5 && s.start < D - 4 && stockAllowed(p.genre || 'chung', s.q)).slice(0, 4);
   return out;
 }
 // Gộp các đoạn cắt chồng / sát nhau (giây nguồn)
@@ -1272,7 +1280,7 @@ export async function autoEdit(ed, log) {
       ed.cur.say('AI đọc lời nói, chọn chữ điểm nhấn…');
       let r = hlReq ? await hlReq : null;
       const toTl = (list) => (list || []).map((it) => ({...it, start: srcToTl(p, +it.start || 0)}));
-      if (r) r = {...r, items: toTl(r.items), pics: toTl(r.pics), sfx: toTl(r.sfx)};
+      if (r) r = {...r, items: toTl(r.items), pics: toTl(r.pics), sfx: toTl(r.sfx), stock: toTl(r.stock)};
       else r = await api('ai', hlBody(p, timelinePhrases(p), duration(p)));
       extraAi = await aiExtras(p, r);
       if (extraAi.pack) log('ke', 'run', `AI chọn phong cách “${PACKS[extraAi.pack].name}”`);
@@ -1304,6 +1312,40 @@ export async function autoEdit(ed, log) {
     }
     log('ke', 'run', `Phong cách “${PACKS[p.pack]?.name || ''}”`);
   }
+  // CẢNH TRÁM PIXABAY (2/11, Giang): khi thiếu cảnh phụ, lấy vài cảnh chung chung theo ý câu nói (AI chọn từ khoá),
+  // tải về máy khách như cảnh phụ khách tự thêm; localPlan đặt đúng câu nói đó (src.stockAt). Hỏng / chậm thì bỏ qua.
+  let stockPicks = [];
+  try {
+    const hs = await aiHealth();
+    const plan = stockWant(p, duration(p));
+    const want = plan.n;
+    if (hs.stock && p.stockAuto !== false && want && extraAi.stock?.length) {
+      log('ke', 'run', 'Tìm cảnh trám trên Pixabay');
+      const f = formatOf(p);
+      const orient = f.w > f.h ? 'horizontal' : 'vertical';
+      const one = async (s, i) => {
+        try {
+          // video kiến thức: xen kẽ ảnh minh hoạ (ảnh dọc vừa khổ, nhẹ) và cảnh video
+          const imgFirst = plan.prefImage && i % 2 === 1;
+          const pickV = async () => (await stockSearch(s.q, 'video')).find((x) => x.dur >= 4 && (!x.size || x.size < 15e6));
+          const pickI = async () => (await stockSearch(s.q, 'image', orient))[0];
+          let it = imgFirst ? (await pickI()) || (await pickV()) : (await pickV()) || (await pickI());
+          if (!it) return null;
+          const src = await stockImport(p, it, s.q);
+          src.stockAt = s.start;
+          return {src, it, q: s.q, start: s.start};
+        } catch (e) {
+          return null;
+        }
+      };
+      const got = await Promise.race([Promise.all(extraAi.stock.slice(0, want).map(one)), new Promise((res) => setTimeout(() => res([]), 25000))]);
+      stockPicks = got.filter(Boolean);
+      if (stockPicks.length) {
+        await ed.player.attach(p, ed.getBlob);
+        log('ke', 'run', `Lấy ${stockPicks.length} cảnh trám Pixabay`);
+      }
+    }
+  } catch (e) {}
   let animBy = null;
   try {
     animBy = new Map(((await loadIndex('anim')).items || []).filter((x) => x.fk).map((x) => [x.fk, x.key]));
@@ -1322,7 +1364,7 @@ export async function autoEdit(ed, log) {
   // 5. con trỏ vào Kho lấy phong cách, màu, chữ mẫu, emoji động/icon, âm thanh + diễn lại chỗ tự kiểm; rồi diễn phần còn lại
   log('dung', 'run', 'Lấy từ kho, ghép cảnh, thêm chữ');
   ed.cur.step = 'Bước 5/5';
-  const toured = await kitTour(ed, ops, {fixes, packBy: p.packBy, budget: 16});
+  const toured = await kitTour(ed, ops, {fixes, packBy: p.packBy, budget: 16, stock: stockPicks});
   const rest = ops.filter((o) => !toured.has(o));
   const order = {broll: 0, texts: 1, stickers: 2, zooms: 3, sfx: 4};
   rest.sort((a, b) => (order[a.list] ?? 3) - (order[b.list] ?? 3) || (a.item?.start || 0) - (b.item?.start || 0));
