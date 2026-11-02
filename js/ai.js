@@ -583,11 +583,18 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
       if (hit) pick = {kind: 'icon', key: 'bds-' + hit[1], label: hit[0], color: '#ff6a3d', why: `lời nói có “${hit[0]}” → icon BĐS mẫu 1 cùng nghĩa, gắn sát chữ`};
     }
     if (!pick) {
-      const j = (pics || []).findIndex((x, k) => !usedPics.has(k) && !usedKeys.has(x.key) && x.start >= t.start - 1 && x.start <= t.start + (hasIcon ? 0.7 : t.dur - 0.3));
+      const tight = hasIcon || /\d/.test(t.main || '');
+      const j = (pics || []).findIndex((x, k) => !usedPics.has(k) && !usedKeys.has(x.key) && x.start >= t.start - 1 && x.start <= t.start + (tight ? 0.7 : t.dur - 0.3));
       if (j >= 0) {
         usedPics.add(j);
         const pc = pics[j];
-        pick = {kind: pc.kind || 'emoji', key: pc.key, label: pc.label, why: `AI hiểu câu nói “${pc.label}” → ${pc.kind === 'anim' ? 'emoji động' : 'hình'} cùng nghĩa`};
+        // AI chọn theo 1 chữ nằm trong cụm có nghĩa khác (“tiền” trong “mặt tiền”) → dùng hình của cả cụm
+        const whole = stickerForPhrase(said);
+        const lab = plain(pc.label || '');
+        if (whole && whole.w !== lab && (' ' + whole.w + ' ').includes(' ' + lab + ' ')) {
+          const k = toAnim(whole.key);
+          if (!usedKeys.has(k.key)) pick = {...k, label: whole.w, why: `lời nói “${whole.w}” (cả cụm) → ${k.kind === 'anim' ? 'emoji động' : 'hình'} đúng nghĩa`};
+        } else pick = {kind: pc.kind || 'emoji', key: pc.key, label: pc.label, why: `AI hiểu câu nói “${pc.label}” → ${pc.kind === 'anim' ? 'emoji động' : 'hình'} cùng nghĩa`};
       }
     }
     if (!pick) {
