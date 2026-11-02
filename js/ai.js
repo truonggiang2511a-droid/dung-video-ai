@@ -1369,6 +1369,7 @@ export async function autoEdit(ed, log) {
       if (r) r = {...r, items: toTl(r.items), pics: toTl(r.pics), sfx: toTl(r.sfx), stock: toTl(r.stock), steps: toTl(r.steps), versus: r.versus ? toTl([r.versus])[0] : null};
       else r = await api('ai', hlBody(p, timelinePhrases(p), duration(p)));
       extraAi = await aiExtras(p, r);
+      p._aiRaw = {steps: r.steps, versus: r.versus, title: r.steps_title}; // để kiểm thử (không lưu)
       if (extraAi.pack) log('ke', 'run', `AI chọn phong cách “${PACKS[extraAi.pack].name}”`);
       keys = den.every ? keyLockups(p, r.items) : [];
       const loc = localKeys(p).filter((k) => !keys.some((x) => Math.abs(x.start - k.start) < den.gap));

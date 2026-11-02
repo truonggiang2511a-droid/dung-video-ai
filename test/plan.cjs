@@ -56,6 +56,7 @@ const M = '/home/claude/testmedia/';
       texts: pp.texts.map((t) => `${t.start} ${t.kind === 'key' ? '[ý chính] ' : ''}${t.lead ? t.lead + ' · ' : ''}${t.main} (${t.motion}, ${t.style})`),
       keysLocal: window.__ai.localKeys(pp).map((t) => `${t.start} ${t.main}`),
       pack: pp.pack + ' (' + pp.packBy + ')',
+      aiRaw: pp._aiRaw || null,
       gfx: pp.stickers.filter((s) => s.kind === 'gfx').map((s) => `${s.start} ${s.key}${s.label ? ' ' + s.label : ''}`),
       subs: pp.subs.style + ' ' + (pp.subs.font || ''),
       phrases: window.__ai.timelinePhrases(pp),
