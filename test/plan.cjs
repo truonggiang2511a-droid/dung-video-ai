@@ -22,7 +22,13 @@ const M = '/home/claude/testmedia/';
   await p.waitForFunction(() => Object.values(window.__dv.p.sources).filter((s) => s.kind === 'broll').length === 3, null, {timeout: 30000});
   const truth = JSON.parse(fs.readFileSync(M + 'gen/speech_mid.json'));
   const TEXTS_BH = ['Chào các bạn, hôm nay mình giới thiệu nồi chiên', 'không dầu bán chạy nhất shop', 'Giá gốc 599 nghìn,', 'hôm nay chỉ còn 399 nghìn.', 'Giảm 30% cho 100 đơn đầu,', 'miễn phí vận chuyển.', 'Lòng nồi rộng, chiên giòn đều.', 'Hàng chính hãng,', 'bảo hành 12 tháng.', 'Bấm vào giỏ hàng đặt hàng ngay nhé.'];
-  const texts = genre === 'banhang' ? TEXTS_BH : ['Xin chào cả nhà, hôm nay mình giới thiệu căn nhà phố', 'ngay trung tâm thành phố', 'Mặt tiền rộng 5 mét,', 'một trệt hai lầu.', 'Giá bán 3.800 triệu,', 'có thương lượng.', 'Phòng khách rộng, bếp thoáng.', 'Pháp lý sổ hồng riêng,', 'công chứng ngay trong ngày.', 'Ai quan tâm thì nhắn tin cho mình nhé.'];
+  const MORE = {
+    cg: ['Xin chào cả nhà, mua nhà lần đầu cần nhớ ba bước', 'Thứ nhất là xem pháp lý,', 'thứ hai kiểm tra quy hoạch,', 'thứ ba đặt cọc đúng cách.', 'Căn này ngang 5 dài 16,', 'diện tích 80 mét vuông.', 'Giá bán 3.800 triệu,', 'sổ hồng riêng, hẻm xe hơi.', 'Nhà sạch đẹp, vào ở ngay.', 'Ai quan tâm thì nhắn tin cho mình nhé.'],
+    amthuc: ['Hôm nay mình làm món thịt kho trứng siêu ngon', 'Nguyên liệu gồm thịt ba chỉ,', 'trứng vịt và nước dừa.', 'Đầu tiên ướp thịt 15 phút,', 'tiếp theo thắng nước màu,', 'cuối cùng kho lửa nhỏ.', 'Món này ăn với cơm trắng', 'thì hết sẩy luôn.', 'Chỉ khoảng 50 nghìn một nồi.', 'Theo dõi mình để xem thêm món ngon nhé.'],
+    kienthuc: ['Ba mẹo tiết kiệm tiền mỗi tháng', 'Thứ nhất ghi chép chi tiêu,', 'thứ hai để dành 20% thu nhập,', 'thứ ba hạn chế mua sắm online.', '70% người trẻ không ghi chép chi tiêu.', 'Sai lầm là mua theo cảm xúc,', 'đúng là lập kế hoạch trước.', 'Làm đều đặn bạn sẽ thấy khác biệt.', 'Kiên trì sáu tháng là có quỹ dự phòng.', 'Lưu lại video để xem sau nhé.'],
+    vlog: ['Chào mọi người, hôm nay mình ở Đà Lạt', 'trời se lạnh rất dễ chịu.', 'Sáng nay mình đi chợ', 'ăn bánh căn nóng hổi.', 'Chiều mình lên đồi chè', 'cảnh đẹp như tranh.', 'Tối ghé quán cà phê', 'nhìn thành phố lên đèn.', 'Một ngày thật trọn vẹn.', 'Theo dõi mình để đi cùng nhé.'],
+  };
+  const texts = process.env.TEXTS ? MORE[process.env.TEXTS] : genre === 'banhang' ? TEXTS_BH : ['Xin chào cả nhà, hôm nay mình giới thiệu căn nhà phố', 'ngay trung tâm thành phố', 'Mặt tiền rộng 5 mét,', 'một trệt hai lầu.', 'Giá bán 3.800 triệu,', 'có thương lượng.', 'Phòng khách rộng, bếp thoáng.', 'Pháp lý sổ hồng riêng,', 'công chứng ngay trong ngày.', 'Ai quan tâm thì nhắn tin cho mình nhé.'];
   const words = [];
   truth.speech.forEach(([a, bb], i) => {
     const ts = (texts[i] || '').split(' ');

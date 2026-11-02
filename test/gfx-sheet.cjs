@@ -9,6 +9,7 @@ execSync('npx esbuild test/tools/gfx-sheet-entry.js --bundle --outfile=site/_gfx
   p.on('pageerror', (e) => console.log('ERR', e.message));
   await p.goto('http://localhost:8790/');
   await p.addScriptTag({url: '/_gfx.js'});
+  if (process.env.SC) await p.evaluate((s) => (window.SC = +s), process.env.SC);
   const keys = (process.env.KEYS || 'price,specs,pin,room,slash,sale,buy').split(',');
   const times = (process.env.TIMES || '0.5,1.6,3').split(',').map(Number);
   const url = await p.evaluate(([k, t]) => window.sheet(k, t), [keys, times]);

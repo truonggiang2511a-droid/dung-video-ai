@@ -529,10 +529,17 @@ function renderInspector() {
       <div class="fl"><span>Đổi sang cảnh khác</span><div class="chips">${others.map((o) => `<button class="chip-b${o.id === it.src ? ' on' : ''}" data-set="src" data-v="${o.id}">${esc(o.name)}</button>`).join('')}</div></div>
       <p class="hint">Kéo clip trên timeline để dời, kéo hai đầu để dài/ngắn.</p>`;
   } else if (s?.type === 'sticker' && it?.kind === 'gfx') {
-    const hasText = ['hook', 'lower', 'follow'].includes(it.key);
+    // ô chữ theo từng loại đồ hoạ (nhãn tiếng Việt cho khách)
+    const LBL = {hook: 'Chữ', lower: 'Tên', follow: 'Chữ', chip: 'Chữ nhãn', bignum: 'Số / chữ to', explain: 'Tiêu đề', checklist: 'Tiêu đề', lot: 'Nhãn', stars: 'Điểm (vd 4,9)', timer: 'Số phút', stamp: 'Chữ trên tem', ingredients: 'Tiêu đề', chapter: 'Nhãn (vd BƯỚC 1)', quote: 'Câu trích', stat: 'Số % (vd 70%)', place: 'Tên địa điểm', date: 'Ngày (để trống = hôm nay)'};
+    const SUB = {lower: 'Dòng phụ', bignum: 'Nhãn nhỏ phía trên', timer: 'Đơn vị', chapter: 'Tiêu đề chương', quote: 'Người nói', stat: 'Dòng giải thích', place: 'Dòng phụ', stars: 'Dòng phụ', explain: 'Nhãn nhỏ trên tiêu đề'};
+    const hasItems = ['explain', 'checklist', 'ingredients'].includes(it.key);
     h = `<h4>Đồ hoạ · ${esc(GFX_MAP[it.key]?.label || '')}</h4>
-      ${hasText ? `<label class="fl">${it.key === 'lower' ? 'Tên' : 'Chữ'}<input data-k="label" value="${esc(it.label || '')}" maxlength="40"></label>` : ''}
-      ${it.key === 'lower' ? `<label class="fl">Dòng phụ<input data-k="sub" value="${esc(it.sub || '')}" maxlength="50"></label>` : ''}
+      ${LBL[it.key] ? `<label class="fl">${LBL[it.key]}<input data-k="label" value="${esc(it.label || '')}" maxlength="60"></label>` : ''}
+      ${SUB[it.key] ? `<label class="fl">${SUB[it.key]}<input data-k="sub" value="${esc(it.sub || '')}" maxlength="60"></label>` : ''}
+      ${it.key === 'versus' ? `<label class="fl">Cách SAI<input data-k="old" value="${esc(it.old || '')}" maxlength="40"></label><label class="fl">Cách ĐÚNG<input data-k="sub" value="${esc(it.sub || '')}" maxlength="40"></label>` : ''}
+      ${it.key === 'lot' ? `<div class="row2"><label class="fl">Ngang (m)<input data-k="w" inputmode="decimal" value="${esc(String(it.w ?? ''))}" maxlength="6"></label><label class="fl">Dài (m)<input data-k="l" inputmode="decimal" value="${esc(String(it.l ?? ''))}" maxlength="6"></label></div><label class="fl">Diện tích m² (trống = không hiện)<input data-k="area" inputmode="decimal" value="${esc(String(it.area ?? ''))}" maxlength="8"></label>` : ''}
+      ${hasItems ? `<label class="fl">Các dòng (mỗi dòng 1 ý, hiện lần lượt)<textarea data-items rows="${Math.max(3, (it.items || []).length + 1)}">${esc((it.items || []).map((x) => x.text).join('\n'))}</textarea></label>` : ''}
+      ${it.key === 'chip' ? `<div class="fl"><span>Icon</span><div class="chips">${['', 'doc', 'car', 'house', 'pin', 'ruler', 'tag', 'star', 'check', 'fire', 'bulb', 'heart', 'clock', 'chart'].map((k) => `<button class="chip-b${(it.icon || '') === k ? ' on' : ''}" data-set="icon" data-v="${k}">${k ? ICONS[k].label : 'Không'}</button>`).join('')}</div></div>` : ''}
       ${it.key === 'hook' ? `<div class="fl"><span>Kiểu tiêu đề</span><div class="chips">${HOOK_VARIANTS.map(([k, l]) => `<button class="chip-b${(it.variant || 'band') === k ? ' on' : ''}" data-set="variant" data-v="${k}">${l}</button>`).join('')}</div></div>` : ''}
       <div class="fl"><span>Màu</span><div class="swatches">${['#ffc61a', '#ff2a2a', '#2ad46a', '#2f8cff', '#ff5fb8', '#ffffff', '#f3d27a', '#2fd2ff'].map((c) => `<button class="sw${it.color === c ? ' on' : ''}" data-set="color" data-v="${c}" style="background:${c}" aria-label="Màu ${c}"></button>`).join('')}</div></div>
       ${it.key !== 'progress' && it.key !== 'confetti' && it.key !== 'leak' ? `<label class="fl">Cỡ <output>${Math.round((it.size || 1) * 100)}%</output><input type="range" min="0.5" max="1.8" step="0.05" value="${it.size || 1}" data-num="size"></label>` : ''}
@@ -639,7 +646,13 @@ function bindInspector() {
       ed.history.push(p);
       pushed = true;
     }
-    if (el.dataset.k && it) {
+    if (el.dataset.items !== undefined && it) {
+      // sửa danh sách dòng: giữ mốc thời gian dòng cũ, dòng mới hiện sau dòng trước 1 giây
+      const lines = el.value.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 8);
+      const old = it.items || [];
+      it.items = lines.map((text, i) => ({...(old[i] || {}), text, t: old[i]?.t ?? +((old[i - 1]?.t ?? 0.3) + 1).toFixed(2)}));
+      it.locked = true;
+    } else if (el.dataset.k && it) {
       it[el.dataset.k] = el.value;
       it.locked = true;
     } else if (el.dataset.num && it) {
@@ -1313,7 +1326,7 @@ function renderMedia() {
   }
   if (tab === 'text') {
     box.innerHTML = `${head}<p class="hint" style="margin:2px 0 10px">Bấm để chèn tại đầu phát, rồi sửa chữ ở bảng Chỉnh sửa. ${TEXT_STYLES.length} kiểu chữ × ${TEXT_MOTIONS.length} chuyển động × ${Object.keys(FONTS).length} font.</p>
-      <div class="tp-grid">${TEXT_PRESETS.map((pr, i) => `<button class="tp-it" data-preset="${i}"><canvas width="240" height="132" data-tp="${i}"></canvas><small>${esc(pr.name)}</small></button>`).join('')}</div>`;
+      ${kitGroups(TEXT_PRESETS.map((pr, i) => [i, pr.g ? [pr.g] : ['chung']])).map(([g, ids]) => `<h5 class="kit-h">${kitLabel(g)}</h5><div class="tp-grid">${ids.map((i) => `<button class="tp-it" data-preset="${i}"><canvas width="240" height="132" data-tp="${i}"></canvas><small>${esc(TEXT_PRESETS[i].name)}</small></button>`).join('')}</div>`).join('')}`;
     drawPresetThumbs();
     return;
   }
@@ -1333,7 +1346,7 @@ function renderMedia() {
   }
   if (tab === 'gfx') {
     box.innerHTML = `${head}<p class="hint" style="margin:2px 0 10px">Đồ hoạ động vẽ ngay trong app — bấm để chèn tại đầu phát, rồi sửa chữ / màu / vị trí ở bảng Chỉnh sửa. Màu và font theo phong cách đang chọn.</p>
-      <div class="gfx-grid">${GFX.map(([k, l]) => `<button class="gfx-it" data-addgfx="${k}"><canvas width="120" height="${Math.round((120 * H) / W)}" data-gfxp="${k}"></canvas><small>${esc(l)}</small></button>`).join('')}</div>`;
+      ${kitGroups(GFX.map(([k, , , gs]) => [k, gs || GFX_GENRES[k] || ['chung']])).map(([g, ks]) => `<h5 class="kit-h">${kitLabel(g)}</h5><div class="gfx-grid">${ks.map((k) => `<button class="gfx-it" data-addgfx="${k}"><canvas width="120" height="${Math.round((120 * H) / W)}" data-gfxp="${k}"></canvas><small>${esc(GFX_MAP[k].label)}</small></button>`).join('')}</div>`).join('')}`;
     drawGfxThumbs();
     return;
   }
@@ -1613,6 +1626,16 @@ function renderVars() {
     ensureProjectFonts(clone).then(go);
   }
 }
+// Kho chia theo NGÀNH: nhóm của thể loại đang dựng lên đầu, rồi “Dùng chung”, rồi các ngành khác
+const GFX_GENRES = {price: ['bds', 'banhang', 'amthuc'], specs: ['bds'], pin: ['bds', 'amthuc', 'vlog'], room: ['bds', 'banhang'], slash: ['banhang'], sale: ['banhang'], buy: ['banhang']};
+function kitGroups(list) {
+  const cur = ed.p?.genre || 'chung';
+  const order = [cur, 'chung', ...Object.keys(GENRES).filter((g) => g !== cur && g !== 'chung')];
+  const out = new Map(order.map((g) => [g, []]));
+  for (const [id, gs] of list) out.get(gs.includes(cur) ? cur : out.has(gs[0]) ? gs[0] : 'chung').push(id);
+  return [...out].filter(([, ids]) => ids.length);
+}
+const kitLabel = (g) => (g === (ed.p?.genre || 'chung') ? `${g === 'chung' ? 'Dùng chung' : GENRES[g].label} · <span>thể loại đang dựng</span>` : g === 'chung' ? 'Dùng chung' : GENRES[g]?.label || g);
 function drawGfxThumbs() {
   const pack = PACKS[ed.p.pack] || PACKS.mau1;
   for (const c of $$('canvas[data-gfxp]')) {
@@ -1621,7 +1644,7 @@ function drawGfxThumbs() {
     const it = {id: 'g', kind: 'gfx', key: k, start: 0, ...def, ...gfxStyle(pack, k), dur: k === 'progress' ? 10 : def.dur};
     if (k !== 'hook') delete it.variant;
     if (k === 'hook') it.y = 0.4;
-    const T = {hook: 1.2, lower: 1.4, progress: 6, arrow: 1, circle: 1.2, sparkle: 0.45, confetti: 1.3, leak: 0.45, follow: 0.7}[k] ?? 1;
+    const T = {hook: 1.2, lower: 1.4, progress: 6, arrow: 1, circle: 1.2, sparkle: 0.45, confetti: 1.3, leak: 0.45, follow: 0.7, rec: 1.2, bignum: 1.6, explain: 4, checklist: 3, lot: 2.2, social: 2.6, stars: 1.6, timer: 1.5, stamp: 0.8, ingredients: 2.5, chapter: 1.2, versus: 2.4, quote: 2.8, stat: 1.6, place: 1.5, date: 1}[k] ?? 1;
     const go = () => thumbDraw(c, fakeProject({stickers: [it]}), T);
     go();
     if (it.font) ensureFont(it.font).then(go);

@@ -2,6 +2,7 @@
 // Dùng chung cho xem trước (player.js) và xuất MP4 (export.js) để hai bên giống hệt nhau.
 // Toạ độ theo khung gốc của khổ hình đang dùng (9:16 = 1080 x 1920, 16:9 = 1920 x 1080…; cạnh ngắn luôn 1080
 // nên cỡ chữ/icon giữ nguyên) — nơi gọi tự scale ctx. Đổi khổ: setFormat(p.format) trước khi vẽ.
+import {gfxPro, PRO_GFX} from './gfx-pro.js';
 import {FORMATS} from './templates.js';
 import {stickerImage, animFrame} from './library.js';
 import {FONT_LIB} from './font-list.js';
@@ -466,6 +467,74 @@ export const TEXT_PRESETS = [
   {name: 'Số liệu', main: '+250%', lead: 'doanh thu', style: 'gradient', motion: 'bounce', font: 'unbounded800', color: '#2ad46a'},
   {name: 'Câu hỏi', main: 'Có nên mua?', style: 'bubble', motion: 'bounce', font: 'pattaya400', color: '#2f8cff'},
   {name: 'Miễn phí', main: 'FREESHIP', style: 'stroke2', motion: 'zoom', font: 'bungee400', color: '#ff5fb8'},
+  // 2/11 chiều — chữ mẫu RIÊNG từng ngành (g = thể loại; không có g = dùng chung)
+  ...[
+    // Bất động sản
+    ['bds', 'Giá nhà 3D', '2,9 TỶ', 'chỉ', 'sổ hồng riêng', '3d', 'stamp', 'anton', '#ff2a2a', 'price'],
+    ['bds', 'Diện tích', '80 M²', 'diện tích', '', '3d', 'zoom', 'anton', '#ffc61a'],
+    ['bds', 'Kết cấu', '1 TRỆT 2 LẦU', '', '', '3d', 'pop', 'anton', '#2f8cff'],
+    ['bds', 'Pháp lý', 'SỔ HỒNG RIÊNG', '', '', 'box', 'slide', 'bevietnampro900', '#2ad46a'],
+    ['bds', 'Mặt tiền', 'MẶT TIỀN', 'nhà', 'kinh doanh được', '3d', 'rise', 'anton', '#ffc61a'],
+    ['bds', 'Hẻm xe hơi', 'HẺM XE HƠI', '', '', 'stroke2', 'bounce', 'montserrat900', '#ffffff'],
+    ['bds', 'Biệt thự', 'Biệt thự sân vườn', '', '', 'flat', 'rise', 'playfairdisplay900', '#f3d27a'],
+    ['bds', 'Căn hộ', 'CĂN HỘ 2 PHÒNG NGỦ', '', '', 'gradient', 'zoom', 'lexend800', '#5fd3ff'],
+    ['bds', 'Chính chủ', 'CHÍNH CHỦ', '', '', 'tape', 'stamp', 'bangers400', '#ffc61a'],
+    ['bds', 'Nhận nhà', 'NHẬN NHÀ NGAY', '', '', 'box', 'pop', 'bevietnampro900', '#ff8a1f'],
+    ['bds', 'Tiện ích', 'GẦN TRƯỜNG · CHỢ', '', '', 'outline', 'spread', 'barlowcondensed800', '#ffffff'],
+    ['bds', 'Chuyên gia', 'KINH NGHIỆM', 'chia sẻ', '', 'highlight', 'slide', 'bevietnampro900', '#2f8cff'],
+    // Bán hàng
+    ['banhang', 'Flash sale', 'FLASH SALE', '', '', 'neon', 'glitch', 'bungee400', '#ff2a2a'],
+    ['banhang', 'Giảm %', '-50%', 'giảm', '', '3d', 'stamp', 'anton', '#ffe600'],
+    ['banhang', 'Mua 1 tặng 1', 'MUA 1 TẶNG 1', '', '', 'tape', 'bounce', 'bangers400', '#ff5fb8'],
+    ['banhang', 'Chính hãng', 'CHÍNH HÃNG', '', '', 'box', 'slide', 'montserrat900', '#2f8cff'],
+    ['banhang', 'Có hạn', 'SỐ LƯỢNG CÓ HẠN', '', '', 'stroke2', 'bounce', 'kanit800', '#ff2a2a'],
+    ['banhang', 'Bán chạy', 'BÁN CHẠY', 'top', '', 'gradient', 'zoom', 'unbounded800', '#ff8a1f'],
+    ['banhang', 'Combo', 'COMBO TIẾT KIỆM', '', '', 'box', 'pop', 'paytoneone400', '#2ad46a'],
+    ['banhang', 'Hàng mới', 'HÀNG MỚI VỀ', '', '', 'outline', 'spread', 'montserrat900', '#ffffff'],
+    ['banhang', 'Chốt đơn', 'CHỐT ĐƠN NGAY', '', '', '3d', 'stamp', 'anton', '#ff2a2a'],
+    ['banhang', 'Bảo hành', 'BẢO HÀNH 12 THÁNG', '', '', 'highlight', 'slide', 'lexend800', '#2ad46a'],
+    ['banhang', 'Tặng kèm', 'TẶNG KÈM', '', '', 'bubble', 'bounce', 'baloo2800', '#ff8fb1'],
+    ['banhang', 'Sang trọng', 'Bộ sưu tập mới', '', '', 'flat', 'rise', 'cormorantgaramond700', '#f3d27a'],
+    // Ẩm thực
+    ['amthuc', 'Ngon nhức', 'NGON NHỨC NÁCH', '', '', 'stroke2', 'wave', 'grandstander900', '#ffc61a'],
+    ['amthuc', 'Tên món', 'Bún bò Huế', '', '', 'shadow', 'rise', 'sriracha400', '#ffffff'],
+    ['amthuc', 'Giá món', '35K', 'chỉ', 'một tô', '3d', 'stamp', 'anton', '#ff2a2a', 'price'],
+    ['amthuc', 'Quán ngon', 'QUÁN NGON', '', '', 'tape', 'bounce', 'bangers400', '#ff8a1f'],
+    ['amthuc', 'Công thức', 'CÔNG THỨC', 'bí quyết', '', 'box', 'slide', 'bevietnampro900', '#2ad46a'],
+    ['amthuc', 'Nóng hổi', 'NÓNG HỔI', '', '', 'gradient', 'zoom', 'paytoneone400', '#ff5a36'],
+    ['amthuc', 'Viết tay ấm', 'Ăn là ghiền', '', '', 'flat', 'type', 'pacifico400', '#ffb03a'],
+    ['amthuc', 'Ghé quán', 'GHÉ QUÁN NGAY', '', '', 'box', 'pop', 'montserrat900', '#ffc61a'],
+    ['amthuc', 'Đồ uống', 'Mát lạnh', '', '', 'bubble', 'bounce', 'baloo2800', '#5fd3ff'],
+    ['amthuc', 'Ăn vặt', 'ĂN VẶT', '', '', 'bubble', 'pop', 'coiny400', '#ff8fb1'],
+    ['amthuc', 'Ít dầu', 'Healthy · ít dầu', '', '', 'highlight', 'slide', 'quicksand700', '#7bd88f'],
+    ['amthuc', 'Mẹo bếp', 'MẸO NHÀ BẾP', '', '', 'stroke2', 'slide', 'kanit800', '#ff8a1f'],
+    // Kiến thức
+    ['kienthuc', 'Bước số', 'BƯỚC 2', 'tiếp theo', '', '3d', 'pop', 'anton', '#2f8cff'],
+    ['kienthuc', 'Mẹo hay', 'MẸO HAY', '', '', 'highlight', 'slide', 'lexend800', '#ffc61a'],
+    ['kienthuc', 'Sự thật', 'SỰ THẬT LÀ', '', '', 'box', 'glitch', 'robotocondensed800', '#ff2a2a'],
+    ['kienthuc', 'Lưu ý', 'LƯU Ý', '', '', 'tape', 'bounce', 'bangers400', '#ffc61a'],
+    ['kienthuc', 'Kết luận', 'KẾT LUẬN', '', '', 'outline', 'spread', 'barlowcondensed800', '#ffffff'],
+    ['kienthuc', 'Tỉ lệ', '73%', 'có tới', '', 'gradient', 'bounce', 'unbounded800', '#2fd2ff'],
+    ['kienthuc', 'Bạn có biết', 'Bạn có biết?', '', '', 'bubble', 'pop', 'itim400', '#2f8cff'],
+    ['kienthuc', 'Đừng làm', 'ĐỪNG LÀM VẬY', '', '', 'stroke2', 'stamp', 'anton', '#ff2a2a'],
+    ['kienthuc', 'Từ khoá', 'LÃI KÉP', '', '', '3d', 'zoom', 'anton', '#2ad46a'],
+    ['kienthuc', 'Bảng trắng', 'Ghi nhớ nhé', '', '', 'flat', 'type', 'patrickhand400', '#ffffff'],
+    ['kienthuc', 'Công nghệ', 'AI · TỰ ĐỘNG', '', '', 'neon', 'type', 'chakrapetch700', '#5fd3ff'],
+    ['kienthuc', 'Tục ngữ', '“Chậm mà chắc”', '', '', 'flat', 'rise', 'lora700', '#f3d27a'],
+    // Vlog
+    ['vlog', 'Địa điểm', 'ĐÀ LẠT', '', '', 'outline', 'spread', 'bigshouldersdispla900', '#ffffff'],
+    ['vlog', 'Ngày 1', 'NGÀY 1', 'hành trình', '', 'box', 'slide', 'montserrat900', '#ffd36b'],
+    ['vlog', 'Cảm xúc', 'Chill quá', '', '', 'flat', 'type', 'dancingscript700', '#ffffff'],
+    ['vlog', 'Check-in', 'CHECK-IN', '', '', 'tape', 'bounce', 'bangers400', '#ff8fb1'],
+    ['vlog', 'Điện ảnh', 'Một ngày bình yên', '', '', 'outline', 'rise', 'barlowcondensed800', '#ffffff'],
+    ['vlog', 'Đêm phố', 'ĐÊM SÀI GÒN', '', '', 'neon', 'glitch', 'unbounded800', '#ff5fb8'],
+    ['vlog', 'Chi phí', '500K', 'tổng chi', 'cho 2 người', '3d', 'stamp', 'anton', '#ffc61a'],
+    ['vlog', 'Bất ngờ', 'KHÔNG NGỜ LUÔN', '', '', 'stroke2', 'bounce', 'grandstander900', '#ffc61a'],
+    ['vlog', 'Nên thử', 'NÊN THỬ', '', '', 'highlight', 'slide', 'lexend800', '#2ad46a'],
+    ['vlog', 'Nhật ký', 'nhật ký #12', '', '', 'flat', 'type', 'patrickhand400', '#ffd36b'],
+    ['vlog', 'Xách balo', 'XÁCH BALO LÊN', '', '', '3d', 'pop', 'anton', '#2f8cff'],
+    ['vlog', 'Hẹn gặp lại', 'Hẹn gặp lại', '', '', 'shadow', 'wave', 'pacifico400', '#ffffff'],
+  ].map(([g, name, main, lead, sign, style, motion, font, color, kind]) => ({g, name, main, ...(lead ? {lead} : {}), ...(sign ? {sign} : {}), style, motion, font, color, ...(kind ? {kind} : {})})),
 ];
 export const TEXT_MOTIONS = [
   ['pop', 'Bật lớn'],
@@ -842,6 +911,8 @@ export const GFX = [
   ['slash', 'Giá gạch ngang', {label: 'CHỈ CÒN', old: '599K', sub: '399K', x: 0.5, y: 0.2, dur: 3.6, color: '#ff2a2a'}],
   ['sale', 'Tem giảm giá', {label: '-30%', sub: 'GIẢM', x: 0.78, y: 0.3, dur: 3, color: '#ff2a2a'}],
   ['buy', 'Nút mua ngay', {label: 'MUA NGAY', x: 0.5, y: 0.8, dur: 3, color: '#ffc61a'}],
+  // 2/11 chiều — đồ hoạ riêng từng ngành (gfx-pro.js): chuyên gia nói / BĐS, ẩm thực, kiến thức, vlog, bán hàng
+  ...PRO_GFX,
 ];
 export const GFX_MAP = Object.fromEntries(GFX.map(([k, l, d]) => [k, {label: l, def: d}]));
 const HOOK_VARIANTS = [['band', 'Dải màu'], ['box', 'Hộp'], ['line', 'Gạch chân'], ['burst', 'Nổ'], ['bubble', 'Bong bóng']];
@@ -1499,7 +1570,7 @@ function drawGfx(ctx, it, t, boxes) {
   const cy = (it.y ?? 0.5) * H;
   const ink = lightColor(c) ? '#121212' : '#ffffff';
   ctx.save();
-  if (gfxIndustry(ctx, it, t, boxes, u, c, out, sz, cx, cy)) {
+  if (gfxIndustry(ctx, it, t, boxes, u, c, out, sz, cx, cy) || gfxPro(ctx, it, t, boxes, u, c, out, sz, cx, cy)) {
     ctx.restore();
     return;
   }
@@ -2327,10 +2398,15 @@ export function drawFrame(ctx, p, T, frames, opt = {}) {
   }
 
   // 4. phụ đề
-  if (p.subs?.on && !ctaOn) drawSubs(ctx, p, T, lockActive && (p.subs.y ?? 0.7) < 0.4);
+  // bảng các bước / bảng tích đang hiện ở giữa khung → phụ đề hạ xuống đáy (luật skill chuyên gia nói)
+  const boardOn = (p.stickers || []).some((g) => g.kind === 'gfx' && (g.key === 'explain' || g.key === 'checklist') && T >= g.start && T < g.start + g.dur);
+  if (p.subs?.on && !ctaOn) drawSubs(ctx, p, T, boardOn || (lockActive && (p.subs.y ?? 0.7) < 0.4));
 
   // 5. đoạn kết
   drawCta(ctx, p, T, D);
   ctx.restore();
   return boxes;
 }
+
+// dùng chung cho đồ hoạ theo ngành mở rộng (gfx-pro.js)
+export {fontStr, easeOut, easeInOut, easeOutBack, easeOutExpo, segE, glassCard, drawIco, accGrad, hotParts, countUp, checkMark, mixHex, lightColor, shText, shRect, shCircle, rnd, fitFont, star};

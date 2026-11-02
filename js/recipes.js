@@ -6,7 +6,7 @@ import {timelineWords} from './render.js';
 import {PACKS, packsFor} from './styles.js';
 import {GENRES} from './templates.js';
 
-export const SKILL_NAMES = {'batdongsan-editor': 'BĐS Editor', 'hook-video-30s': 'Hook 30s', 'tron-video-aroll-broll': 'Trộn A-roll B-roll', 'dung-video-da-the-loai': 'Dựng đa thể loại'};
+export const SKILL_NAMES = {'chuyen-gia-noi': 'Chuyên gia nói', 'batdongsan-editor': 'BĐS Editor', 'hook-video-30s': 'Hook 30s', 'tron-video-aroll-broll': 'Trộn A-roll B-roll', 'dung-video-da-the-loai': 'Dựng đa thể loại'};
 // mg = đồ hoạ ngành được bật · cam = máy quay chuyển động nhẹ ('drift') / mạnh ('strong')
 const BASE = [
   {key: 'bds-mau1', genre: 'bds', name: 'Mẫu 1 · Review nhà', from: 'batdongsan-editor', pack: 'mau1', cam: 'drift',
@@ -17,6 +17,9 @@ const BASE = [
     mg: {price: true, specs: true, pin: true, room: true}},
   {key: 'bds-nhanh', genre: 'bds', name: 'TikTok nhanh · Nhà phố', from: 'tron-video-aroll-broll', pack: 'nangdong', cam: 'strong',
     desc: 'Cắt gọn, zoom giật, tiêu đề hộp màu, thanh tiến độ — nhà phố, đất nền, video ngắn',
+    mg: {price: true, specs: true, pin: true, room: true}},
+  {key: 'bds-chuyengia', genre: 'bds', name: 'Chuyên gia nói', from: 'chuyen-gia-noi', pack: 'chuyengia', cam: 'drift',
+    desc: 'Khung REC mở đầu, nhãn kính cạnh vai, giá thành số to trên đầu, bảng các bước, sơ đồ lô đất, nút Đăng ký',
     mg: {price: true, specs: true, pin: true, room: true}},
   {key: 'bh-flash', genre: 'banhang', name: 'Flash sale', from: 'dung-video-da-the-loai', pack: 'salesoc', cam: 'strong',
     desc: 'Giá cũ gạch ngang → giá mới, tem giảm %, nút Mua ngay nhấp nháy, pháo giấy',
@@ -29,8 +32,9 @@ const BASE = [
     mg: {price: true, slash: true, buy: true, room: true}},
 ];
 // Ngành chưa có đồ hoạ riêng (giai đoạn 2): công thức = 3 phong cách hợp ngành + máy quay chuyển động
+const BASIC_MG = {amthuc: {price: true, pin: true, room: true}, vlog: {pin: true, room: true}, kienthuc: {room: true}, chung: {room: true}};
 function basicFor(g) {
-  return packsFor(g).slice(0, 3).map((x) => ({key: `${g}-${x.key}`, genre: g, name: x.name, from: 'dung-video-da-the-loai', pack: x.key, cam: 'drift', desc: x.desc, mg: {room: true}}));
+  return packsFor(g).map((x) => ({key: `${g}-${x.key}`, genre: g, name: x.name, from: 'dung-video-da-the-loai', pack: x.key, cam: x.edit?.pace < 3 ? 'strong' : 'drift', desc: x.desc, mg: BASIC_MG[g] || {room: true}}));
 }
 export function recipesFor(genre) {
   const g = genre || 'chung';
@@ -154,9 +158,10 @@ function specIcon(main, lead) {
 // ---------- KẾ HOẠCH ĐỒ HOẠ THEO NGÀNH ----------
 // Trả về: gfx = đồ hoạ thêm vào làn Hình, drop = cụm chữ số liệu đã được thẻ thay (bỏ cụm chữ trùng ý — luật mg của skill),
 // busy = khoảng giờ vùng trên khung đã có thẻ (chữ ý chính tránh), sfx = âm kèm, buy = có nút mua ở đoạn kết
-export function industryPlan(p, rec, {nums = [], slots = [], D = 0, ctaLen = 4, hookEnd = 0, place = '', color = '#ffc61a', priceColor = '#ff2a2a'} = {}) {
+export function industryPlan(p, rec, {nums = [], slots = [], D = 0, ctaLen = 4, hookEnd = 0, place = '', color = '#ffc61a', priceColor = '#ff2a2a', pack = null, steps = null, versus = null} = {}) {
   const ws = timelineWords(p);
   const mg = rec?.mg || {};
+  const pg = pack?.gfx || {};
   const g = p.genre || 'chung';
   const gfx = [];
   const drop = new Set();
@@ -196,10 +201,79 @@ export function industryPlan(p, rec, {nums = [], slots = [], D = 0, ctaLen = 4, 
       if (e - s < 2.4 || !free(s, e)) continue;
       const pre = ws.filter((w) => w.s >= t.start - 3 && w.s < t.start).map((w) => plain(clean(w.w))).join(' ');
       const label = /tra truoc|thanh toan truoc/.test(pre) ? 'THANH TOÁN TRƯỚC' : /thue/.test(pre) ? 'GIÁ THUÊ' : /chi con|con co/.test(pre) ? 'CHỈ CÒN' : /giam/.test(pre) ? 'GIẢM CÒN' : g === 'bds' ? 'GIÁ BÁN' : 'GIÁ';
-      gfx.push({key: 'price', start: s, dur: e - s, label, sub: lowerUnit(t.main), badge: badgeNear(t.start), land: +(t.start - s + 0.35).toFixed(2), color});
+      if (pg.bignum) gfx.push({key: 'bignum', start: Math.max(0.3, t.start - 0.15), dur: Math.min(3, end - t.start), label: t.main, sub: label, x: 0.5, y: 0.15, color: priceColor});
+      else gfx.push({key: 'price', start: s, dur: e - s, label, sub: lowerUnit(t.main), badge: badgeNear(t.start), land: +(t.start - s + 0.35).toFixed(2), color});
       sfx.push(['cash', t.start + 0.3, 0.45]);
       drop.add(t);
       take(s, e);
+    }
+  }
+  const T = ws.map((w) => plain(clean(w.w)));
+  // chỗ trống cho thẻ dài `len` quanh lúc nói `at`: thẻ trước còn hiện thì vào ngay sau nó (trễ tối đa `late` giây)
+  const fit = (at, lead, len, minLen = 2, late = 1.5) => {
+    let s = Math.max(0.3, at - lead);
+    const prevEnd = Math.max(0, ...busy.filter(([a, b]) => a <= s + 0.15 && b > s - 0.15).map(([, b]) => b));
+    if (prevEnd) {
+      if (prevEnd + 0.15 > at + late) return null;
+      s = prevEnd + 0.15;
+    }
+    const nextBusy = busy.map(([a]) => a).filter((a) => a > s).sort((u, v) => u - v)[0] ?? 1e9;
+    const e = Math.min(end, s + len, nextBusy - 0.15);
+    return e - s >= minLen && free(s, e) ? [s, e] : null;
+  };
+  // 10. các bước / danh sách người nói liệt kê (AI trả steps, đã kiểm nguyên văn) → bảng các bước / bảng tích / thẻ nguyên liệu / tiêu đề chương
+  if (pg.steps && steps?.items?.length >= 2) {
+    const its = steps.items.slice(0, 6);
+    let kind = pg.steps;
+    if (kind === 'ingredients' && steps.kind !== 'nguyenlieu') kind = 'chapter';
+    if (steps.kind === 'nguyenlieu' && g === 'amthuc') kind = 'ingredients';
+    if (kind === 'chapter') {
+      its.forEach((x, i) => {
+        const s = Math.max(0.3, x.start - 0.15);
+        const e = Math.min(end, s + 2.4);
+        if (e - s < 1.6 || !free(s, e)) return;
+        gfx.push({key: 'chapter', start: s, dur: e - s, label: `BƯỚC ${i + 1}`, sub: x.text, x: 0.5, y: 0.2, color});
+        sfx.push(['page', s, 0.35]);
+        take(s, e);
+      });
+    } else {
+      const s = Math.max(0.3, its[0].start - (kind === 'explain' ? 0.8 : 0.5));
+      const e = Math.min(end, its[its.length - 1].start + 2.2, s + 12);
+      if (e - s >= 2.5 && free(s, e)) {
+        const items = its.filter((x) => x.start < e - 0.6).map((x) => ({text: x.text, t: +Math.max(0.35, x.start - s).toFixed(2)}));
+        const base = {start: s, dur: e - s, items, color};
+        if (kind === 'explain') gfx.push({...base, key: 'explain', label: steps.title || '', sub: '', x: 0.5, y: 0.43, color: '#2fe0c8'});
+        else if (kind === 'ingredients') gfx.push({...base, key: 'ingredients', label: steps.title || 'Nguyên liệu', x: 0.06, y: 0.14});
+        else gfx.push({...base, key: 'checklist', label: steps.title || '', x: 0.5, y: 0.62});
+        items.forEach((x) => sfx.push(['pop', s + x.t, 0.35]));
+        take(s, e);
+      }
+    }
+  }
+  // 2b. sơ đồ lô đất (trước thẻ thông số: lô đất đã nói diện tích thì thẻ thông số không lặp): “ngang 5 dài 16”, “5 nhân 16”, “5x16” (BĐS)
+  if (pg.lot && g === 'bds') {
+    let hit = null;
+    for (let i = 0; i < T.length && !hit; i++) {
+      const m = T[i].match(/^(\d+(?:[.,]\d+)?)x(\d+(?:[.,]\d+)?)$/);
+      if (m) hit = {i, w: m[1], l: m[2]};
+      else if (numOf(T[i]) !== null && /^(x|nhan)$/.test(T[i + 1] || '') && numOf(T[i + 2] || '') !== null) hit = {i, w: String(numOf(T[i])), l: String(numOf(T[i + 2]))};
+      else if (T[i] === 'ngang' && numOf(T[i + 1] || '') !== null) {
+        for (let j = i + 2; j < Math.min(T.length - 1, i + 8); j++) if (/^(dai|sau)$/.test(T[j]) && numOf(T[j + 1]) !== null) hit = {i, w: String(numOf(T[i + 1])), l: String(numOf(T[j + 1]))};
+      }
+    }
+    const wl = hit && +String(hit.w).replace(',', '.');
+    const ll = hit && +String(hit.l).replace(',', '.');
+    if (hit && wl > 0 && ll > 0 && wl <= 200 && ll <= 300) {
+      const at = ws[hit.i].s;
+      const area = nums.find((x) => /M²/.test(x.main) && Math.abs(x.start - at) < 8);
+      const se = fit(at, 0.2, 3.4, 2.2);
+      if (se) {
+        const [s, e] = se;
+        gfx.push({key: 'lot', start: s, dur: e - s, label: area ? 'DIỆN TÍCH' : 'KÍCH THƯỚC', w: wl, l: ll, area: area ? (area.main.match(/\d+(?:[.,]\d+)?/) || [''])[0] : '', x: 0.5, y: 0.2, size: 0.8, color});
+        sfx.push(['whoosh', s, 0.3], ['pop', s + 0.9, 0.35]);
+        if (area) drop.add(area);
+        take(s, e);
+      }
     }
   }
   // 3. tem giảm giá: “giảm 30%”
@@ -252,7 +326,7 @@ export function industryPlan(p, rec, {nums = [], slots = [], D = 0, ctaLen = 4, 
     }
   }
   // 5. ghim vị trí
-  if (mg.pin && (g === 'bds' || g === 'amthuc' || g === 'vlog')) {
+  if ((mg.pin && (g === 'bds' || g === 'amthuc' || g === 'vlog')) || pg.place) {
     const f = findPlace(ws, place);
     if (f) {
       const s = Math.max(0.3, hookEnd + 0.1, f.s - 0.2);
@@ -260,7 +334,9 @@ export function industryPlan(p, rec, {nums = [], slots = [], D = 0, ctaLen = 4, 
       const e = Math.min(end, s + 3.3, nextBusy - 0.15);
       if (e - s >= 2.2 && free(s, e)) {
         const label = /gan|canh/.test(f.near || '') ? 'GẦN' : /ke ben/.test(f.near || '') ? 'KẾ BÊN' : 'VỊ TRÍ';
-        gfx.push({key: 'pin', start: s, dur: e - s, label, sub: f.text.replace(/^\p{Ll}/u, (c) => c.toUpperCase()), x: 0.5, y: 0.15, px: 0.5, py: 0.5, color});
+        const name = f.text.replace(/^\p{Ll}/u, (c) => c.toUpperCase());
+        if (pg.place) gfx.push({key: 'place', start: s, dur: e - s, label: name, sub: '', x: 0.5, y: 0.28});
+        else gfx.push({key: 'pin', start: s, dur: e - s, label, sub: name, x: 0.5, y: 0.15, px: 0.5, py: 0.5, color});
         sfx.push(['thud', s + 0.3, 0.35]);
         take(s, e);
       }
@@ -277,11 +353,96 @@ export function industryPlan(p, rec, {nums = [], slots = [], D = 0, ctaLen = 4, 
       if (!name || o.e - o.s < 1.2) continue;
       const s = o.s + 0.1;
       const d = Math.min(2.6, o.e - o.s - 0.15);
+      if (gfx.some((x) => x.key === 'explain' && s < x.start + x.dur && s + d > x.start)) continue; // bảng các bước phủ cả khung
       // vùng trên đang có thẻ giá / thông số / vị trí → nhãn xuống phía dưới (trên phụ đề)
       const y = busy.some(([a, b]) => s < b && s + d > a) ? 0.6 : 0.09;
       gfx.push({key: 'room', start: +s.toFixed(2), dur: +d.toFixed(2), label: name.toUpperCase(), x: 0.06, y, color});
     }
   }
-  return {gfx, drop, busy, sfx, buy: !!mg.buy};
+
+  // ---------- 7–15. ĐỒ HOẠ RIÊNG THEO PHONG CÁCH NGÀNH (gfx-pro.js) — chỉ từ lời người nói THẬT ----------
+  // 7. khung REC mở đầu (“đang quay thật”)
+  if (pg.rec && D > 7) {
+    gfx.push({key: 'rec', start: 0, dur: Math.min(2.6, end - 0.5), color: '#ff3b3b'});
+    sfx.push(['recbeep', 0.05, 0.3]);
+  }
+  // 8. tem ngày máy quay: ngày của file video chính (không đoán ngày)
+  const ms = p.sources?.[p.main?.src]?.mtime;
+  if (pg.date && ms && D > 6) {
+    const d = new Date(ms);
+    gfx.push({key: 'date', start: 0.3, dur: Math.min(3.2, end - 0.3), label: `${String(d.getDate()).padStart(2, '0')} ${String(d.getMonth() + 1).padStart(2, '0')} '${String(d.getFullYear()).slice(2)}`, x: 0.94, y: 0.945, color: '#ff9a3c'});
+  }
+  // 11. sai / đúng (AI trả versus, đã kiểm nguyên văn)
+  if (pg.versus && versus?.sai && versus?.dung) {
+    const se = fit(versus.start, 0.2, 4, 2.8);
+    if (se) {
+      const [s, e] = se;
+      gfx.push({key: 'versus', start: s, dur: e - s, old: versus.sai, sub: versus.dung, t2: +Math.min(e - s - 1.5, Math.max(1, (versus.t2 || s + 1.2) - s)).toFixed(2), x: 0.5, y: 0.28, color: '#2ad46a'});
+      sfx.push(['wrong', s + 0.1, 0.35], ['success', s + 1.3, 0.35]);
+      take(s, e);
+    }
+  }
+  // 12. vòng số liệu: “70%” (không phải % giảm giá)
+  if (pg.stat) {
+    for (const t of nums.filter((x) => /%$/.test(x.main) && !drop.has(x) && !/giảm/.test(x.lead || ''))) {
+      const se = fit(t.start, 0.2, 2.8);
+      if (!se) continue;
+      const [s, e] = se;
+      gfx.push({key: 'stat', start: s, dur: e - s, label: t.main, sub: String(t.lead || '').trim(), x: 0.5, y: 0.2, color});
+      sfx.push(['riser', s, 0.3], ['ding', s + 0.9, 0.35]);
+      drop.add(t);
+      take(s, e);
+    }
+  }
+  // 13. sao đánh giá: “4,9 sao”, “5 sao”
+  if (pg.stars) {
+    for (let i = 0; i + 1 < T.length; i++) {
+      if (T[i + 1] !== 'sao') continue;
+      const v = /^\d([.,]\d)?$/.test(T[i]) ? T[i] : numOf(T[i]) !== null && numOf(T[i]) <= 5 ? String(numOf(T[i])) : null;
+      if (!v || +v.replace(',', '.') > 5) continue;
+      const se = fit(ws[i].s, 0.2, 3);
+      if (!se) continue;
+      const [s, e] = se;
+      gfx.push({key: 'stars', start: s, dur: e - s, label: v.replace('.', ','), sub: '', x: 0.5, y: 0.22, color: '#ffc61a'});
+      sfx.push(['sparkle', s + 0.3, 0.3]);
+      take(s, e);
+      break;
+    }
+  }
+  // 14. đồng hồ nấu: “hầm 15 phút”, “ướp ba mươi phút” (ẩm thực) — bên phải, không chặn vùng trên
+  if (pg.timer) {
+    let n = 0;
+    for (let i = 0; i + 1 < T.length && n < 2; i++) {
+      const v = numOf(T[i]);
+      if (v === null || v > 240 || T[i + 1] !== 'phut') continue;
+      const s = Math.max(0.3, ws[i].s - 0.1);
+      if (s > end - 2) continue;
+      gfx.push({key: 'timer', start: s, dur: Math.min(2.8, end - s), label: String(v), sub: 'PHÚT', x: 0.78, y: 0.36, color});
+      sfx.push(['tick', s + 0.2, 0.35]);
+      n++;
+    }
+  }
+  // 15. tem đóng dấu theo chữ khen người nói thật sự nói (“ngon”, “đỉnh”, “hết sẩy”, “chốt đơn”…)
+  if (pg.stamp) {
+    const WORDS = g === 'banhang' ? ['chot don', 'gia soc', 'chinh hang', 'hot', 'sale'] : ['het say', 'tuyet voi', 'xuat sac', 'qua dinh', 'ngon', 'dinh', 'beo ngay'];
+    let f = null;
+    for (const k of WORDS) if ((f = findPhrase(ws, k, Math.max(3, hookEnd + 1), end - 2))) break;
+    if (f) {
+      gfx.push({key: 'stamp', start: f.s, dur: Math.min(2.2, end - f.s), label: f.text.toUpperCase(), x: 0.74, y: 0.34, color: priceColor});
+      sfx.push(['stamp', f.s + 0.18, 0.45]);
+    }
+  }
+  // 16. ẩm thực: tiếng xèo khi người nói “chiên / xào / rán / áp chảo” (âm thanh cho tai, không đồ hoạ)
+  if (g === 'amthuc') {
+    let n = 0;
+    for (const k of ['chien', 'xao', 'ran', 'ap chao', 'nuong']) {
+      const f = findPhrase(ws, k, 1, end);
+      if (f && n < 2) {
+        sfx.push(['sizzle', f.s, 0.3]);
+        n++;
+      }
+    }
+  }
+  return {gfx, drop, busy, sfx, buy: !!mg.buy, social: !!pg.social, chip: !!pg.chip};
 }
 export const recipePack = (rec) => PACKS[rec?.pack] || null;

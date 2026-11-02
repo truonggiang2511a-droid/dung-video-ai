@@ -162,6 +162,44 @@ export const SFX = [
     tone(c, o, {f0: 1900, dur: 0.035, vol: 0.6, attack: 0.001});
     tone(c, o, {f0: 1400, t0: 0.27, dur: 0.035, vol: 0.6, attack: 0.001});
   }},
+  // 2/11 chiều — thêm âm theo ngành (vẫn tự tổng hợp)
+  {key: 'sizzle', name: 'Xèo xèo', tags: ['chien', 'xao', 'nau an', 'nong', 'am thuc'], len: 1.4, gen: (c, o) => {
+    for (let i = 0; i < 26; i++) burst(c, o, {t0: i * 0.05 + Math.random() * 0.03, dur: 0.02 + Math.random() * 0.03, type: 'highpass', f: 4000 + Math.random() * 3000, vol: 0.25 + Math.random() * 0.35});
+    sweepNoise(c, o, {dur: 1.35, f0: 5000, f1: 7000, f2: 4500, q: 0.6, vol: 0.35, peak: 0.2});
+  }},
+  {key: 'pour', name: 'Rót nước', tags: ['rot', 'do uong', 'nuoc', 'cafe'], len: 1.1, gen: (c, o) => {
+    for (let i = 0; i < 18; i++) tone(c, o, {f0: 500 + i * 40 + Math.random() * 80, f1: 900 + i * 50, t0: i * 0.055, dur: 0.06, vol: 0.18, attack: 0.003});
+    sweepNoise(c, o, {dur: 1.05, f0: 900, f1: 2200, f2: 1500, q: 2, vol: 0.4, peak: 0.6});
+  }},
+  {key: 'page', name: 'Lật trang', tags: ['trang sach', 'kien thuc', 'chuong', 'buoc'], len: 0.5, gen: (c, o) => {
+    sweepNoise(c, o, {dur: 0.42, f0: 1200, f1: 5000, f2: 2500, q: 0.8, vol: 0.7, peak: 0.35});
+    burst(c, o, {t0: 0.36, dur: 0.05, type: 'bandpass', f: 1800, vol: 0.4});
+  }},
+  {key: 'marker', name: 'Bút dạ', tags: ['viet', 'bang trang', 'gach chan', 'ghi chu'], len: 0.6, gen: (c, o) => {
+    sweepNoise(c, o, {dur: 0.28, f0: 2500, f1: 3600, f2: 2800, q: 6, vol: 0.5, peak: 0.5});
+    sweepNoise(c, o, {t0: 0.3, dur: 0.24, f0: 2800, f1: 3900, f2: 3000, q: 6, vol: 0.45, peak: 0.5});
+  }},
+  {key: 'stamp', name: 'Đóng dấu', tags: ['tem', 'dau', 'chot', 'xac nhan'], len: 0.45, gen: (c, o) => {
+    tone(c, o, {f0: 140, f1: 55, dur: 0.3, vol: 1});
+    burst(c, o, {dur: 0.06, type: 'lowpass', f: 900, vol: 0.9});
+    burst(c, o, {t0: 0.02, dur: 0.04, type: 'highpass', f: 3000, vol: 0.3});
+  }},
+  {key: 'chime', name: 'Chuông gió', tags: ['nhe nhang', 'mo dau', 'dep', 'thu gian'], len: 2.2, gen: (c, o) => {
+    [1568, 1976, 2349, 2637, 3136].forEach((f, i) => bell(c, o, {f, t0: i * 0.11 + Math.random() * 0.04, dur: 1.8, vol: 0.22}));
+  }},
+  {key: 'recbeep', name: 'Bíp máy quay', tags: ['rec', 'quay', 'bat dau', 'may quay'], len: 0.5, gen: (c, o) => {
+    tone(c, o, {type: 'square', f0: 2093, dur: 0.09, vol: 0.25, attack: 0.002});
+    tone(c, o, {type: 'square', f0: 2093, t0: 0.16, dur: 0.12, vol: 0.25, attack: 0.002});
+  }},
+  {key: 'drumhit', name: 'Trống chốt', tags: ['chot', 'manh', 'ket', 'nhan'], len: 0.7, gen: (c, o) => {
+    tone(c, o, {f0: 180, f1: 45, dur: 0.5, vol: 1});
+    burst(c, o, {dur: 0.18, type: 'bandpass', f: 2200, q: 0.5, vol: 0.55});
+    burst(c, o, {t0: 0.01, dur: 0.4, type: 'highpass', f: 6000, vol: 0.18});
+  }},
+  {key: 'cheer', name: 'Vỗ tay', tags: ['vo tay', 'chuc mung', 'hoan ho', 'thanh cong'], len: 1.6, gen: (c, o) => {
+    for (let i = 0; i < 60; i++) burst(c, o, {t0: Math.random() * 1.35, dur: 0.015 + Math.random() * 0.02, type: 'bandpass', f: 1200 + Math.random() * 1800, q: 1.2, vol: 0.25 + Math.random() * 0.3});
+  }},
+  {key: 'swishup', name: 'Vút lên', tags: ['len', 'tang', 'xuat hien', 'bay'], len: 0.55, gen: (c, o) => sweepNoise(c, o, {dur: 0.5, f0: 400, f1: 6000, q: 1.6, vol: 0.85, peak: 0.85})},
 ];
 export const SFX_MAP = Object.fromEntries(SFX.map((s) => [s.key, s]));
 

@@ -503,7 +503,7 @@ export async function importFile(p, file, kind, onMsg, extra = {}) {
     c.height = 96;
     c.width = Math.max(2, Math.round((96 * bm.width) / bm.height));
     c.getContext('2d').drawImage(bm, 0, 0, c.width, c.height);
-    const src = {id, kind: 'broll', image: true, name: (file.name || 'anh').replace(/\.[^.]+$/, ''), fileKey, duration: 60, w: bm.width, h: bm.height, thumbs: [c.toDataURL('image/jpeg', 0.7)], peaks: null, ...extra};
+    const src = {id, kind: 'broll', image: true, name: (file.name || 'anh').replace(/\.[^.]+$/, ''), fileKey, duration: 60, w: bm.width, h: bm.height, thumbs: [c.toDataURL('image/jpeg', 0.7)], peaks: null, mtime: file.lastModified || 0, ...extra};
     bm.close?.();
     p.sources[id] = src;
     return src;
@@ -515,7 +515,7 @@ export async function importFile(p, file, kind, onMsg, extra = {}) {
   const id = uid('s');
   const fileKey = p.id + '/' + id;
   await store.putFile(fileKey, file);
-  const src = {id, kind, name: (file.name || 'video').replace(/\.[^.]+$/, ''), fileKey, duration: meta.duration, w: meta.w || 0, h: meta.h || 0, thumbs: [], peaks: null, ...extra};
+  const src = {id, kind, name: (file.name || 'video').replace(/\.[^.]+$/, ''), fileKey, duration: meta.duration, w: meta.w || 0, h: meta.h || 0, thumbs: [], peaks: null, mtime: file.lastModified || 0, ...extra};
   if (!isAudio) {
     try {
       src.thumbs = await thumbs(file, kind === 'main' ? 14 : 1);

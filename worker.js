@@ -187,7 +187,9 @@ NGOÀI RA:
 - "place": tên địa điểm/vị trí người nói nhắc tới, lấy NGUYÊN VĂN trong lời (vd "Bình Chánh", "chợ Bình Điền", "quận 7"); không có thì "".
 - "sfx": âm thanh nhấn theo nghĩa câu nói, tối đa SFXN cái: "start" = giây của câu, "key" một trong: ding (ý hay, mẹo), success (kết quả tốt), wrong (sai lầm, cảnh báo), heartbeat (hồi hộp), tick (thời gian, hạn chót), coin (tiết kiệm, tiền nhỏ), riser (sắp tiết lộ), boing (vui, hài hước).
 - "stock": cảnh trám từ kho video mạng (Pixabay) cho những câu có ý nói về thứ CHUNG CHUNG không có trong cảnh quay — tối đa STOCKN cảnh, cách nhau ≥ 6 giây: "start" = giây của câu, "q" = 1–3 từ TIẾNG ANH để tìm video (vd "city skyline", "money counting", "family happy", "handshake", "traffic road", "calendar"). TUYỆT ĐỐI KHÔNG tìm chính căn nhà / căn hộ / phòng / món ăn / sản phẩm đang review hoặc đang bán hay người nói (cảnh mạng mà giả làm hàng thật là lừa khách). Không chắc thì để [].
-Chỉ trả JSON: {"items":[{"start":0,"lead":"","main":""}],"hook":"","pack":"","pics":[{"start":0,"tu":""}],"place":"","sfx":[{"start":0,"key":""}],"stock":[{"start":0,"q":""}]}`;
+- "steps": CHỈ khi người nói LIỆT KÊ từ 2 bước / ý / điều cần kiểm tra / nguyên liệu liền nhau (vd "thứ nhất… thứ hai…", "bước 1… bước 2…", "cần thịt, trứng, nước dừa"): mỗi mục "start" = giây câu nói mục đó, "text" = 1–4 từ NGUYÊN VĂN trong lời (viết thường, không bịa). Tối đa 6 mục. "steps_title" = tiêu đề ≤ 22 ký tự VIẾT HOA (vd "3 BƯỚC MUA NHÀ"), số trong tiêu đề phải có trong lời hoặc đúng bằng số mục; không chắc thì "". "steps_kind": "buoc" | "kiemtra" | "nguyenlieu". Không có liệt kê thì "steps": [].
+- "versus": CHỈ khi người nói so sánh rõ cách SAI với cách ĐÚNG: {"start": giây câu nói cách sai, "sai": 2–5 từ NGUYÊN VĂN, "dung": 2–5 từ NGUYÊN VĂN}; không có thì null.
+Chỉ trả JSON: {"items":[{"start":0,"lead":"","main":""}],"hook":"","pack":"","pics":[{"start":0,"tu":""}],"place":"","sfx":[{"start":0,"key":""}],"stock":[{"start":0,"q":""}],"steps":[{"start":0,"text":""}],"steps_title":"","steps_kind":"buoc","versus":null}`;
 // ---------- Claude dựng / sửa ----------
 const ICON_LIST = 'house|pin|ruler|tag|doc|school|sofa|car|tree|star|bed|key|heart|fire|check|bulb|chat|thumb|clock|cart|gift|truck|food|coffee|book|chart|camera|plane';
 const GENRE_RULES = {
@@ -241,7 +243,7 @@ function buildPrompt(body) {
     const dur = Math.max(5, +body.dur || 60);
     const packs = (Array.isArray(body.packs) ? body.packs : []).slice(0, 20).map((x) => `- ${String(x.key).slice(0, 30)}: ${String(x.name).slice(0, 40)} — ${String(x.desc).slice(0, 120)}`).join('\n');
     const system = HL_SYS.replace('COUNT', count).replace('GAP', gap).replace('PICS', Math.max(1, Math.round(dur / 6))).replace('SFXN', Math.max(1, Math.round(dur / 12))).replace('STOCKN', Math.max(1, Math.min(4, Math.round(dur / 15)))) + (body.genre ? `\nThể loại video: ${String(body.genre).slice(0, 200)}.` : '') + (packs ? `\nPHONG CÁCH:\n${packs}` : '');
-    return {system, user: `Lời người nói:\n${lines}`, max: 1600, count};
+    return {system, user: `Lời người nói:\n${lines}`, max: 2000, count};
   }
   const proj = JSON.stringify(body.project).slice(0, 120000); // giữ prompt < 100k token (Haiku 5.5 trên 100k token giá ×5)
   const user = body.mode === 'plan'

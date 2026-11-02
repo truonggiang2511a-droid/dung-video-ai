@@ -1,7 +1,10 @@
 // Bảng ảnh đồ hoạ theo ngành: mỗi loại 3 thời điểm, nền giả lập người nói
-import {drawFrame, setFormat, W, H, GFX_MAP} from '../../js/render.js';
+import {drawFrame, setFormat, W, H, GFX_MAP, loadFonts} from '../../js/render.js';
+import {ensureFont} from '../../js/fonts.js';
 window.sheet = async (keys, times) => {
   setFormat('9:16');
+  await loadFonts();
+  await Promise.all(['patrickhand400', 'lora700', 'sairacondensed800', 'bigshouldersdispla900', 'playfairdisplay900'].map((k) => ensureFont(k)));
   await document.fonts.ready;
   const bg = document.createElement('canvas');
   bg.width = 1080; bg.height = 1920;
@@ -11,7 +14,7 @@ window.sheet = async (keys, times) => {
   g.fillStyle = gr; g.fillRect(0, 0, 1080, 1920);
   g.fillStyle = '#d9b48f'; g.beginPath(); g.arc(540, 640, 170, 0, 7); g.fill();
   g.fillStyle = '#2b3442'; g.beginPath(); g.ellipse(540, 1350, 360, 520, 0, 0, 7); g.fill();
-  const sc = 0.25, cw = 1080 * sc, ch = 1920 * sc;
+  const sc = window.SC || 0.25, cw = 1080 * sc, ch = 1920 * sc;
   const out = document.createElement('canvas');
   out.width = cw * times.length; out.height = ch * keys.length;
   const o = out.getContext('2d');

@@ -343,14 +343,40 @@ export function brollKeys(src) {
 }
 export const brollTokens = (src) => brollKeys(src).map((x) => x.k);
 
-export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks = null, place = '', animBy = null} = {}) {
+
+// Các bước không có AI: người nói đánh dấu “thứ nhất / thứ hai…”, “bước 1 / bước 2…”, “đầu tiên … tiếp theo … cuối cùng”
+// → mỗi mục = 2–4 chữ ngay sau dấu đánh số (nguyên văn). AI có trả thì dùng của AI.
+const ORD = [[/^thu (nhat|hai|ba|tu|nam|sau)$/, 2], [/^buoc (\d|mot|hai|ba|bon|nam|sau)$/, 2], [/^(dau tien|tiep theo|cuoi cung)$/, 2]];
+export function localSteps(p, ai) {
+  if (ai?.items?.length >= 2) return ai;
+  const ws = timelineWords(p);
+  const T = ws.map((w) => plain(w.w).replace(/[^a-z0-9]/g, ''));
+  const items = [];
+  for (let i = 0; i + 1 < T.length; i++) {
+    const two = T[i] + ' ' + T[i + 1];
+    if (!ORD.some(([re]) => re.test(two))) continue;
+    let j = i + 2;
+    if (/^(la|thi|ban|minh|chung ta|can)$/.test(T[j] || '')) j++;
+    const take = [];
+    for (let k = j; k < Math.min(ws.length, j + 5); k++) {
+      if (k > j && ws[k].s - ws[k - 1].e > 0.3) break;
+      take.push(ws[k].w.replace(/[.,;:!?…"“”]/g, ''));
+      if (/[.,;:!?…]$/.test(ws[k].w)) break;
+    }
+    if (take.length >= 2 && (!items.length || ws[i].s - items[items.length - 1].start > 1.5)) items.push({start: ws[i].s, text: take.join(' ').replace(/^\p{Ll}/u, (c) => c.toUpperCase())});
+  }
+  return items.length >= 2 ? {items: items.slice(0, 6), title: '', kind: 'buoc'} : null;
+}
+
+export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks = null, place = '', animBy = null, steps = null, versus = null} = {}) {
   const D = duration(p);
   const ops = [];
   if (D < 1) return ops;
   // phong cách của video (bộ phong cách — styles.js): chuyển cảnh, chữ, phụ đề, màu, đồ hoạ theo MỘT công thức
   const rec = recipeOf(p);
   const pack = PACKS[p.pack] || PACKS[rec?.pack] || packsFor(p.genre)[0] || PACKS.mau1;
-  const st = {...(genreOf(p).edit || {pace: 3.2, cover: 0.4, punch: 1.1}), base: pack.trans.base, accent: pack.trans.accent, jump: pack.jump};
+  // nhịp dựng: theo thể loại, phong cách ngành có nhịp riêng thì ghi đè (chuyên gia nói chậm, live chốt đơn rất nhanh…)
+  const st = {...(genreOf(p).edit || {pace: 3.2, cover: 0.4, punch: 1.1}), ...(pack.edit || {}), base: pack.trans.base, accent: pack.trans.accent, jump: pack.jump};
   const words = timelineWords(p);
   const cuts = segStarts(p).slice(1).filter((c) => c > 0.2 && c < D - 0.2);
   const ctaLen = p.cta?.len || 4;
@@ -503,7 +529,7 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
   const allNums = numberLockups(p, true);
   let nums = numberLockups(p);
   // CÔNG THỨC DỰNG theo ngành: bảng giá lăn số, thẻ thông số, ghim vị trí, nhãn cảnh, giá gạch ngang, tem giảm %, nút mua (recipes.js)
-  const ind = industryPlan(p, rec, {nums: allNums, slots, D, ctaLen, place, color: gfxStyle(pack, 'price').color, priceColor: pack.price});
+  const ind = industryPlan(p, rec, {nums: allNums, slots, D, ctaLen, place, color: gfxStyle(pack, 'price').color, priceColor: pack.price, pack, steps: localSteps(p, steps), versus});
   nums = nums.filter((t) => !ind.drop.has(t));
   const onCard = (t) => ind.busy.some(([a, b]) => t.start < b + 0.2 && t.start + (t.dur || 3) > a - 0.2);
   if (hook && pack.gfx.hook) {
@@ -513,9 +539,19 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
     if (hookEnd < 1.5) hookEnd = 0;
   }
   let nKey = 0;
-  const keyList = (keys || localKeys(p)).filter((k) => (!hookEnd || k.start > hookEnd + 0.3) && !onCard(k));
+  // tem đóng dấu đã nói chữ khen đó (“NGON”) → bỏ cụm chữ ý chính trùng chữ quanh lúc đó
+  const stamped = (k) => ind.gfx.some((g) => g.key === 'stamp' && Math.abs(g.start - k.start) < 2.5 && plain(k.main).includes(plain(g.label)));
+  const keyList = (keys || localKeys(p)).filter((k) => (!hookEnd || k.start > hookEnd + 0.3) && !onCard(k) && !stamped(k));
   nums = nums.filter((t) => !onCard(t));
+  let nChip = 0;
   mergeLockups(p, nums, keyList).forEach((t, i) => {
+    // phong cách có nhãn kính (chuyên gia nói, bảng trắng): chữ ý chính ngắn thành nhãn kính cạnh vai, xen kẽ trái / phải
+    if (ind.chip && t.kind === 'key' && String(t.main).length <= 16 && nChip < 6) {
+      const it = {id: uid('g'), kind: 'gfx', key: 'chip', ...GFX_MAP.chip.def, ...gfxStyle(pack, 'chip'), label: t.main, icon: t.icon || '', start: t.start, dur: Math.min(t.dur || 2.6, 2.8), x: nChip % 2 ? 0.74 : 0.26, y: 0.46, locked: false};
+      nChip++;
+      ops.push({op: 'add', list: 'stickers', item: it});
+      return;
+    }
     // màu / font / kiểu theo phong cách; chuyển động theo ý: giá → đóng dấu, diện tích/chiều dài → phóng ra, “3 bước/5 mẹo” → trượt vào, chữ ý chính → theo phong cách
     Object.assign(t, packText(pack, t, t.kind === 'key' ? nKey++ : 0));
     if (t.kind !== 'key' && t.kind !== 'price') t.motion = /M²|MÉT/.test(t.main) ? 'zoom' : /BƯỚC|MẸO|CÁCH|LÝ DO|ĐIỀU/.test(t.main) ? 'slide' : i % 2 ? 'bounce' : 'pop';
@@ -668,6 +704,8 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
     if (ind.buy) {
       const said = timelineWords(p).map((w) => plain(w.w)).join(' ');
       gfx('buy', D - ctaLen + 0.4, ctaLen - 0.5, {y: 0.8, label: /dat hang/.test(said) ? 'ĐẶT HÀNG NGAY' : 'MUA NGAY'}) && sfx('click', D - ctaLen + 1.3, 0.4);
+    } else if (ind.social) {
+      gfx('social', D - ctaLen + 0.3, ctaLen - 0.4, {y: 0.8}) && [0.9, 1.9, 2.9].forEach((k) => k < ctaLen - 0.5 && sfx('click', D - ctaLen + 0.3 + k, 0.35));
     } else if (pack.gfx.follow) gfx('follow', D - ctaLen + 0.5, ctaLen - 0.6, {y: 0.8}) && sfx('click', D - ctaLen + 1.35, 0.4);
     if (pack.gfx.confetti) gfx('confetti', D - ctaLen, Math.min(3, ctaLen)) && sfx('success', D - ctaLen + 0.15, 0.35);
   }
@@ -677,7 +715,7 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
   // màu video theo phong cách (khách đã tự chỉnh màu thì giữ nguyên) + phụ đề theo phong cách (khách đã chỉnh thì giữ)
   const look = pack.look || genreOf(p).look;
   if (look && p.look?.by !== 'user') ops.push({op: 'look', set: {filter: 'none', amt: 0.6, vignette: 0, grain: 0, leak: 0, bars: false, ...look, by: 'ai'}});
-  if (p.subs?.by !== 'user') ops.push({op: 'subs', set: {...pack.subs}});
+  if (p.subs?.by !== 'user') ops.push({op: 'subs', set: {y: 0.7, ...pack.subs}});
   if (!p.cta?.on) ops.push({op: 'cta', set: {on: true}});
   if (rec?.cam) ops.push({op: 'cam', v: rec.cam});
   return ops;
@@ -1034,6 +1072,23 @@ async function aiExtras(p, r) {
   out.sfx = (r.sfx || []).filter((s) => SFX_MEAN.has(s.key) && s.start >= 0.5 && s.start < D - 0.5).slice(0, 8);
   // cảnh trám Pixabay: chỉ ý CHUNG CHUNG; BĐS / bán hàng chặn cảnh giả làm hàng đang bán (stockAllowed)
   out.stock = (r.stock || []).map((s) => ({start: +s.start, q: String(s.q || '').trim()})).filter((s) => s.start >= 1.5 && s.start < D - 4 && stockAllowed(p.genre || 'chung', s.q)).slice(0, 4);
+  // các bước / danh sách người nói liệt kê: mỗi mục phải có NGUYÊN VĂN trong lời (±3 s), tiêu đề chỉ dùng số có trong lời
+  const tws = timelineWords(p);
+  const inSpeech = (txt, at, win = 3) => {
+    const toks = plain(txt).replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
+    if (!toks.length) return false;
+    const near = tws.filter((w) => Math.abs(w.s - at) <= win).map((w) => plain(w.w).replace(/[^a-z0-9]/g, ''));
+    for (let i = 0; i + toks.length <= near.length; i++) if (toks.every((t, j) => near[i + j] === t)) return true;
+    return false;
+  };
+  const items = (r.steps || []).map((x) => ({start: +x.start, text: String(x.text || '').trim().replace(/[.,;:!?]+$/, '')})).filter((x) => x.text && x.text.length <= 28 && x.start >= 0.5 && x.start < D - 2 && inSpeech(x.text, x.start)).slice(0, 6);
+  if (items.length >= 2) {
+    let title = String(r.steps_title || '').trim().toUpperCase();
+    if (title.length > 24 || !(title.match(/\d+/g) || []).every((n) => saidNums.has(n) || +n === items.length)) title = '';
+    out.steps = {items: items.map((x) => ({...x, text: x.text.charAt(0).toUpperCase() + x.text.slice(1)})), title, kind: ['buoc', 'kiemtra', 'nguyenlieu'].includes(r.steps_kind) ? r.steps_kind : 'buoc'};
+  }
+  const v = r.versus;
+  if (v && v.sai && v.dung && +v.start >= 0.5 && +v.start < D - 3 && inSpeech(v.sai, +v.start, 6) && inSpeech(v.dung, +v.start, 8)) out.versus = {start: +v.start, sai: String(v.sai).trim(), dung: String(v.dung).trim()};
   return out;
 }
 // Gộp các đoạn cắt chồng / sát nhau (giây nguồn)
@@ -1280,7 +1335,7 @@ export async function autoEdit(ed, log) {
       ed.cur.say('AI đọc lời nói, chọn chữ điểm nhấn…');
       let r = hlReq ? await hlReq : null;
       const toTl = (list) => (list || []).map((it) => ({...it, start: srcToTl(p, +it.start || 0)}));
-      if (r) r = {...r, items: toTl(r.items), pics: toTl(r.pics), sfx: toTl(r.sfx), stock: toTl(r.stock)};
+      if (r) r = {...r, items: toTl(r.items), pics: toTl(r.pics), sfx: toTl(r.sfx), stock: toTl(r.stock), steps: toTl(r.steps), versus: r.versus ? toTl([r.versus])[0] : null};
       else r = await api('ai', hlBody(p, timelinePhrases(p), duration(p)));
       extraAi = await aiExtras(p, r);
       if (extraAi.pack) log('ke', 'run', `AI chọn phong cách “${PACKS[extraAi.pack].name}”`);
@@ -1350,7 +1405,7 @@ export async function autoEdit(ed, log) {
   try {
     animBy = new Map(((await loadIndex('anim')).items || []).filter((x) => x.fk).map((x) => [x.fk, x.key]));
   } catch (e) {}
-  const ops = localPlan(p, {keys, hook: extraAi.hook || '', pics: extraAi.pics, sfx: extraAi.sfx, place: extraAi.place || '', animBy});
+  const ops = localPlan(p, {keys, hook: extraAi.hook || '', pics: extraAi.pics, sfx: extraAi.sfx, place: extraAi.place || '', animBy, steps: extraAi.steps || null, versus: extraAi.versus || null});
   // AI TỰ KIỂM (chạy ngầm, không tốn tiền): dựng thử từng chữ → tràn khung / chồng thẻ / chìm nền / hình đè → tự đổi
   let fixes = [];
   try {
