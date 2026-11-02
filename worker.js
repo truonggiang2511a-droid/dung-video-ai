@@ -374,8 +374,14 @@ async function stockSearch(url, env) {
     api.searchParams.set('image_type', 'photo');
     if (orient !== 'all') api.searchParams.set('orientation', orient);
   }
-  const r = await fetch(api.toString());
-  if (r.status === 429) return json({error: 'Kho Pixabay đang bận — thử lại sau 1 phút'}, 429);
+  // Pixabay thỉnh thoảng trả 429 dù mình gọi rất ít (máy chủ Cloudflare dùng chung địa chỉ IP với nhiều người) → thử lại 2 lần
+  let r = null;
+  for (let i = 0; i < 3; i++) {
+    r = await fetch(api.toString());
+    if (r.status !== 429) break;
+    await new Promise((res) => setTimeout(res, 900 * (i + 1)));
+  }
+  if (r.status === 429) return json({error: 'Kho Pixabay đang bận — thử lại sau ít phút', limit: r.headers.get('x-ratelimit-remaining')}, 429);
   if (!r.ok) return json({error: 'Pixabay lỗi ' + r.status + ': ' + (await r.text()).slice(0, 120)}, 502);
   const d = await r.json();
   const items = (d.hits || []).map((h) =>
