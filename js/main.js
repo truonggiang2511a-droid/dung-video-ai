@@ -98,6 +98,8 @@ const ed = {
     renderScript();
     renderMedia();
     renderCtx();
+    renderSkillBtn();
+    if (skillUi.open) renderSkillPop();
     if (save) queueSave();
   },
 };
@@ -217,6 +219,7 @@ async function openEditor(p) {
   updateTime();
   history.replaceState(null, '', '#' + p.id);
   setTimeout(renderVars, 900);
+  renderSkillBtn();
 }
 async function closeEditor() {
   ed.player.pause();
@@ -588,7 +591,14 @@ function renderInspector() {
       <p class="hint">Chạm vào một clip trên timeline để sửa, hoặc nhắn AI ở ô bên dưới.</p>
       <p class="hint kbd-hint">Phím tắt: <kbd>Space</kbd> phát/dừng · <kbd>←</kbd><kbd>→</kbd> từng khung (<kbd>Shift</kbd> 1 giây) · <kbd>S</kbd> tách · <kbd>Delete</kbd> xoá · <kbd>Ctrl</kbd>+<kbd>Z</kbd> hoàn tác · <kbd>+</kbd><kbd>−</kbd> phóng timeline</p>`;
   }
+  // giữ chỗ cuộn (bảng + hàng thẻ cuộn ngang) — trước đây chọn xong hàng thẻ nhảy về đầu, khách tưởng chưa chọn được
+  const pane = box.closest('.side-pane');
+  const top = pane?.scrollTop || 0;
+  const xs = [...box.querySelectorAll('.rc-grid,.chips')].map((e) => e.scrollLeft);
   box.innerHTML = h;
+  const ys = box.querySelectorAll('.rc-grid,.chips');
+  if (ys.length === xs.length) ys.forEach((e, i) => (e.scrollLeft = xs[i]));
+  if (pane) pane.scrollTop = top;
   if (h.includes('data-fload')) watchFontPreviews();
   if (h.includes('data-pkp')) drawPackThumbs();
   if (h.includes('data-rcp')) drawRecipeThumbs();
@@ -926,6 +936,49 @@ function openSheet(on) {
   $('#side').classList.toggle('open', on);
   if (on) $('#side').querySelector('[data-tab="edit"]')?.click();
 }
+// vuốt xuống để đóng tấm sửa (điện thoại): kéo thanh nắm / hàng tab, hoặc kéo nội dung khi đã cuộn lên đầu.
+// Vuốt ngang (hàng thẻ công thức, phong cách) vẫn cuộn bình thường.
+function bindSheetSwipe() {
+  const side = $('#side');
+  let st = null;
+  side.addEventListener('touchstart', (e) => {
+    if (!side.classList.contains('open') || e.touches.length !== 1 || matchMedia('(min-width: 900px)').matches) return;
+    if (e.target.closest('input,textarea,select,[type=range]')) return;
+    const pane = e.target.closest('.side-pane');
+    const head = e.target.closest('.side-grab,.side-tabs');
+    if (!head && !(pane && pane.scrollTop <= 0)) return;
+    const t = e.touches[0];
+    st = {x: t.clientX, y: t.clientY, t: performance.now(), mode: head ? 'head' : 'pane', drag: false, dy: 0};
+  }, {passive: true});
+  side.addEventListener('touchmove', (e) => {
+    if (!st) return;
+    const t = e.touches[0];
+    const dx = t.clientX - st.x;
+    const dy = t.clientY - st.y;
+    if (!st.drag) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      // ngang hoặc kéo lên trong nội dung → để trình duyệt cuộn
+      if (Math.abs(dx) > Math.abs(dy) || dy < 0) return void (st = null);
+      st.drag = true;
+      side.style.transition = 'none';
+    }
+    e.preventDefault();
+    st.dy = Math.max(0, dy);
+    side.style.transform = `translateY(${st.dy}px)`;
+  }, {passive: false});
+  const end = () => {
+    if (!st) return;
+    const s0 = st;
+    st = null;
+    if (!s0.drag) return;
+    side.style.transition = '';
+    const v = s0.dy / Math.max(1, performance.now() - s0.t);
+    side.style.transform = '';
+    if (s0.dy > Math.min(110, side.offsetHeight * 0.28) || (v > 0.5 && s0.dy > 30)) openSheet(false);
+  };
+  side.addEventListener('touchend', end);
+  side.addEventListener('touchcancel', end);
+}
 function openPane(pane) {
   $('#side').classList.add('open');
   $(`#side [data-tab="${pane}"]`)?.click();
@@ -1081,6 +1134,109 @@ function renderCtx() {
   box.hidden = !c;
   box.innerHTML = c ? `<span class="ctx-chip">${icon(I.sparkle, 12)}<span>${esc(c.label)}</span><button type="button" data-act="ctxOff" aria-label="Bỏ gắn clip">✕</button></span>` : '';
   $('#chatIn').placeholder = c ? `Nhờ AI sửa ${c.label.toLowerCase()}…` : 'Nhắn AI sửa: “đổi chữ giá sang vàng”';
+}
+
+// ---------- SKILL trong ô chat (kiểu Claude Code): nút sổ xuống + gõ @ để gọi công thức dựng ----------
+const foldVi = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
+const skillUi = {open: false, q: null, hi: 0, items: []};
+function renderSkillBtn() {
+  const b = $('#skillName');
+  if (!b || !ed.p) return;
+  b.textContent = ed.p.recipeBy === 'user' && ed.p.recipe ? recipeOf(ed.p).name : 'AI tự chọn';
+}
+function skillList(q) {
+  const p = ed.p;
+  const cur = p.recipeBy === 'user' ? p.recipe : '';
+  const gs = [p.genre || 'chung', ...Object.keys(GENRES).filter((g) => g !== (p.genre || 'chung'))];
+  const f = foldVi(q || '');
+  const ok = (r) => !f || foldVi(`${r.name} ${r.desc} ${SKILL_NAMES[r.from] || r.from} ${r.from} ${GENRES[r.genre]?.label}`).includes(f);
+  const groups = [];
+  if (!f || foldVi('ai tu chon').includes(f)) groups.push({h: '', items: [{key: '', genre: p.genre, name: 'AI tự chọn', desc: 'AI đọc lời nói rồi chọn công thức hợp nhất', on: !cur}]});
+  for (const g of gs) {
+    const items = recipesFor(g).filter(ok).map((r) => ({...r, on: cur === r.key}));
+    if (items.length) groups.push({h: g === (p.genre || 'chung') ? `${GENRES[g]?.label || g} · thể loại đang dựng` : GENRES[g]?.label || g, items});
+  }
+  return groups;
+}
+function renderSkillPop() {
+  const box = $('#skillPop');
+  if (!skillUi.open || !ed.p) {
+    box.hidden = true;
+    $('#btnSkill')?.setAttribute('aria-expanded', 'false');
+    return;
+  }
+  const groups = skillList(skillUi.q);
+  skillUi.items = groups.flatMap((g) => g.items);
+  skillUi.hi = Math.max(0, Math.min(skillUi.hi, skillUi.items.length - 1));
+  let n = -1;
+  box.innerHTML = groups.length
+    ? groups.map((g) => `${g.h ? `<div class="sk-h">${esc(g.h)}</div>` : ''}${g.items.map((r) => {
+        n++;
+        const ic = r.key ? esc((GENRES[r.genre]?.label || '?').slice(0, 1)) : icon(I.sparkle, 15);
+        return `<button type="button" class="sk-it${r.on ? ' on' : ''}${n === skillUi.hi ? ' hi' : ''}" role="option" aria-selected="${r.on}" data-skill="${esc(r.key)}" data-skg="${esc(r.genre || '')}"><span class="sk-ic">${ic}</span><span class="sk-tx"><b>${esc(r.name)}</b><small>${esc(r.desc)}</small>${r.key ? `<em>@${esc(SKILL_NAMES[r.from] || r.from)}</em>` : ''}</span></button>`;
+      }).join('')}`).join('')
+    : `<p class="sk-none">Không có skill khớp “${esc(skillUi.q)}”.</p>`;
+  box.hidden = false;
+  $('#btnSkill').setAttribute('aria-expanded', 'true');
+  box.querySelector('.sk-it.hi')?.scrollIntoView({block: 'nearest'});
+}
+function openSkills(q = null) {
+  if (!ed.p) return;
+  skillUi.open = true;
+  skillUi.q = q;
+  skillUi.hi = 0;
+  renderSkillPop();
+}
+function closeSkills() {
+  if (!skillUi.open) return;
+  skillUi.open = false;
+  skillUi.q = null;
+  renderSkillPop();
+}
+function useSkill(key, genre) {
+  const inp = $('#chatIn');
+  // bỏ “@chữ đang gõ” khỏi ô chat, phần còn lại khách gửi cho AI như thường
+  if (skillUi.q !== null) inp.value = inp.value.replace(/(^|\s)@[^\s@]*$/, '$1').replace(/\s+$/, inp.value.trim() ? ' ' : '');
+  closeSkills();
+  if (genre && GENRES[genre] && genre !== ed.p.genre) setGenre(genre);
+  pickRecipe(key || '');
+  renderSkillBtn();
+  if (matchMedia('(min-width: 900px)').matches) inp.focus();
+}
+function bindSkills() {
+  const inp = $('#chatIn');
+  $('#btnSkill').addEventListener('click', (e) => {
+    e.preventDefault();
+    skillUi.open && skillUi.q === null ? closeSkills() : openSkills(null);
+  });
+  $('#skillPop').addEventListener('pointerdown', (e) => e.preventDefault()); // giữ bàn phím / ô chat không mất chữ
+  $('#skillPop').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-skill]');
+    if (b) useSkill(b.dataset.skill, b.dataset.skg);
+  });
+  inp.addEventListener('input', () => {
+    const m = inp.value.slice(0, inp.selectionStart ?? inp.value.length).match(/(^|\s)@([^\s@]*)$/);
+    if (m) openSkills(m[2]);
+    else if (skillUi.q !== null) closeSkills();
+  });
+  inp.addEventListener('keydown', (e) => {
+    if (!skillUi.open) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      skillUi.hi = (skillUi.hi + (e.key === 'ArrowDown' ? 1 : -1) + skillUi.items.length) % Math.max(1, skillUi.items.length);
+      renderSkillPop();
+    } else if ((e.key === 'Enter' || e.key === 'Tab') && skillUi.items.length) {
+      e.preventDefault();
+      const r = skillUi.items[skillUi.hi];
+      useSkill(r.key, r.genre);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      closeSkills();
+    }
+  });
+  document.addEventListener('pointerdown', (e) => {
+    if (skillUi.open && !e.target.closest('#skillPop,#btnSkill,#chatIn')) closeSkills();
+  });
 }
 
 // ---------- BẢNG PHẢI: LỜI THOẠI (sửa video bằng chữ) ----------
@@ -1315,6 +1471,26 @@ function fakeProject(extra) {
   return {main: {src: 'x', segs: [{in: 0, out: 10}]}, sources: {x: {duration: 10}}, broll: [], zooms: [], stickers: [], sfx: [], texts: [], subs: {on: false}, cta: {on: false}, ...extra};
 }
 let thumbBg = null;
+// ảnh xem trước đã vẽ: chép lại thay vì vẽ lại mỗi lần bảng dựng lại (bấm chọn trên điện thoại trước đây mất ~100 ms)
+const thumbCache = new Map();
+function thumbKey(kind, key) {
+  const pl = ed.player;
+  return `${kind}|${key}|${W}x${H}|${pl?.p?.main?.src || ''}|${Math.round((pl?.T || 0) * 4)}|${pl?.holds?.[pl?.p?.main?.src]?.ok ? 1 : 0}`;
+}
+function thumbCached(c, k) {
+  const old = thumbCache.get(k);
+  if (!old || old.width !== c.width || old.height !== c.height) return false;
+  c.getContext('2d').drawImage(old, 0, 0);
+  return true;
+}
+function thumbStore(c, k) {
+  if (thumbCache.size > 80) thumbCache.clear();
+  const cp = document.createElement('canvas');
+  cp.width = c.width;
+  cp.height = c.height;
+  cp.getContext('2d').drawImage(c, 0, 0);
+  thumbCache.set(k, cp);
+}
 function thumbDraw(c, fake, T) {
   // nền thử: ảnh khung đang xem nếu có, không thì nền xám chuyển sắc (thay cho hình video)
   if (!thumbBg || thumbBg.width !== W) {
@@ -1330,7 +1506,7 @@ function thumbDraw(c, fake, T) {
   }
   const g = c.getContext('2d');
   g.setTransform(c.width / W, 0, 0, c.height / H, 0, 0);
-  const fr = ed.player?.p ? ed.player.frames() : null;
+  const fr = ed.player?.p ? ed.player.snap() : null;
   drawFrame(g, fake, T, {main: fr?.main?.img ? fr.main : {img: thumbBg, w: W, h: H}});
 }
 function drawPackThumbs() {
@@ -1338,10 +1514,12 @@ function drawPackThumbs() {
   for (const c of $$('canvas[data-pkp]')) {
     const pack = PACKS[c.dataset.pkp];
     const t = newText(0, {kind: 'key', main: 'SỔ HỒNG RIÊNG', lead: 'pháp lý', dur: 9, y: 0.3, ...packText(pack, {kind: 'key'}, 0), motion: 'pop'});
+    const k = thumbKey('pk', c.dataset.pkp);
+    if (thumbCached(c, k)) continue;
     const fake = fakeProject({texts: [t], transcript: {words}, subs: {on: true, y: 0.72, size: 1.15, ...pack.subs}, look: pack.look});
     const go = () => thumbDraw(c, fake, 1.25);
     go();
-    Promise.all([ensureFont(pack.font), ensureFont(pack.subs.font)]).then(go);
+    Promise.all([ensureFont(pack.font), ensureFont(pack.subs.font)]).then(() => (go(), thumbStore(c, k)));
   }
 }
 // ---------- CÔNG THỨC DỰNG (kiểu “skill” HyperFrames): thẻ chọn ở màn Dự án, bảng Video, và 3 phương án sau khi AI dựng ----------
@@ -1379,11 +1557,13 @@ function drawRecipeThumbs() {
     const r = recipesFor(c.dataset.rcg).find((x) => x.key === c.dataset.rcp);
     if (!r) continue;
     const pack = PACKS[r.pack] || PACKS.mau1;
+    const k = thumbKey('rc', r.key);
+    if (thumbCached(c, k)) continue;
     const fake = recipeSample(r, pack);
     const T = r.genre === 'bds' ? 2.4 : r.genre === 'banhang' ? 2 : 1.4;
     const go = () => thumbDraw(c, fake, T);
     go();
-    Promise.all([ensureFont(pack.font), ensureFont(pack.subs.font)]).then(go);
+    Promise.all([ensureFont(pack.font), ensureFont(pack.subs.font)]).then(() => (go(), thumbStore(c, k)));
   }
 }
 function pickRecipe(key) {
@@ -1432,7 +1612,7 @@ function renderVars() {
     clone.cam = r.cam;
     const g = c.getContext('2d');
     g.setTransform(c.width / W, 0, 0, c.height / H, 0, 0);
-    const fr = ed.player.frames();
+    const fr = ed.player.snap();
     const go = () => drawFrame(g, clone, T, fr.main ? fr : {main: null, broll: {}}, {placeholder: true});
     go();
     ensureProjectFonts(clone).then(go);
@@ -1896,6 +2076,8 @@ async function boot() {
   ed.tl = new Timeline($('#tl'), tlCb);
   ed.cur = new Cursor();
   // điện thoại: chú thích từng bước nằm gọn trong thanh trạng thái, ngón tay tự do thao tác trên timeline
+  bindSheetSwipe();
+  bindSkills();
   ed.cur.dockEl = () => (matchMedia('(max-width: 899px)').matches ? $('#status') : null);
   window.__dv = ed; // để kiểm thử (xem CLAUDE.md)
   window.__render = {drawFrame, TEXT_STYLES, TEXT_MOTIONS, setFormat};

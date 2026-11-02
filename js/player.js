@@ -586,6 +586,9 @@ export class Player {
   }
 
   // ---------- khung hình ----------
+  // Khung giữ (holds): bản chép khung gần nhất, THU NHỎ đúng cỡ khung xem — vừa để khi video đang tua vẫn có hình
+  // (không bao giờ vẽ khung xám), vừa rẻ hơn vẽ thẳng thẻ video 1080p/4K (đã đo 2/11: vẽ thẳng 12 khung/giây,
+  // qua khung giữ 21 khung/giây khi CPU chậm ×4) → giữ cách chép mỗi khung.
   _hold(id, el, ok) {
     let h = this.holds[id];
     if (ok && el.videoWidth) {
@@ -620,6 +623,15 @@ export class Player {
       if (!el) continue;
       fr.broll[b.id] = this._hold(b.src, el, el.readyState >= 2 && !el.seeking);
     }
+    return fr;
+  }
+  // khung đang giữ, KHÔNG chép lại từ video (cho ảnh xem trước phong cách / công thức — rẻ)
+  snap() {
+    const p = this.p;
+    const fr = {main: null, broll: {}};
+    const h = p?.main && this.holds[p.main.src];
+    if (h?.ok) fr.main = {img: h.cv, w: h.cv.width, h: h.cv.height};
+    if (!fr.main && p?.main) return this.frames();
     return fr;
   }
 

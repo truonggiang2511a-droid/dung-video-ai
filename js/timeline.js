@@ -55,11 +55,22 @@ export class Timeline {
       this.setTime(this.T || 0);
     });
     this._prog = false;
+    // chỉ coi là khách tua khi ngón tay / chuột đang chạm hoặc vừa thả (còn quán tính) — sự kiện cuộn do đầu phát tự chạy
+    // đến trễ / đến 2 lần (iPhone làm tròn scrollLeft) không được làm dừng + tua video đang phát (gây giật)
+    this._touch = false;
+    this._user = 0;
+    const on = () => ((this._touch = true), (this._user = performance.now()));
+    const off = () => ((this._touch = false), (this._user = performance.now()));
+    this.scroll.addEventListener('touchstart', on, {passive: true});
+    this.scroll.addEventListener('pointerdown', on);
+    this.scroll.addEventListener('wheel', () => (this._user = performance.now()), {passive: true});
+    for (const ev of ['touchend', 'touchcancel', 'pointerup', 'pointercancel']) this.scroll.addEventListener(ev, off, {passive: true});
     this.scroll.addEventListener('scroll', () => {
       if (this._prog) {
         this._prog = false;
         return;
       }
+      if (!this._touch && performance.now() - this._user > 1500) return;
       if (this.left) {
         if (this.sel) this._tools();
         return; // máy tính: cuộn chỉ để xem, không tua

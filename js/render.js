@@ -459,14 +459,11 @@ function paintText(ctx, s, x, y, {style, color, size}) {
   if (style === '3d') {
     const dk = darken(color);
     const depth = Math.max(6, Math.round(size / 11));
+    shText(ctx, s, x, y, 26, depth * 1.6 + 6, 0.45);
     ctx.fillStyle = dk;
     for (let i = depth; i >= 1; i--) ctx.fillText(s, x, y + i * 1.6);
-    ctx.shadowColor = 'rgba(0,0,0,0.45)';
-    ctx.shadowBlur = 26;
-    ctx.shadowOffsetY = depth * 1.6 + 6;
     ctx.fillStyle = color;
     ctx.fillText(s, x, y);
-    ctx.shadowColor = 'transparent';
   } else if (style === 'outline') {
     ctx.lineWidth = size * 0.09;
     ctx.strokeStyle = '#ffffff';
@@ -493,30 +490,30 @@ function paintText(ctx, s, x, y, {style, color, size}) {
     ctx.fillStyle = color;
     ctx.fillText(s, x, y);
   } else if (style === 'neon') {
-    ctx.shadowColor = color;
+    // quầng sáng giả: nét màu rộng mờ dần (không shadowBlur)
+    const ga = ctx.globalAlpha;
+    ctx.strokeStyle = color;
+    for (const [lw, al] of [[0.62, 0.1], [0.36, 0.16], [0.16, 0.3]]) {
+      ctx.globalAlpha = ga * al;
+      ctx.lineWidth = size * lw;
+      ctx.strokeText(s, x, y);
+    }
+    ctx.globalAlpha = ga;
     ctx.fillStyle = color;
-    ctx.shadowBlur = size * 0.45;
     ctx.fillText(s, x, y);
-    ctx.shadowBlur = size * 0.2;
-    ctx.fillText(s, x, y);
-    ctx.shadowBlur = size * 0.06;
     ctx.fillStyle = '#ffffff';
-    ctx.globalAlpha *= 0.9;
+    ctx.globalAlpha = ga * 0.9;
     ctx.fillText(s, x, y);
-    ctx.globalAlpha /= 0.9;
-    ctx.shadowColor = 'transparent';
+    ctx.globalAlpha = ga;
   } else if (style === 'gradient') {
     const g = ctx.createLinearGradient(0, y - size * 0.5, 0, y + size * 0.5);
     g.addColorStop(0, shiftHue(color, 0.65));
     g.addColorStop(0.5, color);
     g.addColorStop(1, darken(color, 0.7));
-    ctx.shadowColor = 'rgba(0,0,0,0.5)';
-    ctx.shadowBlur = 20;
-    ctx.shadowOffsetY = 6;
+    shText(ctx, s, x, y, 20 + size * 0.07, 6, 0.5);
     ctx.lineWidth = size * 0.07;
     ctx.strokeStyle = '#ffffff';
     ctx.strokeText(s, x, y);
-    ctx.shadowColor = 'transparent';
     ctx.fillStyle = g;
     ctx.fillText(s, x, y);
   } else if (style === 'highlight') {
@@ -527,14 +524,9 @@ function paintText(ctx, s, x, y, {style, color, size}) {
     ctx.fillText(s, x, y);
   } else {
     // flat / box / tape / bubble: chữ phẳng (nền khối vẽ riêng)
-    if (style === 'flat') {
-      ctx.shadowColor = 'rgba(0,0,0,0.5)';
-      ctx.shadowBlur = 22;
-      ctx.shadowOffsetY = 6;
-    }
+    if (style === 'flat') shText(ctx, s, x, y, 22, 6, 0.5);
     ctx.fillStyle = color;
     ctx.fillText(s, x, y);
-    ctx.shadowColor = 'transparent';
   }
 }
 // Nền khối sau chữ: hộp màu, nhãn dán, bong bóng thoại, vệt bút dạ (mọc ra theo thời gian)
@@ -546,17 +538,13 @@ function textBlock(ctx, style, color, w, size, t) {
   const h = size * 1.12;
   ctx.save();
   if (style === 'box') {
-    ctx.shadowColor = 'rgba(0,0,0,0.4)';
-    ctx.shadowBlur = 24;
-    ctx.shadowOffsetY = 8;
+    shRect(ctx, -w / 2 - px, -h / 2, (w + px * 2) * k, h, size * 0.18, 24, 8, 0.4);
     ctx.fillStyle = color;
     roundRect(ctx, -w / 2 - px, -h / 2, (w + px * 2) * k, h, size * 0.18);
     ctx.fill();
   } else if (style === 'tape') {
     ctx.rotate(-0.045);
-    ctx.shadowColor = 'rgba(0,0,0,0.35)';
-    ctx.shadowBlur = 16;
-    ctx.shadowOffsetY = 6;
+    shRect(ctx, -w / 2 - px, -h / 2, (w + px * 2) * k, h, 0, 16, 6, 0.35);
     ctx.fillStyle = color;
     const x0 = -w / 2 - px;
     const x1 = x0 + (w + px * 2) * k;
@@ -571,9 +559,7 @@ function textBlock(ctx, style, color, w, size, t) {
   } else if (style === 'bubble') {
     ctx.globalAlpha *= clamp(k * 1.5);
     ctx.scale(0.6 + 0.4 * k, 0.6 + 0.4 * k);
-    ctx.shadowColor = 'rgba(0,0,0,0.35)';
-    ctx.shadowBlur = 22;
-    ctx.shadowOffsetY = 8;
+    shRect(ctx, -w / 2 - px, -h / 2 - size * 0.08, w + px * 2, h + size * 0.16, size * 0.42, 22, 8, 0.35);
     ctx.fillStyle = '#ffffff';
     roundRect(ctx, -w / 2 - px, -h / 2 - size * 0.08, w + px * 2, h + size * 0.16, size * 0.42);
     ctx.fill();
@@ -632,11 +618,10 @@ function drawLockup(ctx, it, t, boxes) {
     ctx.font = `800 ${Math.round(ls)}px BVP, sans-serif`;
     ctx.globalAlpha = out * clamp(leadP);
     ctx.translate((1 - leadP) * -260, 0);
-    ctx.shadowColor = 'rgba(0,0,0,0.6)';
-    ctx.shadowBlur = 14;
-    ctx.shadowOffsetY = 3;
+    const ly = cy - Math.max(size * 0.62, asc + pad + ls * 0.5);
+    shText(ctx, it.lead.toUpperCase(), cx, ly, 14, 3, 0.6);
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(it.lead.toUpperCase(), cx, cy - Math.max(size * 0.62, asc + pad + ls * 0.5));
+    ctx.fillText(it.lead.toUpperCase(), cx, ly);
     ctx.restore();
   }
   const style = it.style || '3d';
@@ -768,9 +753,7 @@ function drawLockup(ctx, it, t, boxes) {
     ctx.translate(cx, cy + size * 0.62 + (1 - signP) * 20);
     ctx.rotate((-4 * Math.PI) / 180);
     ctx.font = `italic 500 ${Math.round(58 * (it.size || 1))}px BVP, sans-serif`;
-    ctx.shadowColor = 'rgba(0,0,0,0.55)';
-    ctx.shadowBlur = 10;
-    ctx.shadowOffsetY = 2;
+    shText(ctx, it.sign, 0, 0, 10, 2, 0.55);
     ctx.fillStyle = it.kind === 'price' ? '#fff1f1' : '#ffffff';
     ctx.fillText(it.sign, 0, 0);
     ctx.restore();
@@ -856,17 +839,18 @@ const easeOutBack = (x) => {
 };
 const segE = (t, a, d, f = easeOut) => f(clamp((t - a) / d));
 function glassCard(ctx, x, y, w, h, r, a = 1) {
+  // KHÔNG dùng shadowBlur (rất chậm trên iPhone khi vẽ mỗi khung) — bóng giả bằng 2 lớp mờ lệch xuống
   if (a <= 0 || w <= 1) return;
   const u = Math.min(W, H) / 1080;
+  const rr = Math.min(r, h / 2, w / 2);
   ctx.save();
   ctx.globalAlpha *= a;
-  ctx.shadowColor = 'rgba(0,0,0,0.38)';
-  ctx.shadowBlur = 34 * u;
-  ctx.shadowOffsetY = 10 * u;
-  roundRect(ctx, x, y, w, h, Math.min(r, h / 2, w / 2));
-  ctx.fillStyle = 'rgba(15,17,22,0.68)';
+  ctx.fillStyle = 'rgba(0,0,0,0.16)';
+  roundRect(ctx, x - 3 * u, y + 6 * u, w + 6 * u, h + 8 * u, rr + 4 * u);
   ctx.fill();
-  ctx.shadowColor = 'transparent';
+  roundRect(ctx, x, y, w, h, rr);
+  ctx.fillStyle = 'rgba(15,17,22,0.72)';
+  ctx.fill();
   const g = ctx.createLinearGradient(0, y, 0, y + h);
   g.addColorStop(0, 'rgba(255,255,255,0.13)');
   g.addColorStop(0.45, 'rgba(255,255,255,0.03)');
@@ -938,14 +922,21 @@ function rollValue(ctx, value, cx, cy, size, t, tRoll, roll, c, maxW) {
       ctx.rect(x - 4, cy - cellH * 0.62, w + 8, cellH * 1.24);
       ctx.clip();
       ctx.font = fontStr('anton', size);
-      ctx.fillStyle = accGrad(ctx, c, cy - size * 0.4, cy + size * 0.4);
-      ctx.shadowColor = 'rgba(0,0,0,0.45)';
-      ctx.shadowBlur = size * 0.08;
+      const gr = accGrad(ctx, c, cy - size * 0.4, cy + size * 0.4);
       const u = easeOutExpo((t - tRoll - di * 0.07) / roll);
       const K = 9 + 3 * di;
       const q = K * (1 - u);
       const j0 = Math.floor(q);
-      for (const j of q < 0.02 ? [0] : [j0, j0 + 1]) ctx.fillText(String((+k + j) % 10), x + w / 2, base - (j - q) * cellH);
+      ctx.lineJoin = 'round';
+      for (const j of q < 0.02 ? [0] : [j0, j0 + 1]) {
+        const ch = String((+k + j) % 10);
+        const yy = base - (j - q) * cellH;
+        ctx.lineWidth = size * 0.07;
+        ctx.strokeStyle = 'rgba(0,0,0,0.22)';
+        ctx.strokeText(ch, x + w / 2, yy + size * 0.02);
+        ctx.fillStyle = gr;
+        ctx.fillText(ch, x + w / 2, yy);
+      }
       ctx.restore();
       di++;
     } else if (/[.,]/.test(k)) {
@@ -1118,8 +1109,6 @@ function gfxIndustry(ctx, it, t, boxes, u, c, out, sz, cx, cy) {
           ctx.globalAlpha = out * a;
           ctx.textBaseline = 'middle';
           ctx.textAlign = 'left';
-          ctx.shadowColor = 'rgba(0,0,0,0.5)';
-          ctx.shadowBlur = px * 0.12;
           let x = bcx + bd / 2 + gapx - (1 - a) * b * 0.03;
           for (const [s1, hot] of parts) {
             ctx.fillStyle = hot ? c : '#ffffff';
@@ -1186,11 +1175,8 @@ function gfxIndustry(ctx, it, t, boxes, u, c, out, sz, cx, cy) {
       ctx.arc(0, -pinH + r, r, Math.PI * 0.8, Math.PI * 2.2);
       ctx.lineTo(0, 0);
       ctx.closePath();
-      ctx.shadowColor = 'rgba(0,0,0,0.4)';
-      ctx.shadowBlur = pinH * 0.08;
       ctx.fillStyle = accGrad(ctx, c, -pinH, 0);
       ctx.fill();
-      ctx.shadowColor = 'transparent';
       ctx.beginPath();
       ctx.arc(0, -pinH + r, r * 0.4, 0, Math.PI * 2);
       ctx.fillStyle = '#ffffff';
@@ -1251,8 +1237,6 @@ function gfxIndustry(ctx, it, t, boxes, u, c, out, sz, cx, cy) {
         ctx.globalAlpha = out * a;
         ctx.font = fontStr('bvp', i === lines.length - 1 ? pxBig : pxBig * 0.8);
         ctx.fillStyle = '#ffffff';
-        ctx.shadowColor = 'rgba(0,0,0,0.5)';
-        ctx.shadowBlur = pxBig * 0.1;
         ctx.fillText(ln, cx, yb + (1 - a) * b * 0.02);
         ctx.restore();
       });
@@ -1372,11 +1356,8 @@ function gfxIndustry(ctx, it, t, boxes, u, c, out, sz, cx, cy) {
         ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
       }
       ctx.closePath();
-      ctx.shadowColor = 'rgba(0,0,0,0.4)';
-      ctx.shadowBlur = R * 0.15;
       ctx.fillStyle = accGrad(ctx, c, -R, R);
       ctx.fill();
-      ctx.shadowColor = 'transparent';
       ctx.lineWidth = R * 0.04;
       ctx.strokeStyle = '#ffffff';
       ctx.beginPath();
@@ -1411,15 +1392,12 @@ function gfxIndustry(ctx, it, t, boxes, u, c, out, sz, cx, cy) {
       ctx.globalAlpha = out;
       ctx.translate(cx, cy);
       ctx.scale(s2, s2);
-      ctx.shadowColor = 'rgba(0,0,0,0.4)';
-      ctx.shadowBlur = h * 0.3;
       const gr = ctx.createLinearGradient(-w / 2, 0, w / 2, 0);
       gr.addColorStop(0, c);
       gr.addColorStop(1, mixHex(c, '#ff6a3d', 0.55));
       ctx.fillStyle = gr;
       roundRect(ctx, -w / 2, -h / 2, w, h, h / 2);
       ctx.fill();
-      ctx.shadowColor = 'transparent';
       // vệt sáng chạy qua nút
       const sh = ((t * 0.7) % 1.6) / 1.6;
       ctx.save();
@@ -1502,19 +1480,16 @@ function drawGfx(ctx, it, t, boxes) {
       if (v === 'band') {
         const k = easeOut(t / 0.35);
         ctx.rotate(-0.035);
+        shRect(ctx, -W * 0.6, -bh / 2, W * 1.2 * k, bh, 0, 20 * u, 0, 0.35);
         ctx.fillStyle = c;
-        ctx.shadowColor = 'rgba(0,0,0,0.35)';
-        ctx.shadowBlur = 20 * u;
         ctx.fillRect(-W * 0.6, -bh / 2, W * 1.2 * k, bh);
-        ctx.shadowColor = 'transparent';
         ctx.fillStyle = ink;
         ctx.globalAlpha = out * clamp((t - 0.15) / 0.2);
         ctx.fillText(text, 0, size * 0.05);
       } else if (v === 'box' || v === 'bubble') {
         ctx.scale(inP, inP);
+        shRect(ctx, -bw / 2, -bh / 2, bw, bh, v === 'bubble' ? bh / 2 : bh * 0.18, 24 * u, 0, 0.4);
         ctx.fillStyle = v === 'bubble' ? '#ffffff' : c;
-        ctx.shadowColor = 'rgba(0,0,0,0.4)';
-        ctx.shadowBlur = 24 * u;
         roundRect(ctx, -bw / 2, -bh / 2, bw, bh, v === 'bubble' ? bh / 2 : bh * 0.18);
         ctx.fill();
         if (v === 'bubble') {
@@ -1553,11 +1528,9 @@ function drawGfx(ctx, it, t, boxes) {
         // line: chữ trắng bóng đổ + gạch chân màu chạy từ giữa ra
         ctx.globalAlpha = out * clamp(t / 0.25);
         ctx.translate(0, (1 - easeOut(t / 0.4)) * size * 0.4);
-        ctx.shadowColor = 'rgba(0,0,0,0.55)';
-        ctx.shadowBlur = 18 * u;
+        shText(ctx, text, 0, 0, 18 * u, 0, 0.55);
         ctx.fillStyle = '#ffffff';
         ctx.fillText(text, 0, 0);
-        ctx.shadowColor = 'transparent';
         const k = easeOut((t - 0.2) / 0.45);
         ctx.fillStyle = c;
         ctx.fillRect((-tw / 2) * k, size * 0.62, tw * k, size * 0.12);
@@ -1723,9 +1696,8 @@ function drawGfx(ctx, it, t, boxes) {
       const tw = ctx.measureText(text).width;
       const bw = tw + size * 2.1;
       const bh = size * 1.7;
+      shRect(ctx, -bw / 2, -bh / 2, bw, bh, bh / 2, 24 * u, 0, 0.4);
       ctx.fillStyle = done ? '#3a3d42' : c;
-      ctx.shadowColor = 'rgba(0,0,0,0.4)';
-      ctx.shadowBlur = 24 * u;
       roundRect(ctx, -bw / 2, -bh / 2, bw, bh, bh / 2);
       ctx.fill();
       ctx.shadowColor = 'transparent';
@@ -1824,9 +1796,7 @@ function drawSticker(ctx, it, t, boxes) {
     // bộ icon BĐS mẫu 1: huy hiệu tròn chuyển sắc + vệt bóng phía trên (như skill batdongsan-editor)
     const r = base * 0.5;
     const c = it.color || '#ff6a3d';
-    ctx.shadowColor = 'rgba(0,0,0,0.45)';
-    ctx.shadowBlur = 26;
-    ctx.shadowOffsetY = 10;
+    shCircle(ctx, 0, 0, r, 26, 10, 0.45);
     const gr = ctx.createLinearGradient(0, -r, 0, r);
     gr.addColorStop(0, mixHex(c, '#ffffff', 0.35));
     gr.addColorStop(1, c);
@@ -1845,9 +1815,7 @@ function drawSticker(ctx, it, t, boxes) {
     if (img) ctx.drawImage(img, -r * 0.56, -r * 0.56, r * 1.12, r * 1.12);
   } else if (it.kind === 'icon') {
     const r = base * 0.5;
-    ctx.shadowColor = 'rgba(0,0,0,0.45)';
-    ctx.shadowBlur = 24;
-    ctx.shadowOffsetY = 8;
+    shCircle(ctx, 0, 0, r, 24, 8, 0.45);
     ctx.fillStyle = it.color || '#2f8cff';
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, Math.PI * 2);
@@ -1857,11 +1825,18 @@ function drawSticker(ctx, it, t, boxes) {
     ctx.strokeStyle = 'rgba(255,255,255,0.92)';
     ctx.stroke();
     if (img) ctx.drawImage(img, -r * 0.6, -r * 0.6, r * 1.2, r * 1.2);
-  } else if (img) {
-    ctx.shadowColor = 'rgba(0,0,0,0.35)';
-    ctx.shadowBlur = 22;
-    ctx.shadowOffsetY = 8;
+  } else if (img && it.kind === 'anim') {
+    // emoji động: khung đổi liên tục → bóng tròn mờ dưới chân thay vì bóng theo hình
+    ctx.save();
+    ctx.scale(1, 0.22);
+    shCircle(ctx, 0, base * 2.05, base * 0.34, base * 0.2, 0, 0.35);
+    ctx.restore();
     ctx.drawImage(img, -base / 2, -base / 2, base, base);
+  } else if (img) {
+    // bóng tính sẵn 1 lần vào ảnh đệm (không shadowBlur mỗi khung)
+    const sp = shadowSprite(img);
+    const e = base * sp.pad;
+    ctx.drawImage(sp, -base / 2 - e, -base / 2 - e, base + e * 2, base + e * 2);
   }
   ctx.restore();
   boxes.push({id: it.id, type: 'sticker', x: cx - base / 2, y: cy - base / 2, w: base, h: base});
@@ -1951,22 +1926,22 @@ function drawSubs(ctx, p, T, low) {
       // hộp màu bo góc sau chữ đang nói
       const bw = widths[i] + size * 0.36;
       const bh = size * 1.18;
+      ctx.fillStyle = 'rgba(0,0,0,0.22)';
+      roundRect(ctx, -bw / 2, -bh / 2 + 5, bw, bh, size * 0.2);
+      ctx.fill();
       ctx.fillStyle = hl;
-      ctx.shadowColor = 'rgba(0,0,0,0.35)';
-      ctx.shadowBlur = 14;
       roundRect(ctx, -bw / 2, -bh / 2, bw, bh, size * 0.2);
       ctx.fill();
-      ctx.shadowColor = 'transparent';
       fill = lightColor(hl) ? '#111111' : '#ffffff';
     } else {
       if (style === 'karaoke' && i === act) fill = hl;
       else if (isNum(w.w) && style !== 'box') fill = hl;
+      // bóng đổ giả (chữ đen lệch xuống) thay shadowBlur: phụ đề vẽ MỖI khung, shadowBlur trên iPhone rất chậm
       ctx.lineWidth = size * 0.16;
+      ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+      ctx.strokeText(w.t, 0, 6);
       ctx.strokeStyle = 'rgba(0,0,0,0.85)';
       ctx.strokeText(w.t, 0, 0);
-      ctx.shadowColor = 'rgba(0,0,0,0.45)';
-      ctx.shadowBlur = 14;
-      ctx.shadowOffsetY = 5;
     }
     ctx.fillStyle = fill;
     ctx.fillText(w.t, 0, 2);
@@ -1993,9 +1968,7 @@ function drawCta(ctx, p, T, D) {
   const text = (c.text || 'THEO DÕI ĐỂ XEM THÊM').toUpperCase();
   const tw = Math.min(W * 0.86, ctx.measureText(text).width + 100);
   const th = 150;
-  ctx.shadowColor = 'rgba(0,0,0,0.45)';
-  ctx.shadowBlur = 30;
-  ctx.shadowOffsetY = 12;
+  shRect(ctx, -tw / 2, -th / 2, tw, th, 34, 30, 12, 0.45);
   const g = ctx.createLinearGradient(-tw / 2, 0, tw / 2, 0);
   g.addColorStop(0, '#ff3b2f');
   g.addColorStop(1, '#ff8a1f');
@@ -2011,6 +1984,73 @@ function drawCta(ctx, p, T, D) {
   ctx.restore();
   ctx.restore();
   return true;
+}
+
+// ---------- Bóng mờ GIẢ thay shadowBlur ----------
+// shadowBlur rất chậm trong Safari/iPhone khi vẽ mỗi khung (đo WebKit 2/11: phụ đề 9,9 ms/khung, thẻ thông số 25 ms,
+// ghim vị trí 12 ms). Bóng giả = vài lớp nét/hình đen mờ chồng nhau (gần như cùng vẻ ngoài, rẻ hơn hàng chục lần).
+function shText(ctx, s, x, y, blur, dy = 0, a = 0.45, col = '#000000') {
+  if (!s) return;
+  ctx.save();
+  ctx.shadowColor = 'transparent';
+  ctx.lineJoin = 'round';
+  ctx.fillStyle = ctx.strokeStyle = col;
+  const ga = ctx.globalAlpha;
+  ctx.globalAlpha = ga * a * 0.3;
+  ctx.lineWidth = blur * 1.1;
+  ctx.strokeText(s, x, y + dy);
+  ctx.globalAlpha = ga * a * 0.4;
+  ctx.lineWidth = blur * 0.5;
+  ctx.strokeText(s, x, y + dy);
+  ctx.fillText(s, x, y + dy);
+  ctx.restore();
+}
+function shRect(ctx, x, y, w, h, r, blur, dy = 0, a = 0.4) {
+  if (w <= 0 || h <= 0) return;
+  ctx.save();
+  ctx.shadowColor = 'transparent';
+  ctx.fillStyle = '#000000';
+  const ga = ctx.globalAlpha;
+  for (const k of [1, 0.6, 0.25]) {
+    ctx.globalAlpha = ga * a * 0.32;
+    const e = blur * k * 0.5;
+    roundRect(ctx, x - e, y + dy - e, w + e * 2, h + e * 2, Math.min(r + e, (h + e * 2) / 2, (w + e * 2) / 2));
+    ctx.fill();
+  }
+  ctx.restore();
+}
+function shCircle(ctx, x, y, r, blur, dy = 0, a = 0.45) {
+  ctx.save();
+  ctx.shadowColor = 'transparent';
+  ctx.fillStyle = '#000000';
+  const ga = ctx.globalAlpha;
+  for (const k of [1, 0.6, 0.25]) {
+    ctx.globalAlpha = ga * a * 0.32;
+    ctx.beginPath();
+    ctx.arc(x, y + dy, r + blur * k * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+// bóng của hình (emoji, ảnh): tính 1 LẦN vào ảnh đệm rồi dùng lại mỗi khung
+const shadowSprites = new WeakMap();
+function shadowSprite(img) {
+  let c = shadowSprites.get(img);
+  if (c) return c;
+  const w = img.width || 320;
+  const h = img.height || 320;
+  const pad = Math.round(Math.max(w, h) * 0.16);
+  c = document.createElement('canvas');
+  c.width = w + pad * 2;
+  c.height = h + pad * 2;
+  const g = c.getContext('2d');
+  g.shadowColor = 'rgba(0,0,0,0.35)';
+  g.shadowBlur = w * 0.075;
+  g.shadowOffsetY = w * 0.028;
+  g.drawImage(img, pad, pad, w, h);
+  c.pad = pad / w;
+  shadowSprites.set(img, c);
+  return c;
 }
 
 export function roundRect(ctx, x, y, w, h, r) {

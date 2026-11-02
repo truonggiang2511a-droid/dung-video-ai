@@ -320,6 +320,29 @@ button:disabled{opacity:.4;cursor:default}
 .e-chat input:focus{outline:2px solid var(--acc);outline-offset:-1px}
 .e-chat .chat-row>button{width:46px;height:46px;border-radius:23px;border:0;background:var(--acc);color:var(--ink);display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .chat-ctx{display:flex;gap:6px;flex-wrap:wrap}
+/* skill (công thức dựng) gọi từ ô chat: nút sổ xuống + gõ @ — kiểu Claude Code */
+.e-chat{position:relative}
+.chat-top{display:flex;align-items:center;gap:8px;min-width:0}
+.skill-btn{display:inline-flex;align-items:center;gap:6px;height:30px;max-width:78%;padding:0 8px 0 10px;border-radius:9px;border:1px solid var(--line2);background:var(--card);color:var(--tx2);font-size:12.5px;font-weight:600}
+.skill-btn span{color:var(--acc)}
+.skill-btn b{font-weight:600;color:var(--tx);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.skill-btn .chev{flex-shrink:0;transition:transform .15s}
+.skill-btn[aria-expanded=true] .chev{transform:rotate(180deg)}
+.skill-btn[aria-expanded=true],.skill-btn:hover{border-color:var(--accbd)}
+.skill-hint{font-size:11.5px;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.skill-hint kbd{font:inherit;font-weight:700;color:var(--tx2);background:var(--card2);border-radius:4px;padding:0 4px}
+.skill-pop{position:absolute;left:8px;right:8px;bottom:calc(100% - 4px);z-index:60;max-height:min(56dvh,440px);overflow:auto;-webkit-overflow-scrolling:touch;background:var(--card);border:1px solid var(--line2);border-radius:14px;box-shadow:0 -12px 40px rgba(0,0,0,.5);padding:6px}
+.sk-h{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--mu);padding:8px 8px 4px}
+.sk-it{display:flex;align-items:flex-start;gap:10px;width:100%;padding:8px;border:0;border-radius:10px;background:transparent;color:var(--tx);text-align:left}
+.sk-it:hover,.sk-it.hi{background:rgba(255,255,255,.06)}
+.sk-it.on{background:var(--accbg)}
+.sk-ic{flex-shrink:0;width:30px;height:30px;border-radius:8px;background:var(--card2);color:var(--acc);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800}
+.sk-it.on .sk-ic{background:var(--acc);color:var(--ink)}
+.sk-tx{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.sk-tx b{font-size:13.5px;font-weight:600}
+.sk-tx small{font-size:11.5px;color:var(--mu);line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.sk-tx em{font-style:normal;font-size:10.5px;color:var(--acc);font-weight:600}
+.sk-none{padding:14px 10px;color:var(--mu);font-size:13px}
 .ctx-chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 6px 0 10px;border-radius:8px;background:var(--accbg);border:1px solid var(--accbd);color:var(--acc);font-size:12.5px;font-weight:700;max-width:100%}
 .ctx-chip span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ctx-chip button{width:20px;height:20px;border:0;border-radius:5px;background:transparent;color:var(--acc);display:flex;align-items:center;justify-content:center;padding:0}
@@ -582,7 +605,8 @@ kbd{display:inline-block;min-width:18px;padding:0 5px;margin:0 1px;border:1px so
   .dk-sep{flex-shrink:0;width:1px;margin:10px 4px;background:var(--line2)}
   .dock-sel{animation:dockin .18s ease-out}
   /* ô chat gọn */
-  .e-chat{padding:6px 10px calc(6px + var(--sab))}
+  .e-chat{padding:6px 10px calc(6px + var(--sab));gap:5px}
+  .skill-btn{height:28px}
   .e-chat input{height:42px;border-radius:21px;font-size:14.5px}
   .e-chat .chat-row>button{width:42px;height:42px;border-radius:21px}
   .chat-ctx{display:none}
