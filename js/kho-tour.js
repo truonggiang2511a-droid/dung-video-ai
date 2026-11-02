@@ -377,7 +377,7 @@ export async function kitTour(ed, ops, {fixes = [], packBy = 'ai', budget = 16, 
       const el = document.querySelector(`#stockGrid [data-stockid="${sp.it.id}"]`);
       if (shown(el)) {
         await cur.moveTo(...center(el), 480);
-        cur.say(`Câu nói này không có cảnh quay → lấy ${sp.it.type === 'image' ? 'ảnh' : 'cảnh'} chung minh hoạ “${sp.q}” (không dùng làm ${p.genre === 'bds' ? 'căn nhà' : 'hàng'} đang bán) · nguồn Pixabay`);
+        cur.say(`Câu nói này không có cảnh quay → lấy ${sp.it.type === 'image' ? 'ảnh' : 'cảnh'} chung minh hoạ “${sp.q}” ${{bds: ' (không dùng làm căn nhà đang bán)', banhang: ' (không dùng làm hàng đang bán)', amthuc: ' (không dùng làm món đang review)'}[p.genre] || ''} · nguồn Pixabay`);
         await cur.pause(600);
         const img = el.querySelector('img')?.getAttribute('src') || '';
         const to = ed.tl.pointAt('broll', bop.item.start + 0.2);

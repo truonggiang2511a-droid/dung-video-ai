@@ -28,6 +28,8 @@ const M = '/home/claude/testmedia/';
     await p.waitForFunction(() => window.__dv?.p?.main, null, {timeout: 60000});
     const truth = JSON.parse(fs.readFileSync(M + 'gen/speech_mid.json'));
     const texts = ['Xin chào cả nhà, hôm nay mình giới thiệu căn nhà phố', 'ngay trung tâm thành phố', 'Diện tích đất 52m2,', 'một trệt hai lầu.', 'Giá bán 3.800 triệu,', 'có thương lượng.', 'Nhà có 3 phòng ngủ, 2 phòng tắm.', 'Pháp lý sổ hồng riêng,', 'công chứng ngay trong ngày.', 'Ai quan tâm thì nhắn tin cho mình nhé.'];
+    // TOPIC=money: lời giả lập video kiến thức (người nói, không có cảnh quay) để Claude đề xuất cảnh trám
+    if (process.env.TOPIC === 'money') texts.splice(0, 10, 'Xin chào các bạn, hôm nay mình chia sẻ cách tiết kiệm tiền', 'cho người mới đi làm.', 'Đầu tiên hãy lập ngân sách', 'mỗi tháng.', 'Thứ hai là gửi tiết kiệm', 'ở ngân hàng.', 'Thứ ba hạn chế mua sắm online.', 'Cuối cùng là đọc sách,', 'học thêm kỹ năng.', 'Theo dõi mình để xem thêm mẹo nhé.');
     const words = [];
     truth.speech.forEach(([a, bb], i) => {
       const ts = (texts[i] || '').split(' ');
