@@ -1153,6 +1153,54 @@ export function retakeCuts(words, pace = CUT_PACE.tight) {
   }
   return out;
 }
+
+// ---------- CÂU NÓI LẠI XA NHAU + LỜI NÓI VỚI EKIP (2/11 17:30, video thật “Nhà Xinh” của Giang) ----------
+// Câu = cụm chữ tới dấu . ? ! hoặc chỗ ngừng ≥ 0,6 s (giây nguồn). Claude đọc cả bài, chỉ ra câu phải bỏ:
+// nói hỏng rồi nói lại (giữ lần sau cùng đầy đủ), câu bỏ dở, lời nói với người quay (“lại nha”, “em lia từ trên đúng không”), chào lặp.
+export function sentencesOf(words) {
+  const out = [];
+  let cur = null;
+  words.forEach((w, i) => {
+    if (!cur || w.s - words[i - 1].e >= 0.6 || cur.n >= 45) {
+      cur = {s: w.s, e: w.e, a: i, b: i, n: 0, text: ''};
+      out.push(cur);
+    }
+    cur.e = w.e;
+    cur.b = i;
+    cur.n++;
+    cur.text += (cur.text ? ' ' : '') + String(w.w).trim();
+    if (/[.?!…]$/.test(String(w.w).trim())) cur = null;
+  });
+  return out;
+}
+// lời ra hiệu cho ekip đứng riêng thành câu ngắn (không cần AI)
+const CUE = /^(lai nha|lam lai|quay lai|noi lai|cat cat|cat di|cat nha|em lia|xong chi buoc|xong em buoc|duoc chua|ok roi nha|lai tu dau|quay lai nha)/;
+export function cueCuts(words, pace = CUT_PACE.tight) {
+  const ss = sentencesOf(words);
+  return ss
+    .map((x, i) => ({x, i, t: plain(x.text).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()}))
+    .filter(({x, t}) => x.n <= 7 && CUE.test(t))
+    .map(({x, i}) => ({a: Math.max(0, i ? ss[i - 1].e + pace.post : x.s - 0.1), b: i + 1 < ss.length ? ss[i + 1].s - pace.pre : x.e + 0.3, why: 'ekip'}));
+}
+// kết quả Claude {cut:[{from,to,why}]} → khoảng cắt (giây nguồn), có chốt an toàn: bỏ tối đa 45% thời lượng có lời, mỗi đoạn ≤ 90 s
+export function cleanCuts(words, r, pace = CUT_PACE.tight) {
+  const ss = sentencesOf(words);
+  const speech = words.length ? words[words.length - 1].e - words[0].s : 0;
+  const out = [];
+  let total = 0;
+  for (const c of (r?.cut || []).slice(0, 30)) {
+    const i = Math.max(0, Math.floor(+c.from));
+    const j = Math.min(ss.length - 1, Math.floor(+c.to));
+    if (!(j >= i) || !ss[i]) continue;
+    const a = i ? Math.max(ss[i - 1].e + pace.post, ss[i].s - 0.15) : Math.max(0, ss[i].s - 0.15);
+    const b = j + 1 < ss.length ? Math.min(ss[j + 1].s - pace.pre, ss[j].e + 1.5) : ss[j].e + 0.4;
+    if (b - a <= 0.15 || b - a > 90) continue;
+    if (total + (b - a) > speech * 0.45) break;
+    total += b - a;
+    out.push({a, b, why: ['noi_lai', 'ekip', 'lap'].includes(c.why) ? c.why : 'noi_lai', text: ss.slice(i, j + 1).map((x) => x.text).join(' ')});
+  }
+  return out;
+}
 // “ờ / à / ừm…” đứng riêng giữa 2 chỗ ngừng → bỏ
 const FILLERS = new Set(['o', 'a', 'u', 'um', 'om', 'ua', 'uh', 'hmm', 'hm', 'e', 'ay']);
 const FILLER_RAW = /^(ờ+|ơ+|à+|ừ+|ừm+|ờm+|ừa|ầy|ừ ừ|hmm+|um+|uh+|ơ hay)$/i;
@@ -1301,7 +1349,21 @@ export async function autoEdit(ed, log) {
     // khoảng lặng theo nhịp khách chọn (VAD theo cao độ giọng + lời chép Whisper) + câu nói lại + “ờ/à” đứng riêng
     const pace = CUT_PACE[p.cutPace] || CUT_PACE.tight;
     let sil = findSilences(an, {...pace, words: words?.length > 3 ? words : null});
-    const extra = words?.length > 3 ? [...retakeCuts(words, pace), ...fillerCuts(words, pace)] : [];
+    let extra = words?.length > 3 ? [...retakeCuts(words, pace), ...fillerCuts(words, pace), ...cueCuts(words, pace)] : [];
+    // Claude đọc cả bài: câu nói lại cách xa nhau, câu bỏ dở, lời nói với ekip, chào lặp (≈ 0,001 USD / video 4 phút)
+    if (h.ai && words?.length > 30) {
+      ed.cur.say('AI đọc lời, tìm câu nói lại và lời nói với người quay…');
+      const ss = sentencesOf(words);
+      const r = await Promise.race([api('ai', {mode: 'clean', lines: ss.map((x, i) => [i, +x.s.toFixed(1), x.text]), genre: genreOf(p).ai || genreOf(p).name}).catch(() => null), new Promise((res) => setTimeout(() => res(null), 20000))]);
+      const cc = cleanCuts(words, r, pace);
+      if (cc.length) {
+        const sec = cc.reduce((x, c) => x + c.b - c.a, 0);
+        const why = {noi_lai: 'nói lại', ekip: 'nói với người quay', lap: 'lặp'};
+        log('nghe', 'run', `AI bỏ ${cc.length} đoạn ${[...new Set(cc.map((c) => why[c.why]))].join(' / ')} (${sec.toFixed(1).replace('.', ',')} giây) — xem ở tab Lời thoại, bấm Khôi phục nếu muốn giữ`);
+        p._cleanCuts = cc; // để kiểm thử (không lưu)
+        extra = [...extra, ...cc];
+      }
+    }
     sil = mergeRanges([...sil, ...extra]);
     // Gửi AI chọn chữ điểm nhấn NGAY (theo giây nguồn), chạy song song với lúc con trỏ diễn cắt — không bắt khách chờ thêm
     const den0 = densityOf(p);
@@ -1310,6 +1372,8 @@ export async function autoEdit(ed, log) {
       hlReq = api('ai', hlBody(p, timelinePhrases(p, words), left)).catch(() => null);
     }
     const nRetake = extra.filter((x) => x.why === 'retake').length;
+    const nCue = extra.filter((x) => x.why === 'ekip' && !x.text).length;
+    if (nCue) log('nghe', 'run', `Bỏ ${nCue} câu ra hiệu cho người quay (“lại nha”…)`);
     if (nRetake) log('nghe', 'run', `Phát hiện ${nRetake} câu nói lại — giữ lần nói sau`);
     const total = sil.reduce((a, s) => a + Math.min(s.b, src.duration) - s.a, 0);
     log('nghe', 'ok', `Tìm thấy ${sil.length} khoảng lặng (${total.toFixed(1).replace('.', ',')} giây)`);

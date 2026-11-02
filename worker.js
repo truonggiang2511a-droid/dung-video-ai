@@ -190,6 +190,14 @@ NGOÀI RA:
 - "steps": CHỈ khi người nói LIỆT KÊ từ 2 bước / ý / điều cần kiểm tra / nguyên liệu liền nhau (vd "thứ nhất… thứ hai…", "bước 1… bước 2…", "cần thịt, trứng, nước dừa"): mỗi mục "start" = giây câu nói mục đó, "text" = 1–4 từ NGUYÊN VĂN trong lời (viết thường, không bịa). Tối đa 6 mục. "steps_title" = tiêu đề ≤ 22 ký tự VIẾT HOA (vd "3 BƯỚC MUA NHÀ"), số trong tiêu đề phải có trong lời hoặc đúng bằng số mục; không chắc thì "". "steps_kind": "buoc" | "kiemtra" | "nguyenlieu". Không có liệt kê thì "steps": [].
 - "versus": CHỈ khi người nói so sánh rõ cách SAI với cách ĐÚNG: {"start": giây câu nói cách sai, "sai": 2–5 từ NGUYÊN VĂN, "dung": 2–5 từ NGUYÊN VĂN}; không có thì null.
 Chỉ trả JSON: {"items":[{"start":0,"lead":"","main":""}],"hook":"","pack":"","pics":[{"start":0,"tu":""}],"place":"","sfx":[{"start":0,"key":""}],"stock":[{"start":0,"q":""}],"steps":[{"start":0,"text":""}],"steps_title":"","steps_kind":"buoc","versus":null}`;
+const CL_SYS = `Bạn là người dựng video ngắn tiếng Việt, đang dọn bản quay thô. Có lời người nói, mỗi dòng: [số câu] (giây) câu.
+Tìm các câu PHẢI BỎ khỏi video:
+1. NÓI HỎNG RỒI NÓI LẠI: người nói nói một đoạn rồi nói lại cùng ý đó (có khi cách xa vài chục giây, thường sau câu ra hiệu như "lại nha", "làm lại"). Giữ LẦN NÓI SAU CÙNG đầy đủ nhất, bỏ các lần trước bị hỏng / ngắt quãng / nói vấp. Câu bỏ dở giữa chừng (vd "Và ở đây.") cũng bỏ.
+2. LỜI NÓI VỚI NGƯỜI QUAY / EKIP, không phải nội dung cho khán giả (vd "lại nha", "em lia từ trên đúng không", "xong chị bước qua", "cắt", "được chưa", "quay lại đi").
+3. CÂU CHÀO / KẾT LẶP liền nhau (vd "Xin chào! Xin chào!" → bỏ bản thừa).
+KHÔNG bỏ: câu nội dung chỉ nói 1 lần; câu mở đầu (hook) dù sau đó nhắc lại số liệu; phần tóm tắt cuối video; giá, thông tin quan trọng chỉ có ở 1 chỗ. Không chắc thì KHÔNG bỏ.
+Trả "from"/"to" = số câu (gồm cả 2 đầu), các khoảng không chồng nhau, theo thứ tự; "why" = "noi_lai" | "ekip" | "lap"; "note" = 1 câu tiếng Việt ngắn giải thích.
+Chỉ trả JSON: {"cut":[{"from":0,"to":0,"why":"noi_lai","note":""}]}`;
 const BR_SYS = `Bạn là người dựng video ngắn tiếng Việt. Có lời người nói (mỗi dòng: [giây] câu) và danh sách CẢNH PHỤ (số: mô tả cảnh quay).
 Với MỖI cảnh phụ, chọn câu nói mà cảnh đó minh hoạ đúng nghĩa nhất (người nói nhắc tới đúng vật / phòng / món / hành động / không khí trong cảnh). "start" = giây của câu đó (đúng số trong ngoặc vuông).
 - Cảnh không hợp câu nào thì bỏ qua (không ép). Không chọn câu trong 2 giây đầu và 4 giây cuối.
@@ -251,6 +259,10 @@ function buildPrompt(body) {
     const system = HL_SYS.replace('COUNT', count).replace('GAP', gap).replace('PICS', Math.max(1, Math.round(dur / 6))).replace('SFXN', Math.max(1, Math.round(dur / 12))).replace('STOCKN', Math.max(1, Math.min(4, Math.round(dur / 15)))) + (body.genre ? `\nThể loại video: ${String(body.genre).slice(0, 200)}.` : '') + (packs ? `\nPHONG CÁCH:\n${packs}` : '');
     return {system, user: `Lời người nói:\n${lines}`, max: 2000, count};
   }
+  if (body.mode === 'clean') {
+    const lines = (Array.isArray(body.lines) ? body.lines : []).slice(0, 400).map(([i, t, x]) => `[${+i}] (${(+t).toFixed(1)}) ${String(x).slice(0, 400)}`).join('\n');
+    return {system: CL_SYS + (body.genre ? `\nThể loại video: ${String(body.genre).slice(0, 200)}.` : ''), user: `Lời người nói:\n${lines}`, max: 1500};
+  }
   if (body.mode === 'broll') {
     // GHÉP CẢNH PHỤ THEO NGHĨA: đọc lời + mô tả từng cảnh phụ (AI nhìn cảnh / khách gắn nhãn / tên file) → câu hợp nhất cho mỗi cảnh
     const lines = (Array.isArray(body.phrases) ? body.phrases : []).slice(0, 150).map(([s, t]) => `[${(+s).toFixed(1)}] ${String(t).slice(0, 200)}`).join('\n');
@@ -287,6 +299,7 @@ async function ai(body, env, url, ip, claude, cf) {
     const arr = (x, n) => (Array.isArray(x) ? x.slice(0, n) : []);
     return {items: arr(out.items, count + 3), hook: String(out.hook || '').slice(0, 40), pack: String(out.pack || '').slice(0, 30), place: String(out.place || '').slice(0, 40), pics: arr(out.pics, 30), sfx: arr(out.sfx, 15), stock: arr(out.stock, 6), steps: arr(out.steps, 8), steps_title: String(out.steps_title || '').slice(0, 30), steps_kind: String(out.steps_kind || '').slice(0, 12), versus: out.versus && typeof out.versus === 'object' ? {start: +out.versus.start || 0, sai: String(out.versus.sai || '').slice(0, 60), dung: String(out.versus.dung || '').slice(0, 60)} : null, provider, fallback: note || undefined};
   }
+  if (body.mode === 'clean') return {cut: (Array.isArray(out.cut) ? out.cut : []).slice(0, 40).map((x) => ({from: +x.from, to: +x.to, why: String(x.why || '').slice(0, 12), note: String(x.note || '').slice(0, 160)})).filter((x) => x.from >= 0 && x.to >= x.from), provider, fallback: note || undefined};
   if (body.mode === 'broll') return {broll: (Array.isArray(out.broll) ? out.broll : []).slice(0, 30).map((x) => ({i: +x.i, start: +x.start})).filter((x) => x.i >= 0 && x.start >= 0), provider, fallback: note || undefined};
   return {note: out.note || '', reply: out.reply || '', ops: Array.isArray(out.ops) ? out.ops.slice(0, 120) : [], provider, fallback: note || undefined};
 }
