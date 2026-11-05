@@ -46,7 +46,7 @@ export default {
       }
       if (url.pathname === '/api/vision' && req.method === 'POST') {
         if (!vision) return json({error: 'AI nhìn cảnh đang tắt'}, 503);
-        if (env.STT_LIMIT) {
+        if (env.STT_LIMIT && !(await fromXuong(req, env, url.pathname))) {
           const {success} = await env.STT_LIMIT.limit({key: 'v:' + (req.headers.get('cf-connecting-ip') || 'x')});
           if (!success) return json({error: 'Gửi quá nhanh — thử lại sau 1 phút'}, 429);
         }
@@ -54,7 +54,7 @@ export default {
       }
       if (url.pathname === '/api/transcribe' && req.method === 'POST') {
         if (!stt) return json({error: 'Chép lời đang tắt'}, 503);
-        if (env.STT_LIMIT) {
+        if (env.STT_LIMIT && !(await fromXuong(req, env, url.pathname))) {
           const {success} = await env.STT_LIMIT.limit({key: req.headers.get('cf-connecting-ip') || 'x'});
           if (!success) return json({error: 'Gửi quá nhanh — thử lại sau 1 phút'}, 429);
         }
@@ -352,6 +352,13 @@ async function hmac(secret, msg) {
 }
 const same = (a, b) => { a = String(a); b = String(b); if (a.length !== b.length) return false; let x = 0; for (let i = 0; i < a.length; i++) x |= a.charCodeAt(i) ^ b.charCodeAt(i); return x === 0; };
 const proReg = env => env.AI_GATE.get(env.AI_GATE.idFromName('pro-registry'), {locationHint: 'apac'});
+// yêu cầu từ máy dựng (ký bằng PRO_SECRET = XUONG_SECRET): VPS gửi chép lời / AI nhìn cho NHIỀU khách trên cùng 1 IP → không áp giới hạn theo IP
+async function fromXuong(req, env, path) {
+  const ts = +req.headers.get('x-pro-ts') || 0, sg = req.headers.get('x-pro-sign');
+  if (!env.PRO_SECRET || env.PRO_OFF === 'on' || !sg || Math.abs(Date.now() / 1000 - ts) > 300) return false;
+  return same(sg, await hmac(env.PRO_SECRET, ts + '\n' + path));
+}
+
 async function pro(req, url, env) {
   if (env.PRO_OFF === 'on' || !env.PRO_SECRET || !env.AI_GATE) return json({on: false, error: 'Dựng chuyên nghiệp chưa bật'}, url.pathname === '/api/pro/info' ? 200 : 503);
   const ip = req.headers.get('cf-connecting-ip') || 'x';

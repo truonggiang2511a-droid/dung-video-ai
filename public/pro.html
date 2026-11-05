@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Dựng chuyên nghiệp · Dựng Video AI</title>
+<link rel="icon" href="icon.svg">
+<style>
+@font-face{font-family:'UI';src:url(fonts/ui/geist-vietnamese-400-normal.woff2) format('woff2');font-weight:400;font-display:swap;unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB}
+@font-face{font-family:'UI';src:url(fonts/ui/geist-latin-400-normal.woff2) format('woff2');font-weight:400;font-display:swap;unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:'UI';src:url(fonts/ui/geist-vietnamese-600-normal.woff2) format('woff2');font-weight:600;font-display:swap;unicode-range:U+0102-0103,U+0110-0111,U+0128-0129,U+0168-0169,U+01A0-01A1,U+01AF-01B0,U+0300-0301,U+0303-0304,U+0308-0309,U+0323,U+0329,U+1EA0-1EF9,U+20AB}
+@font-face{font-family:'UI';src:url(fonts/ui/geist-latin-600-normal.woff2) format('woff2');font-weight:600;font-display:swap;unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+:root{--bg:#131517;--card:#1c1e20;--card2:#23262a;--acc:#D1FE17;--ink:#1a1a1a;--tx:#f7f7f8;--mut:#898a8b}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--tx);font:15px/1.5 UI,system-ui,-apple-system,sans-serif;min-height:100dvh;display:flex;justify-content:center;padding:max(24px,env(safe-area-inset-top)) 18px 40px}
+main{width:100%;max-width:440px}
+a{color:var(--mut);text-decoration:none}
+.top{font-size:14px;margin-bottom:28px;display:inline-block}
+h1{font-size:28px;font-weight:600;letter-spacing:-.6px;line-height:1.2}
+h1 span{color:var(--mut)}
+.lead{color:var(--mut);margin:12px 0 22px}
+.card{background:var(--card);border-radius:16px;padding:18px}
+.st{display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:16px}
+.st i{width:9px;height:9px;border-radius:50%;background:var(--mut);flex:none}
+.st.on i{background:var(--acc);box-shadow:0 0 0 4px rgba(209,254,23,.15)}
+.st.off i{background:#ff6a5c}
+label{display:block;font-size:13px;color:var(--mut);margin-bottom:6px}
+input{width:100%;background:var(--card2);border:1px solid transparent;color:var(--tx);font:inherit;font-size:17px;padding:13px 14px;border-radius:10px;outline:none;letter-spacing:.5px}
+input:focus{border-color:var(--acc)}
+.btn{display:block;width:100%;margin-top:12px;background:var(--acc);color:var(--ink);border:0;font:inherit;font-weight:600;font-size:16px;padding:14px;border-radius:10px;cursor:pointer;text-align:center}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.ghost{background:var(--card2);color:var(--tx)}
+.err{color:#ff8a7e;font-size:14px;margin-top:10px;min-height:1px}
+.me{font-size:14px;color:var(--mut);margin-bottom:4px}
+.me b{color:var(--tx);font-weight:600}
+ul{list-style:none;padding:0;margin-top:22px;color:var(--mut);font-size:14px}
+li{padding:7px 0 7px 22px;position:relative}
+li:before{content:'';position:absolute;left:4px;top:15px;width:6px;height:6px;border-radius:50%;background:var(--acc)}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<main>
+  <a class="top" href="./">‹ Về Dựng Video AI</a>
+  <h1>Dựng chuyên nghiệp <span>· thử nghiệm</span></h1>
+  <p class="lead">AI dựng video trên máy chủ: chữ điểm nhấn, cảnh phụ, phụ đề, âm thanh theo phong cách ngành — xem AI dựng trực tiếp, chat để sửa, rồi xuất MP4.</p>
+
+  <div class="card">
+    <div class="st" id="st"><i></i><span id="stx">Đang kiểm tra máy dựng…</span></div>
+
+    <div id="have" class="hidden">
+      <p class="me">Đã vào với mã của <b id="who"></b></p>
+      <button class="btn" id="go">Vào dựng video</button>
+      <button class="btn ghost" id="out">Dùng mã mời khác</button>
+    </div>
+
+    <form id="ask" class="hidden">
+      <label for="code">Mã mời dùng thử</label>
+      <input id="code" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Nhập mã mời">
+      <button class="btn" id="send" type="submit">Vào</button>
+    </form>
+    <p class="err" id="err"></p>
+  </div>
+
+  <ul>
+    <li>Video gửi lên máy dựng để xử lý, tự xoá sau vài ngày.</li>
+    <li>Chưa ưng chỗ nào thì chat “chữ to hơn”, “cắt đoạn 1:20 đến 1:25”… hoặc bấm vào clip trên timeline để sửa, rồi xuất lại.</li>
+    <li>Đang mời dùng thử, chưa tính phí.</li>
+  </ul>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const KEY = 'dv.pro';
+let info = null;
+const load = () => { try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); return v && v.exp * 1000 > Date.now() + 3600e3 ? v : null; } catch { return null; } };
+const save = v => { try { v ? localStorage.setItem(KEY, JSON.stringify(v)) : localStorage.removeItem(KEY); } catch {} };
+function err(t) { $('#err').textContent = t || ''; }
+
+const waiting = q => q ? (q.cpu && q.cpu.wait || 0) + (q.render && q.render.wait || 0) : 0;
+async function getInfo() {
+  try { info = await (await fetch('/api/pro/info', { cache: 'no-store' })).json(); } catch { info = { on: false, error: 'Không kết nối được' }; }
+  const st = $('#st');
+  st.classList.toggle('on', !!info.on); st.classList.toggle('off', !info.on);
+  $('#stx').textContent = info.on ? 'Máy dựng đang mở' + (waiting(info.queue) ? ` · ${waiting(info.queue)} video đang chờ` : '')
+    : (info.error && /chưa bật/.test(info.error) ? 'Dựng chuyên nghiệp chưa mở' : 'Máy dựng đang tắt — thử lại sau ít phút');
+  return info;
+}
+function enter(t) {
+  if (!info || !info.on || !info.url) { err('Máy dựng đang tắt — thử lại sau ít phút.'); return; }
+  location.href = info.url.replace(/\/$/, '') + '/#t=' + encodeURIComponent(t.token);
+}
+function show() {
+  const t = load();
+  $('#have').classList.toggle('hidden', !t); $('#ask').classList.toggle('hidden', !!t);
+  if (t) $('#who').textContent = t.name;
+  $('#go').disabled = !(info && info.on);
+}
+
+$('#go').onclick = async () => { err(''); await getInfo(); show(); const t = load(); if (t) enter(t); };
+$('#out').onclick = () => { save(null); show(); $('#code').focus(); };
+$('#ask').onsubmit = async e => {
+  e.preventDefault(); err('');
+  const code = $('#code').value.trim();
+  if (code.length < 4) return err('Nhập mã mời (ít nhất 4 ký tự).');
+  $('#send').disabled = true; $('#send').textContent = 'Đang kiểm tra…';
+  try {
+    const r = await fetch('/api/pro/token', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.token) throw new Error(j.error || 'Lỗi ' + r.status);
+    save({ token: j.token, exp: j.exp, name: j.name });
+    await getInfo(); show(); enter(load());
+  } catch (x) { err(x.message); }
+  $('#send').disabled = false; $('#send').textContent = 'Vào';
+};
+
+(async () => {
+  await getInfo();
+  // link mời dạng …/pro.html?c=MA → điền sẵn mã, xoá khỏi thanh địa chỉ
+  const c = new URLSearchParams(location.search).get('c');
+  if (c) { history.replaceState(null, '', location.pathname); if (!load()) { $('#code').value = c; show(); $('#ask').dispatchEvent(new Event('submit', { cancelable: true })); return; } }
+  show();
+})();
+</script>
+</body>
+</html>
