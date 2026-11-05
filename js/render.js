@@ -193,6 +193,7 @@ export function spring(t, damping = 12, stiffness = 160) {
   return 1 - Math.exp(-z * w * t) * (Math.cos(wd * t) + ((z * w) / wd) * Math.sin(wd * t));
 }
 const easeOut = (x) => 1 - Math.pow(1 - clamp(x), 3);
+const easeSine = (x) => 0.5 - Math.cos(Math.PI * clamp(x)) / 2;
 const easeInOut = (x) => {
   x = clamp(x);
   return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
@@ -249,6 +250,26 @@ export function drawFitBlur(ctx, fr, scale = 1, dx = 0, dy = 0) {
     return false;
   }
 }
+// khung mờ cho chuyển cảnh “mờ nét → rõ”: thu về 64 px rồi phóng cả khung (mịn như làm mờ, rẻ, chạy cả Safari cũ)
+let softTiny = null;
+function drawSoftBlur(ctx, fr, scale = 1) {
+  try {
+    if (!softTiny) softTiny = document.createElement('canvas');
+    const tw = 64;
+    const th = Math.max(2, Math.round((tw * H) / W));
+    if (softTiny.width !== tw || softTiny.height !== th) {
+      softTiny.width = tw;
+      softTiny.height = th;
+    }
+    const g = softTiny.getContext('2d');
+    const cs = Math.max(tw / fr.w, th / fr.h) * scale;
+    g.drawImage(fr.img, (tw - fr.w * cs) / 2, (th - fr.h * cs) / 2, fr.w * cs, fr.h * cs);
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(softTiny, 0, 0, W, H);
+    ctx.restore();
+  } catch (e) {}
+}
 // cảnh phụ dùng kiểu nào: b.fit 'cover' | 'blur'; không ghi thì tự chọn — lệch khổ > 1,6 lần mới vừa khung + nền mờ
 export function brollFit(b, src) {
   if (b?.fit === 'cover' || b?.fit === 'blur') return b.fit;
@@ -277,6 +298,12 @@ export function zoomAt(p, T) {
 export function activeBrolls(p, T) {
   return (p.broll || []).filter((b) => T >= b.start && T < b.start + b.dur);
 }
+// CẢNH PHỤ QUAY CHẬM (5/11, như máy dựng HyperFrames): cảnh quay 50/60 khung/giây (flycam DJI, iPhone 60p) chạy 0,6×/0,5× → mỗi khung xuất 30 khung/giây
+// là 1 khung gốc riêng, không bỏ khung lệch nhịp (50 → 30 bỏ 2/5 khung không đều = giật). b.rate = tốc độ (1 = thường); giờ trong file cảnh = in + (T − start) × rate
+export const brollRate = (b) => (b?.rate > 0 && b.rate <= 1 ? b.rate : 1);
+export const brollTime = (b, T) => b.in + (T - b.start) * brollRate(b);
+// tốc độ hợp với số khung/giây của cảnh: ≥ 47 khung → đúng 30/khung (0,5–0,64×); thấp hơn giữ thường (chậm lại sẽ lặp khung)
+export const slowRateFor = (fps) => (fps >= 47 ? Math.max(0.5, Math.min(0.64, +(30 / fps).toFixed(3))) : 1);
 
 // ---------- Cụm chữ 3 tầng (mẫu 1) ----------
 function fontStr(key, size) {
@@ -286,6 +313,9 @@ function fontStr(key, size) {
 
 // ---------- Màu video (lọc màu) & lớp phủ — dùng chế độ trộn màu canvas (chạy cả Safari cũ, không cần ctx.filter) ----------
 export const TRANSITIONS = [
+  ['soft', 'Mờ êm'],
+  ['push', 'Đẩy nhẹ'],
+  ['blurin', 'Mờ nét → rõ'],
   ['fade', 'Mờ dần'],
   ['none', 'Cắt thẳng'],
   ['zoom', 'Phóng to'],
@@ -2264,8 +2294,10 @@ export function drawFrame(ctx, p, T, frames, opt = {}) {
   for (const b of activeBrolls(p, T)) {
     const t = T - b.start;
     const tr = b.trans || 'fade';
-    const inP = tr === 'none' ? 1 : easeOut(t / (tr === 'whip' || tr === 'flash' ? 0.22 : 0.3));
-    const outP = clamp((b.start + b.dur - T) / 0.25);
+    // chuyển cảnh ÊM (5/11, như máy dựng HyperFrames — BĐS, cao cấp, ẩm thực, điện ảnh): vào 0,55 s hình sin, ra hoà 0,4 s
+    const smooth = tr === 'soft' || tr === 'push' || tr === 'blurin';
+    const inP = tr === 'none' ? 1 : smooth ? easeSine(t / 0.55) : easeOut(t / (tr === 'whip' || tr === 'flash' ? 0.22 : 0.3));
+    const outP = clamp((b.start + b.dur - T) / (smooth ? 0.4 : 0.25));
     const src = p.sources?.[b.src];
     // ảnh: đẩy máy chậm vào (Ken Burns) cho ảnh tĩnh có chuyển động; video: lùi nhẹ như cũ
     const drift = src?.image ? 1 + 0.1 * clamp(t / b.dur) : 1.08 - 0.08 * clamp(t / b.dur);
@@ -2280,6 +2312,25 @@ export function drawFrame(ctx, p, T, frames, opt = {}) {
     ctx.save();
     let alpha = Math.min(inP, outP);
     switch (tr) {
+      case 'soft':
+        ctx.globalAlpha = alpha;
+        paint(drift + (1 - inP) * 0.06);
+        break;
+      case 'push':
+        // đẩy nhẹ: vào từ 1,22 lần về cỡ thường, hoà cùng lúc
+        ctx.globalAlpha = alpha;
+        paint(drift + (1 - inP) * 0.22);
+        break;
+      case 'blurin': {
+        // mờ nét → rõ: bản thu nhỏ phóng to (mờ, không cần ctx.filter — Safari cũ không có) tan dần vào bản nét
+        if (inP < 1 && fr?.img) {
+          ctx.globalAlpha = Math.min(1, inP * 2.2) * outP;
+          drawSoftBlur(ctx, fr, drift + (1 - inP) * 0.08);
+        }
+        ctx.globalAlpha = inP * inP * outP;
+        paint(drift + (1 - inP) * 0.08);
+        break;
+      }
       case 'zoom':
         ctx.globalAlpha = alpha;
         paint(drift + (1 - inP) * 0.3);

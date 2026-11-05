@@ -351,8 +351,10 @@ export function industryPlan(p, rec, {nums = [], slots = [], D = 0, ctaLen = 4, 
       seen.add(src.id);
       const name = roomName(src);
       if (!name || o.e - o.s < 1.2) continue;
-      const s = o.s + 0.1;
-      const d = Math.min(2.6, o.e - o.s - 0.15);
+      // nhãn hiện khi cảnh phụ đã vào hẳn (chuyển cảnh êm 0,55 s), tắt trước khi cảnh hoà ra
+      const s = o.s + 0.35;
+      const d = Math.min(2.8, o.e - o.s - 0.45);
+      if (d < 1) continue;
       if (gfx.some((x) => x.key === 'explain' && s < x.start + x.dur && s + d > x.start)) continue; // bảng các bước phủ cả khung
       // vùng trên đang có thẻ giá / thông số / vị trí → nhãn xuống phía dưới (trên phụ đề)
       const y = busy.some(([a, b]) => s < b && s + d > a) ? 0.6 : 0.09;

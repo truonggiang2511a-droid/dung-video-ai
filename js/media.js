@@ -153,6 +153,19 @@ export async function makeProxy(blob, kind, onProgress, hold = {}) {
   return new File([target.buffer], 'xemnhanh.mp4', {type: 'video/mp4'});
 }
 // ảnh nhỏ timeline bằng WebCodecs (khi thẻ <video> không đọc được file)
+// số khung/giây của video (đọc thông tin gói, không giải mã) — cảnh phụ 50/60 khung thì AI dựng cho chạy chậm (render.js slowRateFor)
+export async function videoFps(blob) {
+  try {
+    const m = await engine();
+    const input = new m.Input({source: new m.BlobSource(blob), formats: m.ALL_FORMATS});
+    const track = await input.getPrimaryVideoTrack();
+    if (!track) return 0;
+    const st = await track.computePacketStats(90);
+    return +(st.averagePacketRate || 0).toFixed(2);
+  } catch (e) {
+    return 0;
+  }
+}
 export async function mbThumbs(blob, n, height = 96) {
   const m = await engine();
   const input = new m.Input({source: new m.BlobSource(blob), formats: m.ALL_FORMATS});
@@ -598,6 +611,7 @@ export async function importFile(p, file, kind, onMsg, extra = {}) {
       src.thumbs = [];
     }
     if (proxy) console.info(`Ảnh timeline (WebCodecs): ${((performance.now() - _t) / 1000).toFixed(1)} s`);
+    if (kind === 'broll') src.fps = await videoFps(file);
   }
   p.sources[id] = src;
   return src;

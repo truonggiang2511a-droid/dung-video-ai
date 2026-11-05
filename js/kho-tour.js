@@ -411,14 +411,14 @@ export async function kitTour(ed, ops, {fixes = [], packBy = 'ai', budget = 16, 
     // 4. Âm thanh: âm đi kèm chữ đầu tiên đã diễn
     const first = show[0]?.item || cards[0]?.item;
     const near = first ? ops.filter((o) => o.op === 'add' && o.list === 'sfx' && Math.abs(o.item.start - first.start) < 1.2) : [];
-    const sOp = near.find((o) => o.item.sfx === 'cash') || near[0];
+    const sOp = near.find((o) => /^m1lk/.test(o.item.sfx) || o.item.sfx === 'cash') || near[0];
     if (sOp && (!late() || cur.skip === false && (performance.now() - t0) / 1000 < budget + 4)) {
       await ui.openLib('sfx');
       const el = document.querySelector(`#media [data-addsfx="${sOp.item.sfx}"]`);
       if (shown(el)) {
         el.scrollIntoView({block: 'nearest'});
         await cur.moveTo(...center(el), 500);
-        cur.say(`Âm “${SFX_MAP[sOp.item.sfx]?.name || ''}” đúng lúc hiện ${sOp.item.sfx === 'cash' ? 'giá' : 'chữ'} — tai khách chú ý đúng chỗ quan trọng`);
+        cur.say(`Âm “${SFX_MAP[sOp.item.sfx]?.name || ''}” đúng lúc ${sOp.item.sfx === 'cash' ? 'hiện giá' : 'chữ chạm'} — mỗi cụm chữ 1 tiếng nhẹ, không ồn`);
         await cur.click();
         apply(sOp);
         await cur.pause(600);

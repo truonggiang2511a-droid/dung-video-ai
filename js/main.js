@@ -1,5 +1,5 @@
 // Điều khiển giao diện: màn Dự án + màn Editor (khung xem nhanh, timeline, sửa tay, AI).
-import {loadFonts, duration, COLORS, ICONS, FONTS, W, H, SUB_STYLES, TEXT_STYLES, TEXT_MOTIONS, TEXT_PRESETS, TRANSITIONS, FILTERS, JUMP_TRANS, applyLook, tlOfSrc, srcAt, segStarts as segStartsOf, drawFrame, setFormat, GFX, GFX_MAP, HOOK_VARIANTS} from './render.js';
+import {loadFonts, duration, COLORS, ICONS, FONTS, W, H, SUB_STYLES, TEXT_STYLES, TEXT_MOTIONS, TEXT_PRESETS, TRANSITIONS, FILTERS, JUMP_TRANS, applyLook, tlOfSrc, srcAt, segStarts as segStartsOf, drawFrame, setFormat, GFX, GFX_MAP, HOOK_VARIANTS, brollRate} from './render.js';
 import {PACKS, packsFor, restyle, gfxStyle, packText} from './styles.js';
 import {store} from './store.js';
 import {newProject, applyOp, History, find, newText, uid, ITEM_TYPES, syncAttached} from './model.js';
@@ -598,7 +598,8 @@ function renderInspector() {
       <div class="fl"><span>Cảnh này là</span><button class="mtag${src?.tag ? '' : ' none'}" data-tagsrc="${src?.id}">${src?.tag ? `${esc(src.tag)}${src.tagBy === 'ai' ? ' · AI đoán' : ''}` : 'Đặt nhãn cảnh'}</button></div>
       ${it.locked ? `<p class="lockn">${icon(I.lock, 15)} Bạn đã sửa tay — AI sẽ không ghi đè chỗ này.</p>` : ''}
       <div class="fl"><span>Chuyển cảnh</span><div class="chips">${TRANS.map(([k, l]) => `<button class="chip-b${(it.trans || 'fade') === k ? ' on' : ''}" data-set="trans" data-v="${k}">${l}</button>`).join('')}</div></div>
-      <label class="fl">Lấy đoạn nào của cảnh <output>${it.in.toFixed(1).replace('.', ',')} s</output><input type="range" min="0" max="${Math.max(0, (src?.duration || 0) - it.dur).toFixed(2)}" step="0.1" value="${it.in}" data-num="in"></label>
+      <div class="fl"><span>Tốc độ${(src?.fps || 0) >= 47 ? ` · cảnh quay ${Math.round(src.fps)} khung/giây` : ''}</span><div class="chips">${[[1, 'Thường'], [0.8, 'Chậm 0,8×'], [0.6, 'Chậm 0,6×'], [0.5, 'Chậm 0,5×']].map(([k, l]) => `<button class="chip-b${brollRate(it) === k ? ' on' : ''}" data-set="rate" data-v="${k}">${l}</button>`).join('')}</div></div>
+      <label class="fl">Lấy đoạn nào của cảnh <output>${it.in.toFixed(1).replace('.', ',')} s</output><input type="range" min="0" max="${Math.max(0, (src?.duration || 0) - it.dur * brollRate(it)).toFixed(2)}" step="0.1" value="${it.in}" data-num="in"></label>
       <div class="fl"><span>Đổi sang cảnh khác</span><div class="chips">${others.map((o) => `<button class="chip-b${o.id === it.src ? ' on' : ''}" data-set="src" data-v="${o.id}">${esc(o.name)}</button>`).join('')}</div></div>
       <p class="hint">Kéo clip trên timeline để dời, kéo hai đầu để dài/ngắn.</p>`;
   } else if (s?.type === 'sticker' && it?.kind === 'gfx') {
@@ -799,8 +800,15 @@ function bindInspector() {
       if (k === 'src') {
         const src = ed.p.sources[b.dataset.v];
         it.src = src.id;
-        it.dur = Math.min(it.dur, src.duration);
-        it.in = Math.max(0, Math.min(it.in, src.duration - it.dur));
+        it.dur = Math.min(it.dur, src.duration / brollRate(it));
+        it.in = Math.max(0, Math.min(it.in, src.duration - it.dur * brollRate(it)));
+      } else if (k === 'rate') {
+        // quay chậm: cùng độ dài trên timeline dùng ít giây của cảnh hơn; nhanh lại mà cảnh không đủ dài thì rút ngắn clip
+        const src = ed.p.sources[it.src];
+        const r = +b.dataset.v;
+        if (r >= 1) delete it.rate;
+        else it.rate = r;
+        it.dur = Math.max(0.3, Math.min(it.dur, (src.duration - it.in) / brollRate(it)));
       } else if (k === 'sfx') {
         const d = SFX_MAP[b.dataset.v];
         if (!d) return;
@@ -1435,7 +1443,7 @@ function renderMedia() {
   }
   if (tab === 'sfx') {
     box.innerHTML = `${head}<p class="hint" style="margin:2px 0 10px">Bấm ▶ để nghe, bấm + để chèn tại đầu phát. Âm thanh tự tạo trong app — không lo bản quyền.</p>
-      <div class="sfx-list">${SFX.map((x) => `<div class="sfx-i"><button class="icon-btn" data-playsfx2="${x.key}" aria-label="Nghe ${esc(x.name)}">${icon(I.play, 15)}</button><b>${esc(x.name)}</b><small>${x.len.toFixed(1).replace('.', ',')} s</small><button class="tag" data-addsfx="${x.key}">+ Chèn</button></div>`).join('')}</div>`;
+      <div class="sfx-list">${SFX.filter((x) => !x.hidden).map((x) => `<div class="sfx-i"><button class="icon-btn" data-playsfx2="${x.key}" aria-label="Nghe ${esc(x.name)}">${icon(I.play, 15)}</button><b>${esc(x.name)}</b><small>${x.len.toFixed(1).replace('.', ',')} s</small><button class="tag" data-addsfx="${x.key}">+ Chèn</button></div>`).join('')}</div>`;
     return;
   }
   const all = Object.values(p.sources);
@@ -2087,11 +2095,11 @@ const tlCb = {
       const ns = Math.max(0, Math.min(dragOrig.start + dragOrig.dur - 0.3, dragOrig.start + dt));
       it.start = ns;
       it.dur = dragOrig.dur - (ns - dragOrig.start);
-      if (sel.type === 'broll') it.in = Math.max(0, dragOrig.in + (ns - dragOrig.start));
+      if (sel.type === 'broll') it.in = Math.max(0, dragOrig.in + (ns - dragOrig.start) * brollRate(it));
     }
     if (mode === 'r') {
       let maxD = D - it.start;
-      if (sel.type === 'broll') maxD = Math.min(maxD, p.sources[it.src].duration - it.in);
+      if (sel.type === 'broll') maxD = Math.min(maxD, (p.sources[it.src].duration - it.in) / brollRate(it));
       it.dur = Math.max(0.3, Math.min(maxD, dragOrig.dur + dt));
     }
     p._rev++;

@@ -63,7 +63,18 @@ function bell(c, out, {f, t0 = 0, dur = 1.2, vol = 0.45}) {
   [[1, 1], [2.76, 0.4], [5.4, 0.18], [8.93, 0.08]].forEach(([k, a], i) => tone(c, out, {f0: f * k, t0, dur: dur / (1 + i * 0.9), vol: vol * a, attack: 0.002}));
 }
 
+// BỘ MẪU 1 (skill batdongsan-editor, Giang duyệt 4/11 19:41 ở máy dựng HyperFrames): file thật trong public/sfx/ (~380 KB, tải khi dùng)
+// gõ phím = đầu dòng phụ đề · chữ chạm A/B = mỗi cụm chữ 1 tiếng, đổi A ↔ B · vút êm / hơi thở = cảnh phụ vào · bụp nhẹ
+const M1 = [
+  {key: 'm1lka', name: 'Chữ chạm A (mẫu 1)', tags: ['chu', 'xuat hien', 'mau 1', 'nhan'], len: 0.3, file: 'sfx/m1-lk-a.wav'},
+  {key: 'm1lkb', name: 'Chữ chạm B (mẫu 1)', tags: ['chu', 'xuat hien', 'mau 1', 'ting'], len: 0.82, file: 'sfx/m1-lk-b.wav'},
+  {key: 'm1whoosh', name: 'Vút êm (mẫu 1)', tags: ['chuyen canh', 'vut', 'mau 1', 'canh phu'], len: 1.01, file: 'sfx/m1-whoosh.wav'},
+  {key: 'm1air', name: 'Hơi thở (mẫu 1)', tags: ['chuyen canh', 'nhe', 'mau 1', 'hoa'], len: 1.21, file: 'sfx/m1-air.wav'},
+  {key: 'm1thud', name: 'Bụp nhẹ (mẫu 1)', tags: ['nhan manh', 'tram', 'mau 1'], len: 0.3, file: 'sfx/m1-thud.wav'},
+  ...[1, 2, 3, 4, 5, 6].map((n) => ({key: 'm1key' + n, name: 'Gõ phím (mẫu 1)', tags: ['go chu', 'phu de', 'mau 1'], len: 0.05, file: `sfx/m1-key${n}.wav`, hidden: n > 1})),
+];
 export const SFX = [
+  ...M1,
   {key: 'whoosh', name: 'Vút', tags: ['chuyen canh', 'vut', 'luot'], len: 0.7, gen: (c, o) => sweepNoise(c, o, {dur: 0.68, f0: 250, f1: 2600, f2: 600, vol: 0.9})},
   {key: 'whip', name: 'Lia nhanh', tags: ['chuyen canh', 'lia', 'nhanh'], len: 0.35, gen: (c, o) => sweepNoise(c, o, {dur: 0.32, f0: 1200, f1: 6500, f2: 2500, q: 0.9, vol: 0.8, peak: 0.3})},
   {key: 'swoosh', name: 'Vút xuống', tags: ['chuyen canh', 'roi', 'xuong'], len: 0.55, gen: (c, o) => sweepNoise(c, o, {dur: 0.52, f0: 4000, f1: 900, f2: 250, vol: 0.85, peak: 0.25})},
@@ -204,12 +215,26 @@ export const SFX = [
 export const SFX_MAP = Object.fromEntries(SFX.map((s) => [s.key, s]));
 
 const cache = new Map();
-// Dựng 1 lần rồi nhớ (theo tần số lấy mẫu). Chuẩn hoá đỉnh 0,85.
+// file âm thanh (bộ mẫu 1) → đổi về đúng tần số lấy mẫu của nơi phát / xuất (Safari cũ: decodeAudioData kiểu gọi lại)
+async function fileBuffer(def, sr) {
+  const ab = await (await fetch(def.file)).arrayBuffer();
+  const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  const c = new Ctx(1, 1, sr);
+  return await new Promise((res, rej) => {
+    const pr = c.decodeAudioData(ab, res, rej);
+    if (pr && pr.then) pr.then(res, rej);
+  });
+}
+// Dựng 1 lần rồi nhớ (theo tần số lấy mẫu). Âm tự tổng hợp: chuẩn hoá đỉnh 0,85; file mẫu 1: giữ nguyên mức của bộ mẫu.
 export function sfxBuffer(key, sr = 48000) {
   const def = SFX_MAP[key];
   if (!def) return Promise.resolve(null);
   const id = key + '@' + sr;
   if (!cache.has(id)) {
+    if (def.file) {
+      cache.set(id, fileBuffer(def, sr).catch(() => null));
+      return cache.get(id);
+    }
     cache.set(
       id,
       (async () => {

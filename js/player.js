@@ -4,7 +4,7 @@
 //  - HÌNH chạy theo tiếng: 2 thẻ <video> cho video chính, thẻ rảnh luôn tua sẵn tới đầu đoạn kế tiếp → tới chỗ cắt chỉ việc đổi thẻ
 //  - Video chưa kịp ra hình thì GIỮ khung cuối (không bao giờ vẽ khung xám), cảnh phụ được tua sẵn trước 2 giây
 //  - Chưa giải mã xong tiếng / máy không cho Web Audio → dùng tiếng của thẻ video, đồng hồ dừng chờ khi video đang tua (không nhảy cóc lời)
-import {W, H, drawFrame, duration, srcAt, activeBrolls, segStarts, setFormat} from './render.js';
+import {W, H, drawFrame, duration, srcAt, activeBrolls, segStarts, setFormat, brollTime, brollRate} from './render.js';
 import {sfxBuffer} from './sfx.js';
 import {onStickerLoad} from './library.js';
 import {ensureProjectFonts} from './fonts.js';
@@ -592,9 +592,10 @@ export class Player {
     }
   }
 
-  _drive(el, t, play) {
+  _drive(el, t, play, rate = 1) {
     if (!el || el.readyState < 1) return;
-    const d = el.currentTime - t;
+    // d tính theo giờ VIDEO; cảnh phụ quay chậm (rate < 1) chạy thẻ video ở đúng tốc độ đó
+    const d = (el.currentTime - t) / rate;
     if (!play) {
       el.playbackRate = 1;
       if (!el.paused) el.pause();
@@ -610,12 +611,12 @@ export class Player {
     }
     if (d < -0.45) {
       // hình tụt sau quá xa → tua VƯỢT LÊN đúng bằng thời gian tua đo được rồi chờ tiếng đuổi kịp (không tua đuổi mãi)
-      el.playbackRate = 1;
+      el.playbackRate = rate;
       el.pause();
-      el.currentTime = t + Math.max(0.15, Math.min(1.2, (el.seekCost || 0.25) * 1.3));
+      el.currentTime = t + Math.max(0.15, Math.min(1.2, (el.seekCost || 0.25) * 1.3)) * rate;
       return;
     }
-    el.playbackRate = d < -0.04 ? Math.min(1.25, 1 - d * 1.5) : 1;
+    el.playbackRate = rate * (d < -0.04 ? Math.min(1.25, 1 - d * 1.5) : 1);
     if (el.paused) el.play().catch(() => {});
   }
 
@@ -663,7 +664,7 @@ export class Player {
       const el = this.els[b.src];
       if (!el) continue;
       act2.add(b.src);
-      this._drive(el, Math.min((el.duration || 99) - 0.05, b.in + (this.T - b.start)), this.playing);
+      this._drive(el, Math.min((el.duration || 99) - 0.05, brollTime(b, this.T)), this.playing, brollRate(b));
     }
     for (const b of p.broll || []) {
       if (act2.has(b.src)) continue;
@@ -736,7 +737,7 @@ export class Player {
         continue;
       }
       if (this.stills[b.src]) {
-        this.stills[b.src].at(b.in + (this.T - b.start));
+        this.stills[b.src].at(brollTime(b, this.T));
         fr.broll[b.id] = this.stills[b.src].frame();
         continue;
       }

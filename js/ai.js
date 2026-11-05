@@ -1,6 +1,6 @@
 // AI dựng từ A–Z + sửa theo lời nói. Mọi thay đổi là "op" → con trỏ diễn lại trên timeline rồi mới áp vào dự án.
-import {analyzeAudio, findSilences, levels, wav16, thumbs, CUT_PACE} from './media.js';
-import {duration, tlOfSrc, timelineWords, segStarts, clamp, ICONS, GFX_MAP} from './render.js';
+import {analyzeAudio, findSilences, levels, wav16, thumbs, CUT_PACE, videoFps} from './media.js';
+import {duration, tlOfSrc, timelineWords, segStarts, clamp, ICONS, GFX_MAP, slowRateFor, subLines} from './render.js';
 import {applyOp, describeOp, find, newText, uid, TYPE_OF} from './model.js';
 import {genreOf, formatOf} from './templates.js';
 import {SFX_MAP} from './sfx.js';
@@ -292,6 +292,15 @@ export function mergeLockups(p, nums, keys) {
   }
   all.sort((a, b) => a.start - b.start);
   for (let i = 0; i < all.length - 1; i++) if (all[i].start + all[i].dur > all[i + 1].start - 0.15) all[i].dur = +Math.max(1.5, all[i + 1].start - 0.15 - all[i].start).toFixed(2);
+  // CHỮ ĐỨNG LÂU HƠN (5/11, Giang: “text điểm nhấn để lâu thêm 1 tí” — như máy dựng HyperFrames): ít nhất 3 s, giữ thêm ~1 s,
+  // tối đa 4,2 s, tới sát chữ sau (cách 0,2 s) và không lấn sang câu kêu gọi cuối video
+  const ctaAt = D - (p.cta?.len || 4) - 0.1;
+  all.forEach((t, i) => {
+    const next = i + 1 < all.length ? all[i + 1].start - 0.2 : Infinity;
+    const lim = Math.min(next, t.start < ctaAt ? ctaAt : D) - t.start;
+    const want = Math.min(4.2, Math.max(3, t.dur + 1));
+    t.dur = +Math.max(Math.min(t.dur, lim), Math.min(want, lim)).toFixed(2);
+  });
   return all;
 }
 
@@ -313,6 +322,25 @@ const BDS_ICON_WORDS = Object.entries({
   'mới': 'sparkle', 'sạch sẽ': 'sparkle', 'chìa khóa': 'key', 'chìa khoá': 'key', 'dọn vào': 'key', 'cửa chính': 'door', 'tiềm năng': 'growth', 'phát triển': 'growth',
   'xem nhà': 'calendar', 'nhắn tin': 'chat',
 }).sort((a, b) => b[0].length - a[0].length);
+
+// THẺ CHƯƠNG dự phòng (không có AI chia phần): BĐS chia theo chủ đề người nói lần lượt đi qua — lần ĐẦU nhắc tới mỗi chủ đề
+// (chữ không dấu; tránh từ đa nghĩa: “gia” đứng riêng = gia đình / gia chủ, nên giá phải đi kèm “bán / tỷ / triệu / thương lượng”)
+const CHAP_RULES = [
+  ['VỊ TRÍ', / (vi tri|nam o|nam tai|giap ranh|cach cho|cach truong|cach trung tam|cao toc|thuoc xa|thuoc huyen|thuoc quan|mat tien duong) /],
+  ['DIỆN TÍCH', / (dien tich|met vuong|chieu ngang|chieu dai|ngang \d+|ket cau|mot tret|1 tret|tret \w+ lau) /],
+  ['KHÔNG GIAN', / (phong khach|phong ngu|nha bep|khu bep|phong bep|nha ve sinh|toilet|san thuong|ban cong|noi that|phong tho) /],
+  ['PHÁP LÝ', / (so hong|so rieng|phap ly|hoan cong|cong chung) /],
+  ['GIÁ BÁN', / (gia ban|gia chi|gia la|\d+ ty|ty \d+|\d+ trieu|thuong luong) /],
+];
+export function localChapters(p, phrases) {
+  if ((p.genre || 'chung') !== 'bds') return [];
+  const out = [];
+  for (const [title, re] of CHAP_RULES) {
+    const ph = phrases.find((x) => re.test(x.text));
+    if (ph) out.push({start: ph.s, title});
+  }
+  return out.sort((u, v) => u.start - v.start);
+}
 
 // ---------- Bộ dựng chuyên nghiệp (chạy trên máy, không cần AI máy chủ) ----------
 // Quy tắc dân dựng video ngắn:
@@ -368,7 +396,7 @@ export function localSteps(p, ai) {
   return items.length >= 2 ? {items: items.slice(0, 6), title: '', kind: 'buoc'} : null;
 }
 
-export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks = null, place = '', animBy = null, steps = null, versus = null} = {}) {
+export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks = null, place = '', animBy = null, steps = null, versus = null, chapters = null} = {}) {
   const D = duration(p);
   const ops = [];
   if (D < 1) return ops;
@@ -407,16 +435,23 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
   const second = anchors.find((a) => a >= b0 - 0.6 && a <= 3.6);
   if (second !== undefined) b0 = Math.max(1.6, second);
   const b1 = D - ctaLen - 0.4;
-  const Ls = clamp(st.pace * 0.9, 2.2, 3.4);
-  const Lmin = 1.8;
-  const Lmax = 4;
+  // CẢNH PHỤ DÀI + ÊM (5/11, Giang: “ra quá nhanh, không slow motion” — như máy dựng HyperFrames): BĐS / phong cách chuyển cảnh êm
+  // mỗi cảnh 3,2–4,8 s (trước 2,2–4 s), cảnh 50/60 khung/giây chạy chậm 0,6/0,5× đúng khung gốc (render.js slowRateFor)
+  const SMOOTH = ['soft', 'push', 'blurin'];
+  const calm = (p.genre || 'chung') === 'bds' || SMOOTH.includes(st.base) || SMOOTH.includes(st.accent);
+  const Ls = calm ? clamp(st.pace * 1.1, 3.2, 4.2) : clamp(st.pace * 0.9, 2.4, 3.6);
+  const Lmin = calm ? 2.4 : 1.8;
+  const Lmax = calm ? 4.8 : 4.2;
+  const runMax = calm ? 9 : 6.5;
   const gapMin = 1.2;
 
   const clips = Object.values(p.sources)
     .filter((x) => x.kind === 'broll' && x.duration > 0.8)
     .map((x) => {
       const usable = Math.max(0.5, x.duration - 0.6);
-      return {x, keys: brollKeys(x), used: 0, nWin: x.stock ? 1 : Math.max(1, Math.floor((usable + 0.2) / (Ls + 0.2)))};
+      const rate = calm && !x.image ? slowRateFor(x.fps || 0) : 1;
+      // rate < 1: 1 giây trên timeline chỉ dùng `rate` giây của file cảnh → cảnh ngắn cũng đủ dài, cắt được nhiều cú hơn
+      return {x, rate, keys: brollKeys(x), used: 0, nWin: x.stock ? 1 : Math.max(1, Math.floor((usable + 0.2) / (Ls * rate + 0.2)))};
     });
   const score = (c, ph) => c.keys.reduce((a, {k, w}) => a + (ph.text.includes(' ' + k + ' ') ? w : 0), 0);
   const slots = [];
@@ -429,7 +464,7 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
     if (!chain.length) return true;
     const run = chain.reduce((a, o) => a + o.e - o.s, e - s);
     const linked = chain.some((o) => slots.some((q) => q !== o && (near(q.e, o.s) || near(q.s, o.e))));
-    return run <= 6.5 && !linked && chain.length < 2;
+    return run <= runMax && !linked && chain.length < 2;
   };
   // mép cảnh phụ trùng chỗ cắt (lệch ≤ 0,25 s) thì đặt đúng chỗ cắt → không lộ 2 khung người nói
   const snapCut = (t) => {
@@ -440,7 +475,7 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
     const want = s + Ls;
     const cand = stops.filter((t) => t >= s + Lmin && t <= Math.min(s + Lmax, lim));
     let e = cand.length ? cand.reduce((a, t) => (Math.abs(t - want) < Math.abs(a - want) ? t : a)) : Math.min(want, lim);
-    if (c) e = Math.min(e, s + c.x.duration - 0.05);
+    if (c) e = Math.min(e, s + (c.x.duration - 0.05) / c.rate);
     return e;
   };
 
@@ -503,7 +538,7 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
       }
       if (!best) {
         const s1 = clamp(ideal, iv[0], iv[1] - Lmin);
-        best = {s: s1, e: Math.min(s1 + Ls, iv[1], s1 + c.x.duration - 0.05)};
+        best = {s: s1, e: Math.min(s1 + Ls, iv[1], s1 + (c.x.duration - 0.05) / c.rate)};
       }
       best.s = snapCut(best.s);
       best.e = snapCut(best.e);
@@ -516,14 +551,16 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
   slots.forEach((o, i) => {
     const dur = +(o.e - o.s).toFixed(2);
     const d = o.c.x.duration;
-    const span = Math.max(0, d - 0.6 - dur);
-    const inn = d <= dur + 0.6 ? Math.max(0, (d - dur) / 2) : 0.3 + (o.c.nWin > 1 ? (span * (o.k % o.c.nWin)) / (o.c.nWin - 1) : span / 2);
+    const r = o.c.rate;
+    const sd = dur * r; // đoạn dùng trong file cảnh (quay chậm thì ngắn hơn trên timeline)
+    const span = Math.max(0, d - 0.6 - sd);
+    const inn = d <= sd + 0.6 ? Math.max(0, (d - sd) / 2) : 0.3 + (o.c.nWin > 1 ? (span * (o.k % o.c.nWin)) / (o.c.nWin - 1) : span / 2);
     let trans = i === 0 || sentAt(o.s, i) || prevSrc === o.c.x.id ? st.accent : st.base;
     // 2 lần nhấn liền nhau thì đổi kiểu cho đỡ lặp
-    const ALT = {whip: 'zoom', zoom: 'slide', slide: 'zoom', wipe: 'zoomout', fade: 'zoom'};
+    const ALT = {whip: 'zoom', zoom: 'slide', slide: 'zoom', wipe: 'zoomout', fade: 'zoom', push: 'blurin', blurin: 'push', soft: 'push'};
     if (trans === st.accent && ops.length && ops[ops.length - 1].item?.trans === st.accent && ops[ops.length - 1].list === 'broll') trans = ALT[st.accent] || st.accent;
     prevSrc = o.c.x.id;
-    ops.push({op: 'add', list: 'broll', item: {id: uid('b'), src: o.c.x.id, start: +o.s.toFixed(2), dur, in: +Math.min(inn, Math.max(0, d - dur)).toFixed(2), trans, locked: false}});
+    ops.push({op: 'add', list: 'broll', item: {id: uid('b'), src: o.c.x.id, start: +o.s.toFixed(2), dur, in: +Math.min(inn, Math.max(0, d - sd)).toFixed(2), trans, ...(r < 1 ? {rate: r} : {}), locked: false}});
   });
 
   // chữ số liệu + chữ ý chính từ lời nói (mật độ theo khách chọn: Ít / Vừa / Nhiều)
@@ -534,7 +571,27 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
   // CÔNG THỨC DỰNG theo ngành: bảng giá lăn số, thẻ thông số, ghim vị trí, nhãn cảnh, giá gạch ngang, tem giảm %, nút mua (recipes.js)
   const ind = industryPlan(p, rec, {nums: allNums, slots, D, ctaLen, place, color: gfxStyle(pack, 'price').color, priceColor: pack.price, pack, steps: localSteps(p, steps), versus});
   nums = nums.filter((t) => !ind.drop.has(t));
-  const onCard = (t) => ind.busy.some(([a, b]) => t.start < b + 0.2 && t.start + (t.dur || 3) > a - 0.2);
+  // THẺ CHƯƠNG (5/11, như máy dựng HyperFrames: “01 · VỊ TRÍ”): video ≥ 40 s, AI chia phần (chapters) hoặc tự đoán theo lời (BĐS);
+  // nhường chữ số liệu / thẻ ngành; không có khi đã có bảng các bước (kiến thức) cho khỏi rối
+  const chapBusy = [];
+  const chapItems = [];
+  if (D >= 40 && !ind.gfx.some((g) => ['explain', 'checklist', 'chapter', 'ingredients'].includes(g.key))) {
+    const CH = 2.6;
+    const free = (s) => s >= 4 && s + CH < D - ctaLen - 0.5 && !nums.some((t) => s < t.start + (t.dur || 2.5) + 0.2 && s + CH > t.start - 0.2) && !ind.busy.some(([a, b]) => s < b + 0.2 && s + CH > a - 0.2);
+    let last = -99;
+    // số phần theo kịch bản (VỊ TRÍ = 1, DIỆN TÍCH = 2…); phần nào đã có thẻ ngành ngay đầu (ghim vị trí, thông số, bảng giá) thì thẻ đó
+    // đã là “đầu chương” → bỏ thẻ chương của phần đó, không chen thẻ chương trước lời nói
+    const parts = chapters?.length >= 2 ? chapters : localChapters(p, phrases);
+    if (parts.length >= 2) parts.forEach((c, i) => {
+      if (chapItems.length >= 4) return;
+      const at = [0, -0.4, 0.5, 1, 1.6, 2.2].map((d) => c.start + d).find((s) => s - last >= 12 && free(s));
+      if (at === undefined) return;
+      chapItems.push({start: +at.toFixed(2), title: c.title, n: i + 1});
+      chapBusy.push([at, at + CH]);
+      last = at;
+    });
+  }
+  const onCard = (t) => [...ind.busy, ...chapBusy].some(([a, b]) => t.start < b + 0.2 && t.start + (t.dur || 3) > a - 0.2);
   if (hook && pack.gfx.hook) {
     hookEnd = Math.min(2.9, Math.max(0, D - ctaLen - 1));
     const firstNum = [...nums, ...ind.busy.map(([a]) => ({start: a}))].filter((t) => t.start < hookEnd + 0.2).sort((u, v) => u.start - v.start)[0];
@@ -555,6 +612,9 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
       ops.push({op: 'add', list: 'stickers', item: it});
       return;
     }
+    // chữ đứng lâu hơn (mergeLockups) nhưng không lấn vào thẻ ngành / thẻ chương hiện sau nó
+    const nb = [...ind.busy, ...chapBusy].map(([a]) => a).filter((a) => a > t.start + 0.3);
+    if (nb.length) t.dur = +Math.max(1.5, Math.min(t.dur, Math.min(...nb) - 0.2 - t.start)).toFixed(2);
     // màu / font / kiểu theo phong cách; chuyển động theo ý: giá → đóng dấu, diện tích/chiều dài → phóng ra, “3 bước/5 mẹo” → trượt vào, chữ ý chính → theo phong cách
     Object.assign(t, packText(pack, t, t.kind === 'key' ? nKey++ : 0));
     if (t.kind !== 'key' && t.kind !== 'price') t.motion = /M²|MÉT/.test(t.main) ? 'zoom' : /BƯỚC|MẸO|CÁCH|LÝ DO|ĐIỀU/.test(t.main) ? 'slide' : i % 2 ? 'bounce' : 'pop';
@@ -660,26 +720,51 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
     ops.push({op: 'add', list: 'stickers', item: it, why: pick.why});
   });
 
-  // hiệu ứng âm thanh: vút khi chuyển cảnh nhấn, “ka-ching” khi hiện giá, bụp khi hiện số, bong bóng khi hiện hình, thông báo ở câu kết
+  // ÂM THANH BỘ MẪU 1 (5/11, Giang: “SFX ồn quá, thay giống skill batdongsan-editor” — như máy dựng HyperFrames, Giang duyệt 4/11 19:41):
+  // mỗi cụm chữ / thẻ CHỈ 1 tiếng lúc chữ chạm (đổi chạm A ↔ B), cảnh phụ vào = vút êm / hơi thở, phụ đề gõ phím CHỈ đầu dòng cách ≥ 3,5 s;
+  // icon / nhãn / giật zoom / nút kết không tiếng. Mức thưa–dày theo phong cách (pack.sfx: hi | mid | lo | min). Mẫu 1 duyệt ≈ 26 tiếng/phút.
+  const lvl = {hi: 3, mid: 2, lo: 1, min: 0}[pack.sfx || 'mid'] ?? 2;
+  // mức như máy dựng HyperFrames × 0,8: ở đó giọng đã chuẩn −14 LUFS, ở app giọng điện thoại thường nhỏ hơn → tiếng nhấn hạ 2 dB cho khỏi lấn giọng
+  const VOL = {m1lka: 0.72, m1lkb: 0.68, m1whoosh: 0.26, m1air: 0.24, m1thud: 0.24, key: 0.64};
   const sfxAt = [];
-  const sfx = (key, t, vol) => {
-    if (t < 0 || t > D - 0.1 || sfxAt.some((x) => Math.abs(x - t) < 0.35)) return;
+  const sfx = (key, t, vol, near = 0.35) => {
+    if (!SFX_MAP[key] || t < 0 || t > D - 0.1 || sfxAt.some((x) => Math.abs(x - t) < near)) return false;
     sfxAt.push(t);
-    ops.push({op: 'add', list: 'sfx', item: {id: uid('a'), sfx: key, name: SFX_MAP[key].name, start: +t.toFixed(2), dur: SFX_MAP[key].len, vol, locked: false}});
+    ops.push({op: 'add', list: 'sfx', item: {id: uid('a'), sfx: key, name: SFX_MAP[key].name, start: +t.toFixed(2), dur: SFX_MAP[key].len, vol: +vol.toFixed(2), locked: false}});
+    return true;
   };
-  const TR_SFX = {zoom: 'whoosh', zoomout: 'whoosh', spin: 'whoosh', circle: 'whoosh', slide: 'swoosh', up: 'swoosh', wipe: 'swoosh', whip: 'whip', flash: 'impact', glitch: 'glitch'};
-  for (const o of ops.filter((x) => x.list === 'broll')) {
-    const k = TR_SFX[o.item.trans];
-    if (k) sfx(k, Math.max(0, o.item.start - (k === 'whoosh' ? 0.3 : k === 'swoosh' ? 0.12 : 0.05)), k === 'impact' ? 0.3 : 0.4);
+  let lk = 0;
+  const marks = lks.map((t) => ({t: t.start, late: t.kind === 'price' || t.motion === 'stamp' || t.key === 'price'}));
+  if (hook && hookEnd) marks.push({t: 0.2, late: false});
+  for (const m of marks.sort((u, v) => u.t - v.t)) {
+    const k = lk % 2 ? 'm1lkb' : 'm1lka';
+    if (sfx(k, m.t + (m.late ? 0.3 : 0.12), VOL[k] * (lvl ? 1 : 0.8))) lk++;
   }
-  for (const t of lks) sfx(t.kind === 'price' ? 'cash' : 'pop', t.start + (t.kind === 'price' ? 0.05 : 0.1), t.kind === 'price' ? 0.45 : 0.4);
-  for (const s of stks) sfx('bubble', s.start, 0.3);
-  const JUMP_SFX = {zoomin: ['whoosh', 0.28], whip: ['whip', 0.06], flash: ['shutter', 0.02], shake: ['thud', 0], glitch: ['glitch', 0]};
-  for (const j of jumpOps) {
-    const [k, lead] = JUMP_SFX[j.tr] || [];
-    if (k) sfx(k, Math.max(0, j.at - lead), 0.35);
+  let lastB = -9;
+  for (const b of ops.filter((x) => x.list === 'broll').map((x) => x.item).sort((u, v) => u.start - v.start)) {
+    if (!(lvl >= 2 || (lvl === 1 && b.start - lastB > 8))) continue;
+    const k = ['soft', 'fade', 'blurin'].includes(b.trans) ? 'm1air' : 'm1whoosh';
+    if (sfx(k, Math.max(0, b.start - 0.12), VOL[k])) lastB = b.start;
   }
-  sfx('notify', Math.max(0, D - ctaLen + 0.1), 0.45);
+  if (lvl) for (const j of jumpOps) sfx(j.tr === 'whip' ? 'm1whoosh' : 'm1air', Math.max(0, j.at - 0.1), 0.3);
+  // âm của thẻ ngành: thẻ đã có tiếng chạm lúc hiện → bỏ tiếng từng dòng; vút đổi sang vút êm; tiếng theo chủ đề (xèo xèo, tích tắc…) nhỏ lại
+  const M1MAP = {cash: 'lk', pop: 'lk', stamp: 'lk', impact: 'lk', page: 'lk', ding: 'lk', success: 'lk', drumhit: 'lk', thud: 'm1thud', whoosh: 'm1whoosh', swoosh: 'm1whoosh', swishup: 'm1whoosh', riser: 'm1whoosh', whip: 'm1whoosh'};
+  for (const [k, t, v] of ind.sfx) {
+    const m = M1MAP[k];
+    if (m === 'lk') continue;
+    if (m) sfx(m, t, VOL[m]);
+    else if (lvl >= 3 || ['sizzle', 'pour', 'tick', 'recbeep'].includes(k)) sfx(k, t, v * 0.7);
+  }
+  // phụ đề: gõ phím CHỈ đầu dòng, cách nhau ≥ 3,5 s (năng động 2,5 s · nhẹ 5 s · điện ảnh không gõ), nhường 0,6 s quanh tiếng khác
+  if (lvl >= 1 && p.subs?.on !== false) {
+    const gap = {3: 2.5, 2: 3.5, 1: 5}[lvl];
+    let last = -9;
+    let kk = 0;
+    for (const l of subLines(p)) {
+      if (l.s - last < gap || l.s > D - ctaLen - 0.3 || sfxAt.some((x) => Math.abs(x - l.s) < 0.6)) continue;
+      if (sfx('m1key' + ((kk % 6) + 1), l.s, VOL.key, 0.6)) (last = l.s), kk++;
+    }
+  }
 
   // đồ hoạ động theo phong cách: tiêu đề mở đầu, thanh tiến độ, lấp lánh khi hiện giá, vệt sáng ở chỗ chuyển, nút theo dõi + pháo giấy ở đoạn kết
   const gfx = (key, start, dur, over = {}) => {
@@ -694,26 +779,23 @@ export function localPlan(p, {keys = null, hook = '', pics = null, sfx: sfxPicks
     const o = {id: uid('g'), kind: 'gfx', ...GFX_MAP[it.key].def, ...it, start: +it.start.toFixed(2), dur: +Math.min(it.dur, D - it.start).toFixed(2), locked: false};
     if (o.dur >= 0.5) ops.push({op: 'add', list: 'stickers', item: o});
   }
-  for (const [k, t, v] of ind.sfx) sfx(k, t, v);
-  if (hookEnd) {
-    gfx('hook', 0.2, hookEnd - 0.2, {label: hook});
-    sfx(pack.gfx.hook === 'burst' ? 'impact' : 'whoosh', 0.05, 0.4);
-  }
+  chapItems.forEach((c) => gfx('chapter', c.start, 2.6, {label: `PHẦN ${c.n}`, sub: c.title, x: 0.5, y: 0.2}));
+  if (hookEnd) gfx('hook', 0.2, hookEnd - 0.2, {label: hook});
   if (pack.gfx.progress) gfx('progress', 0, D, {});
-  if (pack.gfx.sparkle) for (const t of lks.filter((x) => x.kind === 'price')) gfx('sparkle', t.start + 0.05, 1.2, {y: (t.y ?? 0.2) + 0.03}) && sfx('sparkle', t.start + 0.4, 0.3);
+  if (pack.gfx.sparkle) for (const t of lks.filter((x) => x.kind === 'price')) gfx('sparkle', t.start + 0.05, 1.2, {y: (t.y ?? 0.2) + 0.03}) && lvl >= 3 && sfx('sparkle', t.start + 0.4, 0.3);
   if (pack.gfx.leak) for (const j of jumpOps.slice(0, 4)) gfx('leak', Math.max(0, j.at - 0.15), 0.8);
   if (p.cta?.on !== false && D > ctaLen + 3) {
     // bán hàng: nút “Mua ngay” thay nút theo dõi ở đoạn kết
     if (ind.buy) {
       const said = timelineWords(p).map((w) => plain(w.w)).join(' ');
-      gfx('buy', D - ctaLen + 0.4, ctaLen - 0.5, {y: 0.8, label: /dat hang/.test(said) ? 'ĐẶT HÀNG NGAY' : 'MUA NGAY'}) && sfx('click', D - ctaLen + 1.3, 0.4);
+      gfx('buy', D - ctaLen + 0.4, ctaLen - 0.5, {y: 0.8, label: /dat hang/.test(said) ? 'ĐẶT HÀNG NGAY' : 'MUA NGAY'}) && lvl >= 3 && sfx('click', D - ctaLen + 1.3, 0.4);
     } else if (ind.social) {
-      gfx('social', D - ctaLen + 0.3, ctaLen - 0.4, {y: 0.8}) && [0.9, 1.9, 2.9].forEach((k) => k < ctaLen - 0.5 && sfx('click', D - ctaLen + 0.3 + k, 0.35));
-    } else if (pack.gfx.follow) gfx('follow', D - ctaLen + 0.5, ctaLen - 0.6, {y: 0.8}) && sfx('click', D - ctaLen + 1.35, 0.4);
-    if (pack.gfx.confetti) gfx('confetti', D - ctaLen, Math.min(3, ctaLen)) && sfx('success', D - ctaLen + 0.15, 0.35);
+      gfx('social', D - ctaLen + 0.3, ctaLen - 0.4, {y: 0.8}) && lvl >= 3 && [0.9, 1.9, 2.9].forEach((k) => k < ctaLen - 0.5 && sfx('click', D - ctaLen + 0.3 + k, 0.35));
+    } else if (pack.gfx.follow) gfx('follow', D - ctaLen + 0.5, ctaLen - 0.6, {y: 0.8}) && lvl >= 3 && sfx('click', D - ctaLen + 1.35, 0.4);
+    if (pack.gfx.confetti) gfx('confetti', D - ctaLen, Math.min(3, ctaLen)) && lvl >= 3 && sfx('success', D - ctaLen + 0.15, 0.35);
   }
-  // âm thanh AI chọn theo nghĩa câu nói (ting = ý hay, tim đập = hồi hộp, sai rồi = lỗi sai…) — né các âm đã có
-  for (const s of sfxPicks || []) if (SFX_MAP[s.key]) sfx(s.key, s.start, 0.35);
+  // âm thanh AI chọn theo nghĩa câu nói (ting, tim đập…) — chỉ phong cách năng động; mẫu 1 giữ thưa
+  if (lvl >= 3) for (const s of sfxPicks || []) if (SFX_MAP[s.key]) sfx(s.key, s.start, 0.3);
 
   // màu video theo phong cách (khách đã tự chỉnh màu thì giữ nguyên) + phụ đề theo phong cách (khách đã chỉnh thì giữ)
   const look = pack.look || genreOf(p).look;
@@ -759,6 +841,13 @@ export function localCommand(p, text, target) {
     else if (/len tren/.test(t)) ops.push({op: 'subs', set: {y: Math.max(0.3, (p.subs.y ?? 0.7) - 0.08)}});
     else if (/xuong/.test(t)) ops.push({op: 'subs', set: {y: Math.min(0.88, (p.subs.y ?? 0.7) + 0.08)}});
     else ops.push({op: 'subs', set: {on: true}});
+  } else if (/am thanh|hieu ung am|tieng (vut|go|cham|nhan|ding)|go phim| sfx /.test(t) && (p.sfx || []).length) {
+    // “âm thanh nhỏ lại / to lên / tắt âm thanh / bỏ tiếng gõ phím / bỏ tiếng vút” — cả nhóm hoặc đúng loại
+    const pick = /go phim|tieng go/.test(t) ? (s) => /^m1key|^typing$/.test(s.sfx) : /tieng vut|chuyen canh/.test(t) ? (s) => /whoosh|air|swoosh|whip/.test(s.sfx) : () => true;
+    const list = p.sfx.filter(pick);
+    if (/tat|bo|xoa|khong can/.test(t)) list.forEach((s) => ops.push({op: 'remove', id: s.id}));
+    else if (/nho|bot|giam/.test(t)) list.forEach((s) => ops.push({op: 'update', id: s.id, set: {vol: +Math.max(0.05, (s.vol ?? 0.5) * 0.7).toFixed(2)}}));
+    else if (/to|lon|tang/.test(t)) list.forEach((s) => ops.push({op: 'update', id: s.id, set: {vol: +Math.min(1.2, (s.vol ?? 0.5) * 1.35).toFixed(2)}}));
   } else if (/ nhac /.test(t) && p.music) {
     if (/bo|tat|xoa/.test(t)) ops.push({op: 'music', set: null});
     else if (/nho/.test(t)) ops.push({op: 'music', set: {vol: Math.max(0.05, (p.music.vol ?? 0.2) * 0.7)}});
@@ -1106,6 +1195,14 @@ async function aiExtras(p, r) {
     if (title.length > 24 || !(title.match(/\d+/g) || []).every((n) => saidNums.has(n) || +n === items.length)) title = '';
     out.steps = {items: items.map((x) => ({...x, text: x.text.charAt(0).toUpperCase() + x.text.slice(1)})), title, kind: ['buoc', 'kiemtra', 'nguyenlieu'].includes(r.steps_kind) ? r.steps_kind : 'buoc'};
   }
+  // thẻ chương AI chia: tiêu đề ngắn VIẾT HOA (≤ 3 từ, ≤ 18 ký tự, không số điện thoại), cách nhau ≥ 12 s, không ở 4 s đầu / 6 s cuối
+  let lastC = -99;
+  out.chapters = (r.chapters || [])
+    .map((c) => ({start: +c.start, title: String(c.title || '').trim().toUpperCase().replace(/[.:!?]+$/, '')}))
+    .filter((c) => Number.isFinite(c.start) && c.title && c.title.length <= 18 && c.title.split(/\s+/).length <= 3 && !/\d{5,}/.test(c.title))
+    .sort((u, v) => u.start - v.start)
+    .filter((c) => c.start >= 4 && c.start < D - 6 && c.start - lastC >= 12 && (lastC = c.start) >= 0)
+    .slice(0, 4);
   const v = r.versus;
   const vs = v?.sai && v?.dung ? locate(String(v.sai), +v.start || 0) : null;
   const vd = vs !== null ? locate(String(v.dung), vs, 0, 10) : null;
@@ -1471,7 +1568,7 @@ export async function autoEdit(ed, log) {
       ed.cur.say('AI đọc lời nói, chọn chữ điểm nhấn…');
       let r = hlReq ? await hlReq : null;
       const toTl = (list) => (list || []).map((it) => ({...it, start: srcToTl(p, +it.start || 0)}));
-      if (r) r = {...r, items: toTl(r.items), pics: toTl(r.pics), sfx: toTl(r.sfx), stock: toTl(r.stock), steps: toTl(r.steps), versus: r.versus ? toTl([r.versus])[0] : null};
+      if (r) r = {...r, items: toTl(r.items), pics: toTl(r.pics), sfx: toTl(r.sfx), stock: toTl(r.stock), steps: toTl(r.steps), chapters: toTl(r.chapters), versus: r.versus ? toTl([r.versus])[0] : null};
       else r = await api('ai', hlBody(p, timelinePhrases(p), duration(p)));
       extraAi = await aiExtras(p, r);
       p._aiRaw = {steps: r.steps, versus: r.versus, title: r.steps_title}; // để kiểm thử (không lưu)
@@ -1543,7 +1640,16 @@ export async function autoEdit(ed, log) {
     animBy = new Map(((await loadIndex('anim')).items || []).filter((x) => x.fk).map((x) => [x.fk, x.key]));
   } catch (e) {}
   if (brReq) await Promise.race([brReq, new Promise((r) => setTimeout(r, 8000))]);
-  const ops = localPlan(p, {keys, hook: extraAi.hook || '', pics: extraAi.pics, sfx: extraAi.sfx, place: extraAi.place || '', animBy, steps: extraAi.steps || null, versus: extraAi.versus || null});
+  // cảnh phụ nạp trước bản 5/11 chưa có số khung/giây → đo nhanh (đọc thông tin gói) để biết cảnh nào quay chậm được
+  for (const s of Object.values(p.sources)) {
+    if (s.kind !== 'broll' || s.image || s.fps !== undefined) continue;
+    try {
+      s.fps = await Promise.race([ed.getBlob(s.fileKey).then(videoFps), new Promise((r) => setTimeout(() => r(0), 4000))]);
+    } catch (e) {
+      s.fps = 0;
+    }
+  }
+  const ops = localPlan(p, {keys, hook: extraAi.hook || '', pics: extraAi.pics, sfx: extraAi.sfx, place: extraAi.place || '', animBy, steps: extraAi.steps || null, versus: extraAi.versus || null, chapters: extraAi.chapters || null});
   // AI TỰ KIỂM (chạy ngầm, không tốn tiền): dựng thử từng chữ → tràn khung / chồng thẻ / chìm nền / hình đè → tự đổi
   let fixes = [];
   try {

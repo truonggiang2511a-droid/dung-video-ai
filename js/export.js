@@ -1,6 +1,6 @@
 // Xuất MP4 ngay trên máy khách: vẽ từng khung bằng render.js → mã hoá WebCodecs → ghép MP4 bằng Mediabunny + AAC WebAssembly.
 // Máy không có bộ mã hoá video (iPhone quá cũ) → quay thời gian thực bằng MediaRecorder.
-import {W, H, FPS, drawFrame, duration, srcAt, activeBrolls, segStarts, setFormat} from './render.js';
+import {W, H, FPS, drawFrame, duration, srcAt, activeBrolls, segStarts, setFormat, brollTime} from './render.js';
 import {sfxBuffer} from './sfx.js';
 import {preloadStickers} from './library.js';
 import {ensureProjectFonts} from './fonts.js';
@@ -57,7 +57,7 @@ export async function exportVideo(p, getBlob, {res = 1080, onProgress, signal} =
         continue;
       }
       const key = 'b:' + b.src;
-      push(key, b.in + (T - b.start));
+      push(key, brollTime(b, T) + 0.003); // +3 ms: rơi chắc vào đúng khung gốc (quay chậm 60→30: mỗi khung ra = 1 khung gốc, lệch số lẻ là lặp/bỏ khung)
       fp.keys.push([key, b.id]);
     }
     plan.push(fp);
