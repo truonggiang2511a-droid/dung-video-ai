@@ -71,7 +71,7 @@ Giang cho phép tự bổ sung/sửa file này khi thấy thiếu/sai so với c
 máy dựng), biến **`PRO_CODES`** = `ten:ma,ten2:ma2` (mã mời), Secret **`PRO_ADMIN`** (mã admin). Tắt khẩn cấp `PRO_OFF` = `on`. Sổ địa chỉ nằm trong `AiGate`
 bản `pro-registry` (không dính sổ hạn mức Claude, không cần migration). Kiểm không cần Cloudflare: repo xưởng `node test/pro-bridge.mjs <worker.js này> <job>`.
 Giang chốt 5/11 12:07: khách vẫn sửa trên timeline canvas cũ, xuất bản HyperFrames (bước giao diện app chưa làm).
-**Trang khách `public/pro.html`** (5/11 12:31, VPS không tên miền): nhập mã mời hoặc link `…/pro.html?c=<mã>` → `/api/pro/token` → `/api/pro/info` → chuyển tới máy dựng
+**Trang khách `public/pro.html`** (5/11 12:31, VPS không tên miền): nhập mã mời hoặc link `…/pro?c=<mã>` (Cloudflare tự đổi /pro.html → /pro) → `/api/pro/token` → `/api/pro/info` → chuyển tới máy dựng
 `<url>/#t=<mã khách>` (localStorage `dv.pro`, lần sau có nút “Vào dựng video”); máy tắt → “Máy dựng đang tắt”. CHƯA có nút dẫn tới trang này trong app (không đổi luồng cũ).
 Máy dựng gửi chép lời / AI nhìn kèm `x-pro-ts` + `x-pro-sign` (HMAC `ts\npath` bằng PRO_SECRET) → `fromXuong` bỏ giới hạn `STT_LIMIT` theo IP (VPS = 1 IP nhiều khách).
 
