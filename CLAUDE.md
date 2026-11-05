@@ -28,7 +28,7 @@ Giang cho phép tự bổ sung/sửa file này khi thấy thiếu/sai so với c
 |---|---|---|
 | Giao diện (nguồn) | `index.html`, `css/app.css`, `js/*.js`, `public/` (font, icon, manifest) | JS thuần, không framework |
 | Bản chạy | `site/` — tạo bằng `bash build.sh` (esbuild, tách gói `engine` nặng chỉ tải khi phân tích âm thanh/xuất) | KHÔNG sửa tay `site/` |
-| Máy chủ | `worker.js` (Cloudflare Worker + assets `./site`), cấu hình `wrangler.toml` | Route: `/api/health`, `/api/transcribe`, `/api/vision`, `/api/ai`, `/api/stock`, `/api/stock-file` |
+| Máy chủ | `worker.js` (Cloudflare Worker + assets `./site`), cấu hình `wrangler.toml` | Route: `/api/health`, `/api/transcribe`, `/api/vision`, `/api/ai`, `/api/stock`, `/api/stock-file`, **`/api/pro/register|info|token`** (dựng chuyên nghiệp HyperFrames, 5/11) |
 | Lưu trữ | IndexedDB trên máy khách (`js/store.js`): dự án + file video | Video KHÔNG gửi lên máy chủ. Chỉ âm thanh 16 kHz gửi đi chép lời |
 | **Bản chạy thật** | Cloudflare Worker `dung-video-ai` → https://dung-video-ai.truonggiang2511a.workers.dev (Workers Builds nối repo, nhánh `main`: build `npm ci && bash build.sh`, deploy `npx wrangler deploy`; push `main` là tự deploy ~1 phút) | Tạo 1/11 10:58 trong cùng tài khoản Cloudflare với Vị Trí Studio (Worker riêng, không đụng nhau) |
 | Bản thử cũ | Netlify — chỉ giao diện, KHÔNG có /api → app tự chạy "bộ dựng cơ bản". 1/11: tài khoản Netlify của Giang hết credit (deploy bị bỏ qua) → dùng `npx netlify-cli deploy --allow-anonymous --dir site --prod --no-build` (link tạm, có mật khẩu, mất sau 60 phút nếu không nhận) | netlify.toml: build `npm ci && bash build.sh`, publish `site` |
@@ -65,6 +65,12 @@ Giang cho phép tự bổ sung/sửa file này khi thấy thiếu/sai so với c
 - Gọi Claude qua **Durable Object `AiGate`** (binding `AI_GATE`, `locationHint: 'enam'`, migration `v1` sqlite) = trạm Mỹ (Anthropic chặn điểm Cloudflare Hồng Kông) + sổ hạn mức: `AI_IP_DAY` lượt/IP/ngày (mặc định 40), `AI_DAY_USD` USD/ngày cả app (mặc định 1), giá ghi đè `AI_PRICE_IN/OUT`. Xem tiền hôm nay: `GET /api/ai-usage`. Chặn cứng cuối cùng = hạn mức chi tiêu trong tài khoản Anthropic.
 - Claude tắt / lỗi / hết hạn mức → tự dùng **AI miễn phí Cloudflare** `@cf/meta/llama-4-scout-17b-16e-instruct` (json_object; thử thêm mô hình bằng `?model=`), trả `provider` + `fallback` (lý do). Tắt khẩn cấp phần này: `AI_OFF` = `on`. Giới hạn chung `STT_LIMIT` khoá `a:<ip>`.
 - Binding `AI` (Workers AI, Whisper `@cf/openai/whisper-large-v3-turbo`, ~0,0005 USD/phút âm thanh). Gemini đã bỏ khỏi code 1/11 (AI Cloudflare làm dự phòng).
+
+**Dựng chuyên nghiệp (HyperFrames, 5/11 — repo `dung-video-ai-xuong`)**: máy dựng (laptop Giang / VPS) tự báo địa chỉ (`/api/pro/register`, ký HMAC); app cấp mã khách
+(`/api/pro/token {code}` → mã ký HMAC hạn 30 ngày) để trình duyệt khách gọi thẳng máy dựng. Bật: Secret **`PRO_SECRET`** (giống `XUONG_SECRET` trong cau-hinh.txt
+máy dựng), biến **`PRO_CODES`** = `ten:ma,ten2:ma2` (mã mời), Secret **`PRO_ADMIN`** (mã admin). Tắt khẩn cấp `PRO_OFF` = `on`. Sổ địa chỉ nằm trong `AiGate`
+bản `pro-registry` (không dính sổ hạn mức Claude, không cần migration). Kiểm không cần Cloudflare: repo xưởng `node test/pro-bridge.mjs <worker.js này> <job>`.
+Giang chốt 5/11 12:07: khách vẫn sửa trên timeline canvas cũ, xuất bản HyperFrames (bước giao diện app chưa làm).
 
 ### Bắt đầu nhanh
 ```bash

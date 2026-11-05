@@ -13,6 +13,11 @@
 // AI hiểu lời (/api/ai, mode highlight | edit | plan): Claude Haiku 5.5 khi AI_OPEN = "on" + Secret ANTHROPIC_API_KEY (Giang chọn
 // hướng A 1/11 21:39), gọi qua trạm Mỹ AiGate có giới hạn lượt/IP/ngày + tiền/ngày; chưa bật / lỗi / hết hạn mức → AI miễn phí
 // của Cloudflare Workers AI (Llama 4 Scout). Tắt khẩn cấp phần Workers AI: AI_OFF = "on". GET /api/ai-usage = tiền Claude hôm nay.
+// DỰNG CHUYÊN NGHIỆP (HyperFrames, 5/11): máy dựng (laptop Giang / VPS, repo dung-video-ai-xuong) tự báo địa chỉ; app cấp mã cho khách có mã mời.
+//  POST /api/pro/register  (máy dựng; x-pro-ts + x-pro-sign = HMAC-SHA256(PRO_SECRET, ts + "\n" + url), lệch ≤ 5 phút) {url, queue, ver}
+//  GET  /api/pro/info      → {on, url, at, queue}   (on = máy dựng báo trong 15 phút gần nhất)
+//  POST /api/pro/token     {code} → {token, name, exp, adm}   mã mời: biến PRO_CODES = "ten:ma,ten2:ma2"; mã admin: Secret PRO_ADMIN
+// Secret PRO_SECRET phải giống XUONG_SECRET trong cau-hinh.txt của máy dựng. Tắt khẩn cấp: PRO_OFF = "on".
 
 const json = (o, s = 200) => new Response(JSON.stringify(o), {status: s, headers: {'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store'}});
 
@@ -63,6 +68,7 @@ export default {
         }
         return json(await ai(await req.json(), env, url, req.headers.get('cf-connecting-ip') || 'x', claude, cf));
       }
+      if (url.pathname.startsWith('/api/pro/')) return pro(req, url, env);
       // Xem chi tiêu Claude hôm nay (chỉ số tổng, không có dữ liệu khách)
       if (url.pathname === '/api/ai-usage' && env.AI_GATE) return env.AI_GATE.get(env.AI_GATE.idFromName(GATE_NAME), {locationHint: 'enam'}).fetch('https://gate.internal/usage');
       if (url.pathname.startsWith('/api/')) return json({error: 'Không có route này'}, 404);
@@ -338,6 +344,44 @@ async function callClaude(env, {system, user, max}) {
 //    máy chủ tự chuyển sang AI miễn phí của Cloudflare. Giá Haiku 5.5: 0,10 / 0,50 USD mỗi triệu token vào/ra (prompt ≤ 100k token).
 //  • Chặn cứng cuối cùng vẫn là hạn mức chi tiêu đặt trong tài khoản Anthropic (Giang tự đặt).
 const GATE_NAME = 'ai-gate-us-1';
+// ---------- DỰNG CHUYÊN NGHIỆP: sổ địa chỉ máy dựng + mã khách ----------
+const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+async function hmac(secret, msg) {
+  const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), {name: 'HMAC', hash: 'SHA-256'}, false, ['sign']);
+  return b64u(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(msg)));
+}
+const same = (a, b) => { a = String(a); b = String(b); if (a.length !== b.length) return false; let x = 0; for (let i = 0; i < a.length; i++) x |= a.charCodeAt(i) ^ b.charCodeAt(i); return x === 0; };
+const proReg = env => env.AI_GATE.get(env.AI_GATE.idFromName('pro-registry'), {locationHint: 'apac'});
+async function pro(req, url, env) {
+  if (env.PRO_OFF === 'on' || !env.PRO_SECRET || !env.AI_GATE) return json({on: false, error: 'Dựng chuyên nghiệp chưa bật'}, url.pathname === '/api/pro/info' ? 200 : 503);
+  const ip = req.headers.get('cf-connecting-ip') || 'x';
+  if (url.pathname === '/api/pro/register' && req.method === 'POST') {
+    const ts = +req.headers.get('x-pro-ts') || 0, b = await req.json();
+    if (Math.abs(Date.now() / 1000 - ts) > 300 || !/^https:\/\/[\w.-]+(:\d+)?$/.test(b.url || '')) return json({error: 'Sai thời gian / địa chỉ'}, 400);
+    if (!same(req.headers.get('x-pro-sign'), await hmac(env.PRO_SECRET, ts + '\n' + b.url))) return json({error: 'Sai chữ ký máy dựng'}, 401);
+    await proReg(env).fetch('https://gate.internal/pro/set', {method: 'POST', body: JSON.stringify({url: b.url, at: Date.now(), queue: b.queue || null, ver: String(b.ver || '').slice(0, 20)})});
+    return json({ok: true});
+  }
+  if (url.pathname === '/api/pro/info') {
+    const r = await (await proReg(env).fetch('https://gate.internal/pro/get')).json();
+    const on = !!r.url && Date.now() - (r.at || 0) < 15 * 60e3;
+    return json({on, url: on ? r.url : null, at: r.at || null, queue: on ? r.queue : null});
+  }
+  if (url.pathname === '/api/pro/token' && req.method === 'POST') {
+    if (env.STT_LIMIT) { const {success} = await env.STT_LIMIT.limit({key: 'p:' + ip}); if (!success) return json({error: 'Thử quá nhanh — đợi 1 phút'}, 429); }
+    const code = String((await req.json()).code || '').trim();
+    if (code.length < 4) return json({error: 'Mã mời không đúng'}, 403);
+    let name = '', adm = false;
+    if (env.PRO_ADMIN && same(code, env.PRO_ADMIN)) { name = 'admin'; adm = true; }
+    else for (const it of String(env.PRO_CODES || '').split(',')) { const [n, c] = it.split(':').map(x => (x || '').trim()); if (c && same(code, c)) { name = n || 'khach'; break; } }
+    if (!name) return json({error: 'Mã mời không đúng'}, 403);
+    const exp = Math.floor(Date.now() / 1000) + 30 * 86400, u = adm ? 'admin' : 'k-' + (await hmac(env.PRO_SECRET, 'u:' + code)).slice(0, 12);
+    const p = b64u(new TextEncoder().encode(JSON.stringify({u, n: name, exp, adm})));
+    return json({token: p + '.' + (await hmac(env.PRO_SECRET, p)), name, exp, adm});
+  }
+  return json({error: 'Không có route này'}, 404);
+}
+
 export class AiGate {
   constructor(state, env) {
     this.state = state;
@@ -346,6 +390,9 @@ export class AiGate {
   async fetch(req) {
     const url = new URL(req.url);
     const st = this.state.storage;
+    // sổ địa chỉ máy dựng (bản 'pro-registry', không dính sổ hạn mức Claude)
+    if (url.pathname === '/pro/set') { await st.put('pro', await req.json()); return json({ok: true}); }
+    if (url.pathname === '/pro/get') return json((await st.get('pro')) || {});
     const today = new Date().toISOString().slice(0, 10);
     let day = (await st.get('day')) || {d: today, usd: 0, n: 0};
     if (day.d !== today) {
